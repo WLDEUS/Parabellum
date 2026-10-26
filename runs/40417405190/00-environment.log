@@ -1,0 +1,9 @@
+Darwin sjc22-be111-0fd4902d-7060-438c-93ba-38dca44736b4-A63099353174.local 24.6.0 Darwin Kernel Version 24.6.0: Tue Jul 21 20:51:34 PDT 2026; root:xnu-11417.140.69.711.44~1/RELEASE_ARM64_VMAPPLE arm64
+ProductName:		macOS
+ProductVersion:		15.7.9
+BuildVersion:		24G830
+Xcode 16.4
+Build version 16F6
+swift-driver version: 1.120.5 Apple Swift version 6.1.2 (swiftlang-6.1.2.1.2 clang-1700.0.13.5)
+Target: arm64-apple-macosx15.0
+rustc 1.99.1 (58cf8f9c3 2026-10-13)
