@@ -1,0 +1,25 @@
+[
+  {
+    "arguments": [
+      "/Users/q/.local/helper",
+      "--daemon"
+    ],
+    "first_seen": 1793000300,
+    "id": "0123456789abcdef",
+    "kind": "launch_agent",
+    "label": "com.apple.updater.helper",
+    "last_seen": 1793000300,
+    "path": "/Users/q/Library/LaunchAgents/com.apple.updater.helper.plist",
+    "program": "/Users/q/.local/helper",
+    "program_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "signing": {
+      "adhoc": false,
+      "apple": false,
+      "signed": false,
+      "valid": false
+    },
+    "status": "new",
+    "user": "q",
+    "verdict": "suspicious"
+  }
+]

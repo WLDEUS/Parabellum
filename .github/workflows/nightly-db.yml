@@ -1,0 +1,126 @@
+name: Nightly threat DB
+
+# Rebuilds the signed threat-DB bundle (see crates/pb-core/src/db.rs and pipeline/README.md) and
+# publishes it to the `db-latest` release + a dated `db-<version>` release. If any check fails (sanity
+# guard, signature mismatch…) nothing is uploaded: clients keep yesterday's bundle.
+# Secrets: ABUSECH_AUTH_KEY (abuse.ch), MINISIGN_SECRET_KEY (unencrypted minisign secret key).
+
+on:
+  schedule:
+    - cron: "17 2 * * *" # 02:17 UTC, off the top of the hour
+  workflow_dispatch:
+    inputs:
+      allow_shrink:
+        description: Publish even if hashes/domains dropped by more than 50 % (sanity guard)
+        type: boolean
+        default: false
+      malware_corpus:
+        description: Measure the detection rate on today's macOS samples (see GitHub AUP caveat in pipeline/README.md)
+        type: boolean
+        default: false
+
+permissions:
+  contents: write # gh release create/upload
+
+concurrency:
+  group: threat-db # shared with ml-train.yml: never publish model and bundle at the same time
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-db:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # branch "stable" (2026-10)
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: pb-features
+      - name: Build pb-features
+        run: cargo build --release -p pb-ml --bin pb-features
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+      - name: Install tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends minisign 7zip
+          python -m pip install -r pipeline/requirements.txt
+      - name: Restore clean corpus cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/corpus
+          key: corpus-v1-${{ hashFiles('pipeline/data/clean_corpus.toml') }}-${{ github.run_id }}
+          restore-keys: |
+            corpus-v1-${{ hashFiles('pipeline/data/clean_corpus.toml') }}-
+            corpus-v1-
+      - name: Download previous bundle, state and ML model
+        run: |
+          mkdir -p prev ml-latest
+          gh release download db-latest -D prev --clobber \
+            -p parabellum-db.tar.gz -p parabellum-db.tar.gz.minisig \
+            -p pipeline-state.tar.gz -p pipeline-state.tar.gz.minisig || echo "no previous bundle (first run?)"
+          if [[ -s keys/parabellum-db.pub ]]; then
+            for f in parabellum-db.tar.gz pipeline-state.tar.gz; do
+              if [[ -f "prev/$f" ]] && ! minisign -Vq -p keys/parabellum-db.pub -m "prev/$f"; then
+                echo "::warning::prev/$f has an invalid signature: ignored"
+                rm -f "prev/$f"
+              fi
+            done
+          fi
+          gh release download ml-latest -D ml-latest --clobber -p macho_model.json -p model_meta.json || echo "no ML model yet"
+      - name: Build bundle
+        env:
+          ABUSECH_AUTH_KEY: ${{ secrets.ABUSECH_AUTH_KEY }}
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MALWARE_CORPUS: ${{ inputs.malware_corpus && '1' || '' }}
+          ALLOW_SHRINK: ${{ inputs.allow_shrink && '--allow-shrink' || '' }}
+        run: |
+          if [[ -z "$MINISIGN_SECRET_KEY" ]]; then
+            echo "::error::secret MINISIGN_SECRET_KEY is not set (scripts/setup-signing-keys.sh)"
+            exit 1
+          fi
+          [[ -n "$ABUSECH_AUTH_KEY" ]] || echo "::warning::secret ABUSECH_AUTH_KEY is not set: abuse.ch sources are carried over"
+          # shellcheck disable=SC2086 # ALLOW_SHRINK is empty or one flag
+          python -m pipeline.build --out dist/db \
+            --previous prev/parabellum-db.tar.gz --state prev/pipeline-state.tar.gz \
+            --corpus-cache .cache/corpus --ml-dir ml-latest --pb-features target/release/pb-features \
+            --sign $ALLOW_SHRINK
+      - name: Verify the signature with the committed public key
+        run: |
+          if [[ -s keys/parabellum-db.pub ]]; then
+            minisign -V -p keys/parabellum-db.pub -m dist/db/parabellum-db.tar.gz
+          else
+            echo "::warning::keys/parabellum-db.pub is not committed: cannot cross-check the signing key"
+          fi
+      - name: Publish
+        run: bash pipeline/publish.sh dist/db
+      - name: Summary
+        if: always()
+        run: |
+          [[ -f dist/db/report.json ]] || exit 0
+          {
+            echo "## Threat DB $(python -c 'import json;print(json.load(open("dist/db/report.json")).get("version",""))')"
+            echo '```json'
+            python -c 'import json; r = json.load(open("dist/db/report.json")); print(json.dumps({k: r.get(k) for k in ("stats", "sanity_problems", "source_errors", "domains", "detection")}, indent=2))'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Save clean corpus cache
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/corpus
+          key: corpus-v1-${{ hashFiles('pipeline/data/clean_corpus.toml') }}-${{ github.run_id }}

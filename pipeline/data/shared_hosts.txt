@@ -1,0 +1,111 @@
+# Shared platforms: a malicious URL hosted there must NOT turn into a DNS block of the platform.
+# Applied to every list (URLhaus/ThreatFox mostly). Syntax:
+#   example.com        never block this host, nor any of its parents (blocking google.com would
+#                      block drive.google.com); user-specific subdomains (evil.github.io) stay blockable
+#   *.example.com      additionally never block any host under it (shared infrastructure whose
+#                      per-file hostnames would only produce useless or harmful entries)
+
+# Code hosting / file sharing
+github.com
+gist.github.com
+raw.githubusercontent.com
+objects.githubusercontent.com
+release-assets.githubusercontent.com
+codeload.github.com
+github.io
+gitlab.com
+bitbucket.org
+sourceforge.net
+downloads.sourceforge.net
+*.githubusercontent.com
+pastebin.com
+paste.ee
+hastebin.com
+
+# Google
+drive.google.com
+docs.google.com
+storage.googleapis.com
+googleapis.com
+sites.google.com
+firebasestorage.googleapis.com
+*.googleusercontent.com
+blogspot.com
+appspot.com
+web.app
+firebaseapp.com
+
+# Microsoft
+onedrive.live.com
+1drv.ms
+sharepoint.com
+blob.core.windows.net
+azurewebsites.net
+azureedge.net
+windows.net
+
+# Amazon / CDNs
+amazonaws.com
+s3.amazonaws.com
+cloudfront.net
+akamaihd.net
+fastly.net
+cdn.jsdelivr.net
+unpkg.com
+
+# Dropbox / Box / WeTransfer / Mega / MediaFire
+dropbox.com
+www.dropbox.com
+dl.dropboxusercontent.com
+*.dropboxusercontent.com
+box.com
+app.box.com
+wetransfer.com
+we.tl
+mega.nz
+mega.co.nz
+mediafire.com
+www.mediafire.com
+download.mediafire.com
+
+# Messaging CDNs
+cdn.discordapp.com
+media.discordapp.net
+discord.com
+discordapp.com
+api.telegram.org
+t.me
+telegra.ph
+
+# Serverless / static hosting / tunnels (per-tenant subdomains stay blockable)
+vercel.app
+netlify.app
+pages.dev
+workers.dev
+herokuapp.com
+onrender.com
+glitch.me
+replit.dev
+repl.co
+ngrok.io
+ngrok-free.app
+trycloudflare.com
+r2.dev
+
+# URL shorteners
+bit.ly
+tinyurl.com
+t.co
+goo.gl
+is.gd
+cutt.ly
+rb.gy
+
+# Misc platforms frequently abused for payload hosting
+docs.zoho.com
+notion.so
+notion.site
+canva.com
+weebly.com
+wixsite.com
+000webhostapp.com

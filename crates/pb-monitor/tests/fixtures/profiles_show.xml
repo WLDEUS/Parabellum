@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>_computerlevel</key>
+	<array>
+		<dict>
+			<key>ProfileDescription</key>
+			<string>Installs a root certificate</string>
+			<key>ProfileDisplayName</key>
+			<string>Corp Root</string>
+			<key>ProfileIdentifier</key>
+			<string>com.example.mdm.root</string>
+			<key>ProfileInstallDate</key>
+			<string>2026-10-01 09:12:44 +0000</string>
+			<key>ProfileItems</key>
+			<array>
+				<dict>
+					<key>PayloadIdentifier</key>
+					<string>com.example.mdm.root.cert</string>
+					<key>PayloadType</key>
+					<string>com.apple.security.root</string>
+					<key>PayloadUUID</key>
+					<string>0D2C4C9E-1A6B-4B83-9C1D-5E8F7A6B5C4D</string>
+				</dict>
+				<dict>
+					<key>PayloadType</key>
+					<string>com.apple.TCC.configuration-profile-policy</string>
+				</dict>
+				<dict>
+					<key>PayloadType</key>
+					<string>com.apple.security.root</string>
+				</dict>
+			</array>
+			<key>ProfileOrganization</key>
+			<string>Example Corp</string>
+			<key>ProfileType</key>
+			<string>Configuration</string>
+			<key>ProfileUUID</key>
+			<string>6B1F2E3D-4C5B-4A69-8778-695A4B3C2D1E</string>
+			<key>ProfileVerificationState</key>
+			<string>unsigned</string>
+		</dict>
+	</array>
+	<key>q</key>
+	<array>
+		<dict>
+			<key>ProfileDisplayName</key>
+			<string>Proxy</string>
+			<key>ProfileIdentifier</key>
+			<string>com.example.proxy</string>
+			<key>ProfileItems</key>
+			<array>
+				<dict>
+					<key>PayloadType</key>
+					<string>com.apple.proxy.http.global</string>
+				</dict>
+			</array>
+			<key>ProfileUUID</key>
+			<string>AAAABBBB-CCCC-4DDD-8EEE-FFFF00001111</string>
+		</dict>
+		<dict>
+			<key>ProfileDisplayName</key>
+			<string>No identifier: skipped</string>
+		</dict>
+	</array>
+</dict>
+</plist>

@@ -1,0 +1,13 @@
+[
+  {
+    "action_url": "https://objective-see.org/products/lulu.html",
+    "auto_update": true,
+    "display_name": "LuLu (pare-feu sortant)",
+    "installed_version": "3.1.5",
+    "last_check": 1793000400,
+    "latest_version": "3.1.6",
+    "name": "lulu",
+    "required": false,
+    "state": "update_available"
+  }
+]

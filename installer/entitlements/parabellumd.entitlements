@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened-runtime exception for parabellumd (ad-hoc signed by scripts/build-pkg.sh).
+
+  YARA-X compiles rules to WebAssembly and runs them with wasmtime, which maps anonymous memory
+  read-write, writes native code into it, then mprotect()s it read-execute (no MAP_JIT).
+  Under the hardened runtime that code only runs with this entitlement; without it every YARA scan
+  would crash the daemon. This is the only exception requested: no library-validation or DYLD
+  exceptions, no debugger attachment.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+</dict>
+</plist>

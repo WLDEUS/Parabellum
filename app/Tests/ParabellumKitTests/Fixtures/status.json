@@ -1,0 +1,35 @@
+{
+  "components_needing_attention": 2,
+  "db": {
+    "blocked_domains": 402113,
+    "built_at": 1793000000,
+    "clamav_version": "ClamAV 1.4.3/27800",
+    "last_check": 1793000500,
+    "last_success": 1793000500,
+    "malware_hashes": 812345,
+    "ml_model_version": "2026.10.20",
+    "previous_version": "2026.10.24.1",
+    "version": "2026.10.25.1",
+    "yara_rules": 431
+  },
+  "dns_enabled": true,
+  "issues": [
+    "Accès complet au disque non accordé à parabellumd"
+  ],
+  "last_scan": 1793000060,
+  "ml_enabled": true,
+  "on_battery": false,
+  "open_alerts": 3,
+  "protection": "degraded",
+  "quarantined": 1,
+  "realtime": {
+    "device_monitor": true,
+    "eslogger": false,
+    "fsevents": true,
+    "full_disk_access": false,
+    "persistence_monitor": true
+  },
+  "rss_bytes": 58000000,
+  "uptime_secs": 3600,
+  "version": "0.1.0"
+}

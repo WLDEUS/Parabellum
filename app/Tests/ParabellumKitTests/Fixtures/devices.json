@@ -1,0 +1,37 @@
+[
+  {
+    "baseline": false,
+    "connected": true,
+    "details": {
+      "location_id": "0x01100000"
+    },
+    "first_seen": 1793000200,
+    "id": "hid:05ac:024f:0x01100000",
+    "kind": "hid",
+    "last_seen": 1793000200,
+    "name": "USB Keyboard",
+    "product_id": 591,
+    "transport": "USB",
+    "trust": "unknown",
+    "vendor": "Unknown Vendor",
+    "vendor_id": 1452
+  },
+  {
+    "baseline": false,
+    "connected": false,
+    "details": {
+      "location_id": "0x01100000",
+      "mount_point": "/Volumes/KINGSTON"
+    },
+    "first_seen": 1793000200,
+    "id": "vol:7C3B2A10-1111-2222-3333-444455556666",
+    "kind": "volume",
+    "last_seen": 1793000200,
+    "name": "KINGSTON",
+    "product_id": 591,
+    "transport": "USB",
+    "trust": "trusted",
+    "vendor": "Unknown Vendor",
+    "vendor_id": 1452
+  }
+]

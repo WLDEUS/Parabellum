@@ -1,0 +1,49 @@
+{
+  "findings": [
+    {
+      "cached": false,
+      "detections": [
+        {
+          "confidence": 0.949999988079071,
+          "details": "rule macos_amos_osascript_prompt",
+          "engine": "yara",
+          "name": "MacOS.Stealer.AMOS",
+          "severity": "high"
+        },
+        {
+          "confidence": 1.0,
+          "engine": "clamav",
+          "name": "Osx.Trojan.Amos-1",
+          "severity": "critical"
+        }
+      ],
+      "duration_ms": 42,
+      "kind": "macho",
+      "path": "/Users/q/Downloads/Installer.dmg!/Installer.app/Contents/MacOS/Installer",
+      "score": 0.9700000286102295,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "signing": {
+        "adhoc": true,
+        "apple": false,
+        "signed": true,
+        "valid": true
+      },
+      "size": 123456,
+      "verdict": "malicious"
+    }
+  ],
+  "summary": {
+    "bytes_scanned": 987654321,
+    "errors": 2,
+    "files_scanned": 1534,
+    "finished_at": 1793000060,
+    "job_id": "5f8e2c1a-0000-4000-8000-000000000001",
+    "origin": "manual",
+    "paths": [
+      "/Users/q/Downloads"
+    ],
+    "started_at": 1793000000,
+    "state": "finished",
+    "threats": 1
+  }
+}

@@ -1,0 +1,123 @@
+# Clean macOS corpus for the FP gate (pipeline) and ML negatives (ml). Bump `version` when editing:
+# the CI cache key includes this file's hash.
+#
+# [[archive]] entries are pinned (URL + SHA-256, verified on 2026-10-25 by downloading them); a
+# changed upstream file fails the hash check and is skipped (logged), never silently trusted.
+# [homebrew] formulae are resolved each run through https://formulae.brew.sh/api/formula/<name>.json
+# (bottle.stable.files.<tag>.{url,sha256}) and pulled anonymously from ghcr.io; the SHA-256 published
+# by the API is verified.
+#
+# Formats: tar | zip | pkg (xar) | dmg (needs 7zz/7z) | file (single file) | auto.
+# Nested pkgs, Payload/Scripts cpio archives and zips/dmgs inside are extracted too (depth 3).
+
+version = 1
+# Files bigger than this are hashed for the allowlist but not YARA-scanned.
+max_scan_bytes = 104857600
+
+[homebrew]
+bottle_tags = ["arm64_sequoia", "arm64_tahoe", "arm64_sonoma", "all"]
+formulae = [
+  "jq", "wget", "git", "curl", "openssl@3", "python@3.13", "node", "gnupg", "sqlite",
+  "yt-dlp", "bash", "zsh", "coreutils", "tmux", "htop", "ripgrep", "ffmpeg", "awscli",
+  # dylib-heavy bottles: more clean Mach-O for the ML negatives
+  "boost", "postgresql@17", "imagemagick", "go", "vim", "neovim", "opencv", "gdal",
+]
+
+# --- Developer ID-signed vendor builds (Mach-O + installer scripts) ---
+
+[[archive]]
+name = "powershell-7.4.6-osx-arm64"
+url = "https://github.com/PowerShell/PowerShell/releases/download/v7.4.6/powershell-7.4.6-osx-arm64.tar.gz"
+sha256 = "a482d668787ef98c37f0a5a7696107dffdb3dc340c5be3d1c153ec9d239072a8"
+format = "tar"
+
+[[archive]]
+name = "geckodriver-0.35.0-macos-aarch64"
+url = "https://github.com/mozilla/geckodriver/releases/download/v0.35.0/geckodriver-v0.35.0-macos-aarch64.tar.gz"
+sha256 = "2b85cdc30692b33d273f5f199a3dd0f6473d25778d9669dc5704260b39bdf578"
+format = "tar"
+
+[[archive]]
+name = "osquery-5.14.1-macos-arm64"
+url = "https://github.com/osquery/osquery/releases/download/5.14.1/osquery-5.14.1_1.macos_arm64.tar.gz"
+sha256 = "b7fe0d35f51f4f0c7e7fcba66d44d20d6cd80d8a1f547da88bda7bde6f2d7b97"
+format = "tar"
+
+[[archive]]
+name = "gh-2.62.0-macos-arm64"
+url = "https://github.com/cli/cli/releases/download/v2.62.0/gh_2.62.0_macOS_arm64.zip"
+sha256 = "fdb77f31b8a6dd23c3fd858758d692a45f7fc76383e37d475bdcae038df92afc"
+format = "zip"
+
+[[archive]]
+# Installer scripts that write LaunchDaemons and call launchctl: key FP test for behavioural rules.
+name = "clamav-1.4.1-macos-pkg"
+url = "https://github.com/Cisco-Talos/clamav/releases/download/clamav-1.4.1/clamav-1.4.1.macos.universal.pkg"
+sha256 = "028f0b36c8f961ff3b0bfdb330113f109f85828eb81e36bc33bcaa9c251a90c0"
+format = "pkg"
+
+[[archive]]
+# Homebrew itself: thousands of shell/Ruby scripts (xattr, launchctl, osascript, curl | bash…).
+name = "homebrew-4.4.5-pkg"
+url = "https://github.com/Homebrew/brew/releases/download/4.4.5/Homebrew-4.4.5.pkg"
+sha256 = "8880090d85229837c899f1777ea5d45d99b1c7719132effe51384cc69d54cb0f"
+format = "pkg"
+
+[[archive]]
+name = "lulu-2.6.3-dmg"
+url = "https://github.com/objective-see/LuLu/releases/download/v2.6.3/LuLu_2.6.3.dmg"
+sha256 = "fa677999f1f6eeac725d235de64e24235c34ca71d93040f26ac69e76ea4a68e5"
+format = "dmg"
+
+[[archive]]
+name = "santa-2024.9-dmg"
+url = "https://github.com/google/santa/releases/download/2024.9/santa-2024.9.dmg"
+sha256 = "aaffd10029040d2f12cc961504a562753ce2d135b2da4719fbba2fabb1f78e36"
+format = "dmg"
+
+# --- Open-source tools and runtimes (lots of Mach-O, dylibs and scripts) ---
+
+[[archive]]
+name = "ripgrep-14.1.1-aarch64-apple-darwin"
+url = "https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-aarch64-apple-darwin.tar.gz"
+sha256 = "24ad76777745fbff131c8fbc466742b011f925bfa4fffa2ded6def23b5b937be"
+format = "tar"
+
+[[archive]]
+name = "cpython-3.12.7-aarch64-apple-darwin"
+url = "https://github.com/astral-sh/python-build-standalone/releases/download/20241016/cpython-3.12.7+20241016-aarch64-apple-darwin-install_only.tar.gz"
+sha256 = "4c18852bf9c1a11b56f21bcf0df1946f7e98ee43e9e4c0c5374b2b3765cf9508"
+format = "tar"
+
+[[archive]]
+# Electron framework: the runtime of most third-party Mac apps (Slack, VS Code, Discord…).
+name = "electron-33.2.0-darwin-arm64"
+url = "https://github.com/electron/electron/releases/download/v33.2.0/electron-v33.2.0-darwin-arm64.zip"
+sha256 = "b78ec0f21a12effc6830b6ac70a71e226f3898dd1c2449b5230e071211fb4a73"
+format = "zip"
+
+# --- Legitimate install scripts (curl | bash installers, LaunchAgent writers) ---
+
+[[archive]]
+name = "homebrew-install.sh"
+url = "https://raw.githubusercontent.com/Homebrew/install/85d1a3fc80d8a63932f632aca8f787de11d14a64/install.sh"
+sha256 = "5f333bbe53bc490e51e7ccb1df8779b3dd6ee73a1a7379efda216edb08ccb148"
+format = "file"
+
+[[archive]]
+name = "nvm-0.40.1-install.sh"
+url = "https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh"
+sha256 = "abdb525ee9f5b48b34d8ed9fc67c6013fb0f659712e401ecd88ab989b3af8f53"
+format = "file"
+
+[[archive]]
+name = "rustup-init-1.27.1.sh"
+url = "https://raw.githubusercontent.com/rust-lang/rustup/1.27.1/rustup-init.sh"
+sha256 = "32a680a84cf76014915b3f8aa44e3e40731f3af92cd45eb0fcc6264fd257c428"
+format = "file"
+
+[[archive]]
+name = "ohmyzsh-install.sh"
+url = "https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/d2b7f557cceaddb16ba89bbf8200d8a8df35c4d8/tools/install.sh"
+sha256 = "5574b96e94dbcb769f0d1592fa83aeb6ca2caf41c6ae5d76fcc7f04c524b4f55"
+format = "file"

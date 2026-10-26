@@ -1,0 +1,30 @@
+[package]
+name = "pb-ml"
+description = "Mach-O static feature extraction + gradient-boosted tree inference"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+goblin = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+clap = { workspace = true }
+walkdir = { workspace = true }
+# Single-pass multi-pattern string counting (already in the lock file through `regex`).
+aho-corasick = "1"
+
+[features]
+# Exposes `pb_ml::testutil` (synthetic Mach-O builder) to dependent crates' tests.
+test-util = []
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[[bin]]
+name = "pb-features"
+path = "src/bin/pb-features.rs"

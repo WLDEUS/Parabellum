@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>A4:83:E7:11:22:33</key>
+	<dict>
+		<key>Name</key>
+		<string>Magic Keyboard</string>
+		<key>DefaultName</key>
+		<string>Magic Keyboard</string>
+		<key>DeviceIdVendor</key>
+		<integer>76</integer>
+		<key>DeviceIdProduct</key>
+		<integer>615</integer>
+		<key>LastSeenTime</key>
+		<integer>1761400000</integer>
+	</dict>
+	<key>F4:34:F0:AA:BB:CC</key>
+	<dict>
+		<key>Name</key>
+		<string>AirPods Pro</string>
+		<key>DeviceIdVendor</key>
+		<integer>76</integer>
+		<key>DeviceIdProduct</key>
+		<integer>8206</integer>
+		<key>LastSeenTime</key>
+		<integer>1761300000</integer>
+	</dict>
+	<key>not-an-address</key>
+	<dict>
+		<key>Name</key>
+		<string>x</string>
+	</dict>
+</dict>
+</plist>

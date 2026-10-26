@@ -1,0 +1,57 @@
+#!/bin/bash
+# Parabellum preinstall (run as root by Installer.app / installer(8) before the payload is laid down).
+# Stops the running daemon and the menu bar app so their files can be replaced.
+# Output goes to /var/log/install.log (Installer captures script stdout/stderr there).
+# Never fails the installation: every step tolerates "not loaded" and other errors.
+# Self-update: when the daemon itself launched this installation (as a separate launchd job), it
+# drops state/self-update.marker; the daemon is then NOT booted out here (postinstall restarts it
+# on the new binary with `kickstart -k` and removes the marker).
+# Compatible with macOS /bin/bash 3.2.
+set -euo pipefail
+PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH
+
+readonly DAEMON_LABEL="com.wldeus.parabellum.daemon"
+readonly UI_LABEL="com.wldeus.parabellum.ui"
+readonly SELF_UPDATE_MARKER="/Library/Application Support/Parabellum/state/self-update.marker"
+
+log() { printf 'parabellum preinstall: %s\n' "$*"; }
+
+# Installer arguments: $1 package path, $2 install location, $3 target volume.
+target_volume="${3:-/}"
+if [[ "$target_volume" != "/" ]]; then
+    log "volume cible « $target_volume » différent de /, rien à arrêter"
+    exit 0
+fi
+
+console_user="$(/usr/bin/stat -f %Su /dev/console 2>/dev/null || true)"
+case "$console_user" in
+    "" | root | loginwindow | _mbsetupuser) console_user="" ;;
+esac
+
+if [[ -n "$console_user" ]]; then
+    console_uid="$(/usr/bin/id -u "$console_user" 2>/dev/null || true)"
+    if [[ -n "$console_uid" ]] && /bin/launchctl print "gui/$console_uid/$UI_LABEL" >/dev/null 2>&1; then
+        if /bin/launchctl bootout "gui/$console_uid/$UI_LABEL" 2>/dev/null; then
+            log "app arrêtée (gui/$console_uid/$UI_LABEL)"
+        else
+            log "bootout gui/$console_uid/$UI_LABEL a échoué (ignoré)"
+        fi
+    fi
+fi
+# Copies started outside launchd (open -a, other GUI sessions).
+/usr/bin/pkill -x Parabellum 2>/dev/null || true
+
+if [[ -f "$SELF_UPDATE_MARKER" && ! -L "$SELF_UPDATE_MARKER" ]]; then
+    log "mise à jour lancée par le daemon : daemon laissé en marche (redémarré par postinstall)"
+elif /bin/launchctl print "system/$DAEMON_LABEL" >/dev/null 2>&1; then
+    if /bin/launchctl bootout "system/$DAEMON_LABEL" 2>/dev/null; then
+        log "daemon arrêté (system/$DAEMON_LABEL)"
+    else
+        log "bootout system/$DAEMON_LABEL a échoué (ignoré)"
+    fi
+else
+    log "daemon non chargé (première installation ?)"
+fi
+
+exit 0

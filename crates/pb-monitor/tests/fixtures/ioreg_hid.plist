@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+	<dict>
+		<key>IOObjectClass</key>
+		<string>AppleHIDTransportHIDDevice</string>
+		<key>IORegistryEntryName</key>
+		<string>AppleHIDTransportHIDDevice</string>
+		<key>IORegistryEntryID</key>
+		<integer>4294968001</integer>
+		<key>Product</key>
+		<string>Apple Internal Keyboard / Trackpad</string>
+		<key>Manufacturer</key>
+		<string>Apple Inc.</string>
+		<key>VendorID</key>
+		<integer>1452</integer>
+		<key>ProductID</key>
+		<integer>834</integer>
+		<key>Transport</key>
+		<string>FIFO</string>
+		<key>Built-In</key>
+		<true/>
+		<key>PrimaryUsagePage</key>
+		<integer>1</integer>
+		<key>PrimaryUsage</key>
+		<integer>6</integer>
+		<key>LocationID</key>
+		<integer>1031798784</integer>
+		<key>DeviceUsagePairs</key>
+		<array>
+			<dict>
+				<key>DeviceUsagePage</key>
+				<integer>1</integer>
+				<key>DeviceUsage</key>
+				<integer>6</integer>
+			</dict>
+			<dict>
+				<key>DeviceUsagePage</key>
+				<integer>12</integer>
+				<key>DeviceUsage</key>
+				<integer>1</integer>
+			</dict>
+		</array>
+	</dict>
+	<dict>
+		<key>IOObjectClass</key>
+		<string>AppleUserUSBHostHIDDevice</string>
+		<key>IORegistryEntryName</key>
+		<string>Apple Keyboard</string>
+		<key>IORegistryEntryID</key>
+		<integer>4294971400</integer>
+		<key>Product</key>
+		<string>Apple Keyboard</string>
+		<key>Manufacturer</key>
+		<string>Apple Inc.</string>
+		<key>VendorID</key>
+		<integer>1452</integer>
+		<key>ProductID</key>
+		<integer>545</integer>
+		<key>Transport</key>
+		<string>USB</string>
+		<key>PrimaryUsagePage</key>
+		<integer>1</integer>
+		<key>PrimaryUsage</key>
+		<integer>6</integer>
+		<key>LocationID</key>
+		<integer>17825792</integer>
+		<key>SerialNumber</key>
+		<string></string>
+	</dict>
+	<dict>
+		<key>IOObjectClass</key>
+		<string>AppleUserHIDDevice</string>
+		<key>IORegistryEntryName</key>
+		<string>BLE Mouse</string>
+		<key>IORegistryEntryID</key>
+		<integer>4294971500</integer>
+		<key>Product</key>
+		<string>MX Anywhere</string>
+		<key>Manufacturer</key>
+		<string>Logitech</string>
+		<key>VendorID</key>
+		<integer>1133</integer>
+		<key>ProductID</key>
+		<integer>45082</integer>
+		<key>Transport</key>
+		<string>Bluetooth Low Energy</string>
+		<key>PrimaryUsagePage</key>
+		<integer>1</integer>
+		<key>PrimaryUsage</key>
+		<integer>2</integer>
+		<key>SerialNumber</key>
+		<string>ab:cd:ef:01:02:03</string>
+		<key>DeviceUsagePairs</key>
+		<array>
+			<dict>
+				<key>DeviceUsagePage</key>
+				<integer>1</integer>
+				<key>DeviceUsage</key>
+				<integer>2</integer>
+			</dict>
+			<dict>
+				<key>DeviceUsagePage</key>
+				<integer>1</integer>
+				<key>DeviceUsage</key>
+				<integer>6</integer>
+			</dict>
+		</array>
+	</dict>
+</array>
+</plist>

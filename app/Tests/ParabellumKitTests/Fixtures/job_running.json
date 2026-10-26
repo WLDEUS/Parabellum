@@ -1,0 +1,14 @@
+{
+  "bytes_scanned": 987654321,
+  "current_path": "/Users/q/Downloads/x.zip",
+  "errors": 2,
+  "files_scanned": 1534,
+  "job_id": "5f8e2c1a-0000-4000-8000-000000000001",
+  "origin": "manual",
+  "paths": [
+    "/Users/q/Downloads"
+  ],
+  "started_at": 1793000000,
+  "state": "running",
+  "threats": 1
+}

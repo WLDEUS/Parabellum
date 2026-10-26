@@ -1,0 +1,28 @@
+[package]
+name = "pb-cli"
+description = "parabellum: command-line client for parabellumd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "pb_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "parabellum"
+path = "src/main.rs"
+
+[dependencies]
+pb-core = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+toml = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
