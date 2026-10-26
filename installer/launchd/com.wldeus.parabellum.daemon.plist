@@ -23,6 +23,7 @@
 	<string>Standard</string>
 	<key>StandardOutPath</key>
 	<string>/Library/Logs/Parabellum/parabellumd.stdout.log</string>
+	<!-- stderr: panics and early startup errors only (the daemon logs to parabellumd.log itself). -->
 	<key>StandardErrorPath</key>
 	<string>/Library/Logs/Parabellum/parabellumd.stderr.log</string>
 	<key>SoftResourceLimits</key>

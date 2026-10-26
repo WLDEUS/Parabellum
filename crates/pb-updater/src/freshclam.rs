@@ -26,7 +26,10 @@ const FC_ERETRYLATER: i32 = 18;
 
 /// Locate the freshclam binary.
 pub fn find_freshclam() -> Option<PathBuf> {
-    FRESHCLAM_CANDIDATES.iter().map(PathBuf::from).find(|p| p.is_file())
+    FRESHCLAM_CANDIDATES
+        .iter()
+        .map(PathBuf::from)
+        .find(|p| p.is_file())
 }
 
 /// First installed freshclam that root may execute (see [`crate::trust`]). freshclam writes the
@@ -34,14 +37,20 @@ pub fn find_freshclam() -> Option<PathBuf> {
 /// not even as its owner.
 pub fn find_trusted_freshclam() -> Result<PathBuf, UpdateError> {
     let mut refused = Vec::new();
-    for p in FRESHCLAM_CANDIDATES.iter().map(PathBuf::from).filter(|p| p.is_file()) {
+    for p in FRESHCLAM_CANDIDATES
+        .iter()
+        .map(PathBuf::from)
+        .filter(|p| p.is_file())
+    {
         match crate::process::trusted_for_root(&p) {
             Ok(()) => return Ok(p),
             Err(why) => refused.push(format!("{} ({why})", p.display())),
         }
     }
     if refused.is_empty() {
-        Err(UpdateError::NotFound("freshclam (ClamAV non installé)".into()))
+        Err(UpdateError::NotFound(
+            "freshclam (ClamAV non installé)".into(),
+        ))
     } else {
         Err(UpdateError::Untrusted(format!(
             "{} — installer le paquet officiel ClamAV (composant « clamav »)",

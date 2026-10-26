@@ -2,7 +2,8 @@
 //!
 //! Layout:
 //! - [`daemon`]: startup / shutdown of every task,
-//! - [`ipc`] + [`router`]: Unix-socket server, peer authorization, one handler per command,
+//! - [`ipc`] + [`router`] + [`auth`]: Unix-socket server, per-request peer checks, administrator
+//!   approval (Authorization Services), one handler per command,
 //! - [`store`]: SQLite (alerts, jobs, findings, history, devices, persistence, lists, stats, update log),
 //! - [`jobs`]: scan job manager; [`realtime`]: monitor events → scans; [`actions`]: verdict policy & alerts,
 //! - [`persistence`], [`devices`], [`baseline`]: monitor-specific handling,
@@ -12,6 +13,7 @@
 
 pub mod actions;
 pub mod adapters;
+pub mod auth;
 pub mod backends;
 pub mod baseline;
 pub mod bus;

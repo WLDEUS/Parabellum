@@ -37,9 +37,13 @@ pub(crate) async fn run<S: AsRef<OsStr>>(
     }
     let name = program.display().to_string();
     // Root never executes a binary an unprivileged user could replace (see `crate::trust`).
-    let info = crate::trust::inspect_binary(program).map_err(|e| DnsError::Command(format!("{name} : {e}")))?;
+    let info = crate::trust::inspect_binary(program)
+        .map_err(|e| DnsError::Command(format!("{name} : {e}")))?;
     if crate::trust::running_as_root() && !info.trusted {
-        return Err(DnsError::Untrusted(format!("{name} : {}", info.reasons.join(" ; "))));
+        return Err(DnsError::Untrusted(format!(
+            "{name} : {}",
+            info.reasons.join(" ; ")
+        )));
     }
     let mut child = tokio::process::Command::new(&info.canonical)
         .args(args)

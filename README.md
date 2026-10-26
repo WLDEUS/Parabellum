@@ -39,12 +39,13 @@ Détails, choix et contrats : [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Buil
 
 1. Vérifier le Mac de dev : `make dev-check` (macOS 14+, arm64, outils Xcode, Rust, Swift).
 2. Créer les clés de signature de la base : `make keys` (clé publique dans `keys/`, clé secrète à mettre dans le secret GitHub `MINISIGN_SECRET_KEY`).
-3. Ajouter le secret `ABUSECH_AUTH_KEY` (gratuit, voir [INSTALL.md § 8](docs/INSTALL.md#8-secrets-github)), puis `git push` : la CI publie la base chaque nuit.
-4. Construire le paquet : `make pkg` en local, ou télécharger le `.pkg` produit par la CI.
-5. Installer : `make install` (ou double-clic sur `dist/Parabellum-<version>.pkg`).
-6. Donner l'**Accès complet au disque** à `/Library/Application Support/Parabellum/bin/parabellumd` ([INSTALL.md § 6](docs/INSTALL.md#6-accès-complet-au-disque)).
-7. Installer **uBlock Origin Lite** dans Chrome (Chrome Web Store) et Safari (App Store).
-8. Vérifier : `parabellum status` (protection « active », base à jour).
+3. Créer le certificat de signature stable : `make codesign-cert` (sans lui, l'accès complet au disque est perdu à chaque mise à jour ; crée aussi les secrets CI `MACOS_SIGN_P12*`).
+4. Ajouter le secret `ABUSECH_AUTH_KEY` (gratuit, voir [INSTALL.md § 8](docs/INSTALL.md#8-secrets-github)), puis `git push` : la CI publie la base chaque nuit.
+5. Construire le paquet : `make pkg` en local, ou télécharger le `.pkg` produit par la CI.
+6. Installer : `make install` (ou double-clic sur `dist/Parabellum-<version>.pkg`).
+7. Donner l'**Accès complet au disque** à `/Library/Application Support/Parabellum/bin/parabellumd` ([INSTALL.md § 6](docs/INSTALL.md#6-accès-complet-au-disque)).
+8. Installer **uBlock Origin Lite** dans Chrome (Chrome Web Store) et Safari (App Store).
+9. Vérifier : `parabellum status` (protection « active », base à jour).
 
 ## Commandes
 
@@ -53,6 +54,7 @@ Détails, choix et contrats : [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Buil
 | `make help` | Liste des cibles |
 | `make build` / `make app` / `make pkg` | Compile / assemble `dist/Parabellum.app` / construit `dist/Parabellum-<version>.pkg` |
 | `make install` / `make uninstall [PURGE=1]` | Installe le paquet / désinstalle (données gardées sauf `PURGE=1`) |
+| `make codesign-cert` | Certificat de signature stable (une fois) : l'accès complet au disque survit aux mises à jour |
 | `make test` / `make lint` | Tests Rust + Swift / fmt, clippy, shellcheck |
 | `make dev-daemon` + `make dev-app` | Daemon sans root sous `.dev-root/` + app branchée dessus |
 | `parabellum status` | État de la protection, de la base et des composants |
@@ -81,7 +83,7 @@ Détails, choix et contrats : [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Buil
 ## Sécurité et vie privée
 
 - Aucun fichier ne quitte le Mac. Recherche de hash VirusTotal en option (opt-in), jamais le fichier.
-- Binaires signés ad hoc avec hardened runtime ; seule exception : mémoire exécutable pour YARA-X dans `parabellumd`.
+- Binaires signés avec hardened runtime, par un certificat local auto-signé (`make codesign-cert`) ou ad hoc ; seule exception : mémoire exécutable pour YARA-X dans `parabellumd`.
 - Base de menaces et composants tiers vérifiés par signature avant usage.
 - Le daemon tourne en root : appels d'outils système par chemin absolu, entrées bornées, socket réservé au groupe admin.
 

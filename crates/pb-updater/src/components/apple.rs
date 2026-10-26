@@ -235,7 +235,12 @@ pub(crate) async fn verify_app(app: &Path, team_id: &str) -> Result<(), UpdateEr
 /// `installer -pkg <pkg> -target /` (third-party packages; Parabellum's own update goes through a
 /// launchd job, see `crate::selfupdate`).
 pub(crate) async fn install_pkg(pkg: &Path) -> Result<String, UpdateError> {
-    let out = run(p(INSTALLER), [p("-pkg"), pkg, p("-target"), p("/")], RunOpts::timeout(20 * 60)).await?;
+    let out = run(
+        p(INSTALLER),
+        [p("-pkg"), pkg, p("-target"), p("/")],
+        RunOpts::timeout(20 * 60),
+    )
+    .await?;
     if !out.success() {
         return Err(UpdateError::Command(format!(
             "installer : {}",

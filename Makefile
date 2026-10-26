@@ -24,13 +24,13 @@ DEV_ROOT := $(ROOT_DIR)/.dev-root
 DEV_SOCKET := $(DEV_ROOT)/run/parabellum.sock
 
 .PHONY: help version dev-check prereqs build build-rust build-swift app pkg install uninstall \
-	test lint fmt keys dev-daemon dev-app dev-cli clean distclean
+	test lint fmt keys codesign-cert dev-daemon dev-app dev-cli clean distclean
 
 help: ## Affiche cette aide
 	@printf 'Parabellum %s (build %s)\n\nUsage : make <cible> [VARIABLE=valeur]\n\n' "$(VERSION)" "$(BUILD_NUMBER)"
 	@awk 'BEGIN { FS = ":.*## " } /^[a-zA-Z_-]+:.*## / { printf "  \033[1m%-12s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 	@printf '\nVariables : PURGE=1 (uninstall), ARGS="..." (dev-cli), CARGO=, SWIFT=\n'
-	@printf 'Premier build : make dev-check -> make keys -> make pkg -> make install\n'
+	@printf 'Premier build : make dev-check -> make keys -> make codesign-cert -> make pkg -> make install\n'
 	@printf 'Puis : Accès complet au disque pour parabellumd (voir docs/INSTALL.md)\n'
 
 version: ## Affiche la version et le numéro de build
@@ -84,6 +84,9 @@ lint: ## cargo fmt --check, clippy -D warnings, shellcheck des scripts
 
 fmt: ## Formate le code Rust
 	cd "$(ROOT_DIR)" && $(CARGO) fmt --all
+
+codesign-cert: ## Crée le certificat de signature stable (accès complet au disque conservé) + secrets CI
+	"$(ROOT_DIR)/scripts/setup-codesign-cert.sh"
 
 keys: ## Crée la paire de clés minisign de la base de menaces (scripts/setup-signing-keys.sh)
 	@[[ -f "$(ROOT_DIR)/scripts/setup-signing-keys.sh" ]] || { echo "erreur : scripts/setup-signing-keys.sh absent" >&2; exit 1; }

@@ -49,7 +49,9 @@ fn process_exe(pid: i32) -> Option<PathBuf> {
 fn process_exe(pid: i32) -> Option<PathBuf> {
     let p = std::fs::read_link(format!("/proc/{pid}/exe")).ok()?;
     let s = p.to_string_lossy();
-    Some(PathBuf::from(s.strip_suffix(" (deleted)").unwrap_or(&s).to_string()))
+    Some(PathBuf::from(
+        s.strip_suffix(" (deleted)").unwrap_or(&s).to_string(),
+    ))
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
@@ -71,7 +73,9 @@ fn process_name(pid: i32) -> Option<String> {
 
 #[cfg(target_os = "linux")]
 fn process_name(pid: i32) -> Option<String> {
-    std::fs::read_to_string(format!("/proc/{pid}/comm")).ok().map(|s| s.trim().to_string())
+    std::fs::read_to_string(format!("/proc/{pid}/comm"))
+        .ok()
+        .map(|s| s.trim().to_string())
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
@@ -129,15 +133,26 @@ mod tests {
         let pidfile = d.path().join("dnscrypt-proxy.pid");
 
         // A process running another executable is never signalled (pid reuse).
-        let mut other = tokio::process::Command::new("/bin/sleep").arg("30").kill_on_drop(true).spawn().unwrap();
+        let mut other = tokio::process::Command::new("/bin/sleep")
+            .arg("30")
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap();
         write_pidfile(&pidfile, other.id().unwrap()).unwrap();
         assert_eq!(kill_stale(&pidfile, &bin).await, None);
-        assert!(other.try_wait().unwrap().is_none(), "unrelated process untouched");
+        assert!(
+            other.try_wait().unwrap().is_none(),
+            "unrelated process untouched"
+        );
         assert!(!pidfile.exists());
         let _ = other.start_kill();
 
         // The recorded proxy is stopped.
-        let mut proxy = tokio::process::Command::new(&bin).arg("30").kill_on_drop(true).spawn().unwrap();
+        let mut proxy = tokio::process::Command::new(&bin)
+            .arg("30")
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap();
         let pid = proxy.id().unwrap();
         write_pidfile(&pidfile, pid).unwrap();
         assert_eq!(read_pidfile(&pidfile), Some(pid as i32));

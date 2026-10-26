@@ -17,7 +17,7 @@ développeur payant) : les binaires sont signés **ad hoc** avec le hardened run
 
 `make dev-check` vérifie tout et indique ce qui manque.
 
-## 2. Clés de signature de la base
+## 2. Clés et certificat de signature
 
 La base de menaces est signée par la CI (minisign) et vérifiée par le client avec une clé publique **compilée dans
 `parabellumd`**. À faire une fois :
@@ -26,8 +26,31 @@ La base de menaces est signée par la CI (minisign) et vérifiée par le client 
 2. Committer la clé publique `keys/parabellum-db.pub`. La clé secrète ne doit jamais être commitée (`*.key` est ignoré).
 3. Mettre la clé secrète dans le secret GitHub `MINISIGN_SECRET_KEY` (§ 8).
 
+Base de menaces : clés minisign ci-dessus. Binaires : certificat de signature de code ci-dessous.
+
 Sans clé publique, `make pkg` refuse de construire (`ALLOW_MISSING_PUBKEY=1` pour forcer : le client refusera alors
 toute base). Changer de clé impose de réinstaller un `.pkg` construit avec la nouvelle.
+
+### Certificat de signature de code (recommandé, une fois)
+
+Pourquoi : macOS (TCC) enregistre l'accès complet au disque de `parabellumd` avec son **exigence désignée**
+(designated requirement). Signé ad hoc, c'est l'empreinte (cdhash) d'un build précis : chaque mise à jour perd
+l'autorisation. Signé par un même certificat, l'exigence devient `identifier "com.wldeus.parabellum.daemon" and
+certificate root = H"<empreinte du certificat>"` : identique d'un build à l'autre, l'autorisation est conservée.
+Un certificat auto-signé suffit (gratuit, aucun compte Apple).
+
+1. Sur le Mac, sans sudo : `make codesign-cert` (lance `scripts/setup-codesign-cert.sh`).
+2. Le script crée « Parabellum Local Signing » (usage limité à la signature de code, 10 ans), l'importe dans le
+   trousseau de session et l'approuve pour la signature de code : **macOS demande votre mot de passe** (fenêtre
+   « réglages de confiance »). À la signature de test, si macOS demande si `codesign` peut utiliser la clé :
+   **Toujours autoriser**.
+3. Il exporte `~/.parabellum/parabellum-codesign.p12` et son mot de passe (droits 0600), puis, si `gh` est connecté,
+   crée les secrets `MACOS_SIGN_P12` et `MACOS_SIGN_P12_PASSWORD` (§ 8) : la CI signe alors avec le même certificat.
+4. Sauvegardez `~/.parabellum/` hors du dépôt. Relancer le script ne recrée rien ; `--force` crée un nouveau
+   certificat (accès complet au disque à redonner une fois).
+
+`make app` / `make pkg` utilisent ce certificat s'il est dans le trousseau (ou `PARABELLUM_SIGN_IDENTITY`), sinon
+signent ad hoc avec un avertissement. `parabellumd` garde la seule exception du hardened runtime nécessaire à YARA-X.
 
 ## 3. Construire localement
 
@@ -102,8 +125,10 @@ illisible. L'app affiche alors « Protection dégradée ».
 5. Redémarrez le daemon : `sudo launchctl kickstart -k system/com.wldeus.parabellum.daemon`
 6. Vérifiez : `parabellum status` doit indiquer l'accès complet au disque.
 
-**Après chaque mise à jour de Parabellum**, sélectionnez `parabellumd` dans la liste, retirez-le (**−**) et
-rajoutez-le (étapes 2 à 5) : avec une signature ad hoc, macOS lie l'autorisation à l'empreinte exacte du binaire.
+Avec le certificat « Parabellum Local Signing » (§ 2), l'autorisation est conservée lors des mises à jour.
+Avec un build signé **ad hoc** (avertissement de `make pkg`, ou CI sans les secrets de signature), elle est perdue
+à chaque mise à jour : sélectionnez `parabellumd`, retirez-le (**−**) et rajoutez-le (étapes 2 à 5). Même chose
+une seule fois lors du passage de l'ad hoc au certificat, ou après `setup-codesign-cert.sh --force`.
 
 ## 7. Premier démarrage
 
@@ -127,6 +152,12 @@ L'app vérifie l'état de chaque élément (menu **Composants** et **Pubs et tra
 |---|---|---|
 | `MINISIGN_SECRET_KEY` | Clé secrète minisign de la base | Produite par `make keys` (§ 2) : suivez les instructions affichées, ou `gh secret set MINISIGN_SECRET_KEY < <fichier de clé secrète>` |
 | `ABUSECH_AUTH_KEY` | Clé d'API abuse.ch (MalwareBazaar, URLhaus, ThreatFox) | Voir ci-dessous |
+| `MACOS_SIGN_P12` | `.p12` du certificat de signature, en base64 | `make codesign-cert` (§ 2) le crée avec `gh` ; à la main : `base64 -i ~/.parabellum/parabellum-codesign.p12 \| gh secret set MACOS_SIGN_P12` |
+| `MACOS_SIGN_P12_PASSWORD` | Mot de passe du `.p12` | `gh secret set MACOS_SIGN_P12_PASSWORD < ~/.parabellum/parabellum-codesign.p12.password` |
+
+Sans les deux secrets de signature, la CI signe ad hoc (avertissement dans le job). Les builds de pull request
+signent toujours ad hoc : ils ne voient jamais la clé. En CI, `scripts/ci-codesign.sh` importe le certificat dans un
+trousseau temporaire, supprimé en fin de job.
 
 Clé abuse.ch (gratuite, usage non commercial) :
 
@@ -161,7 +192,7 @@ de Kaspersky peut entrer en conflit avec le DNS local : gardez le blocage DNS de
 |---|---|
 | Base de menaces, signatures ClamAV | Automatique, chaque jour |
 | ClamAV, osquery, dnscrypt-proxy, LuLu, BlockBlock | Automatique (réglage `updates.auto_update_components`) |
-| Parabellum lui-même | Notification d'une nouvelle release ; installer le nouveau `.pkg` (§ 5), puis refaire l'accès complet au disque (§ 6) |
+| Parabellum lui-même | Notification d'une nouvelle release ; installer le nouveau `.pkg` (§ 5). Accès complet au disque conservé si le build est signé avec le certificat (§ 2), à refaire sinon (§ 6) |
 
 ## 11. Dépannage
 
@@ -169,7 +200,7 @@ de Kaspersky peut entrer en conflit avec le DNS local : gardez le blocage DNS de
 |---|---|---|
 | L'app dit « daemon injoignable » | `sudo launchctl print system/com.wldeus.parabellum.daemon` (state, pid, last exit code) | `sudo launchctl kickstart -k system/com.wldeus.parabellum.daemon` ; lire les journaux |
 | Le daemon redémarre en boucle | `tail -n 100 /Library/Logs/Parabellum/parabellumd.stderr.log` et `parabellumd.log` | Selon l'erreur ; vérifier l'espace disque et la présence des binaires |
-| « Protection dégradée » | `parabellum status` | Accès complet au disque (§ 6), à refaire après chaque mise à jour |
+| « Protection dégradée » après une mise à jour | `parabellum status` ; `codesign -d -r- "/Library/Application Support/Parabellum/bin/parabellumd"` (`cdhash` = ad hoc) | Redonner l'accès complet au disque (§ 6) ; pour ne plus avoir à le faire : `make codesign-cert` + secrets CI (§ 2, § 8) |
 | Plus d'accès Internet après activation du DNS | `scutil --dns`, `networksetup -getdnsservers Wi-Fi` | `parabellum dns off` ; secours sans daemon : `sudo "/Library/Application Support/Parabellum/bin/restore-dns.sh"` |
 | Base jamais mise à jour | `parabellum status` (version, dernière erreur) | Signature refusée = clé publique du binaire ≠ clé secrète de la CI (§ 2) ; dépôt privé = token manquant (§ 8) |
 | Le daemon ou l'app ne démarre pas au login | Réglages Système > Général > Ouverture (éléments d'arrière-plan) | Réactiver les entrées Parabellum |

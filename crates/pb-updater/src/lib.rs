@@ -37,12 +37,12 @@ pub use components::{
     CLAMAV_TEAM_ID, COMPONENT_NAMES, DNSCRYPT_MINISIGN_KEY, LULU_APP, OBJECTIVE_SEE_TEAM_ID,
     OSQUERYI, OSQUERY_TEAM_ID, OVERSIGHT_APP,
 };
-pub use selfupdate::{
-    finish_self_update, self_update_log, self_update_marker, self_update_plist, self_update_staging_dir,
-    SELFUPDATE_LABEL,
-};
 pub use db::{DbUpdateOutcome, DbUpdater, MAX_BUNDLE_BYTES, MAX_MANIFEST_BYTES};
 pub use freshclam::{find_freshclam, find_trusted_freshclam, run_freshclam, FRESHCLAM_CANDIDATES};
+pub use selfupdate::{
+    finish_self_update, self_update_log, self_update_marker, self_update_plist,
+    self_update_staging_dir, SELFUPDATE_LABEL,
+};
 
 include!(concat!(env!("OUT_DIR"), "/pubkey.rs"));
 

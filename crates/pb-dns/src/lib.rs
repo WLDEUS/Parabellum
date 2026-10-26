@@ -23,8 +23,8 @@
 mod fsutil;
 pub mod lists;
 mod manager;
-mod pidfile;
 pub mod packet;
+mod pidfile;
 mod process;
 pub mod proxy_config;
 pub mod querylog;

@@ -63,8 +63,14 @@ pub(crate) fn render_job_plist(pkg: &Path, log: &Path) -> Result<String, UpdateE
     d.insert("KeepAlive".into(), Value::Boolean(false));
     d.insert("AbandonProcessGroup".into(), Value::Boolean(true));
     d.insert("ProcessType".into(), Value::String("Standard".into()));
-    d.insert("StandardOutPath".into(), Value::String(log.to_string_lossy().into_owned()));
-    d.insert("StandardErrorPath".into(), Value::String(log.to_string_lossy().into_owned()));
+    d.insert(
+        "StandardOutPath".into(),
+        Value::String(log.to_string_lossy().into_owned()),
+    );
+    d.insert(
+        "StandardErrorPath".into(),
+        Value::String(log.to_string_lossy().into_owned()),
+    );
     d.insert("WorkingDirectory".into(), Value::String("/".into()));
     let mut out = Vec::new();
     Value::Dictionary(d)
@@ -94,7 +100,9 @@ pub(crate) async fn stage_verified_pkg(
     public_key: &str,
 ) -> Result<PathBuf, UpdateError> {
     if version.is_empty() || !version.bytes().all(|b| b.is_ascii_digit() || b == b'.') {
-        return Err(UpdateError::Verification(format!("version invalide : {version}")));
+        return Err(UpdateError::Verification(format!(
+            "version invalide : {version}"
+        )));
     }
     let staging = self_update_staging_dir(paths);
     match std::fs::remove_dir_all(&staging) {
@@ -108,7 +116,10 @@ pub(crate) async fn stage_verified_pkg(
     let staged = staging.join(format!("Parabellum-{version}.pkg"));
     {
         let mut src = std::fs::File::open(downloaded)?;
-        let mut dst = std::fs::OpenOptions::new().write(true).create_new(true).open(&staged)?;
+        let mut dst = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&staged)?;
         std::io::copy(&mut src, &mut dst)?;
         dst.sync_all()?;
     }
@@ -127,11 +138,16 @@ pub(crate) async fn launch_self_update(
     public_key: &str,
 ) -> Result<String, UpdateError> {
     if !cfg!(target_os = "macos") {
-        return Err(UpdateError::Unsupported("mise à jour de Parabellum (macOS uniquement)".into()));
+        return Err(UpdateError::Unsupported(
+            "mise à jour de Parabellum (macOS uniquement)".into(),
+        ));
     }
     let staged = stage_verified_pkg(paths, downloaded, version, sig_text, public_key).await?;
     let marker = self_update_marker(paths);
-    crate::fsutil::atomic_write(&marker, format!("{version}\n{}\n", pb_core::now_ts()).as_bytes())?;
+    crate::fsutil::atomic_write(
+        &marker,
+        format!("{version}\n{}\n", pb_core::now_ts()).as_bytes(),
+    )?;
     set_mode(&marker, 0o644)?;
     let log = self_update_log(paths);
     if let Some(dir) = log.parent() {
@@ -143,12 +159,25 @@ pub(crate) async fn launch_self_update(
 
     let target = format!("system/{SELFUPDATE_LABEL}");
     // A finished job from a previous update stays loaded: remove it (errors = not loaded).
-    let _ = run(Path::new(LAUNCHCTL), ["bootout", target.as_str()], RunOpts::timeout(30)).await;
+    let _ = run(
+        Path::new(LAUNCHCTL),
+        ["bootout", target.as_str()],
+        RunOpts::timeout(30),
+    )
+    .await;
     let plist_arg = plist_path.to_string_lossy().into_owned();
-    let res = run(Path::new(LAUNCHCTL), ["bootstrap", "system", plist_arg.as_str()], RunOpts::timeout(30)).await;
+    let res = run(
+        Path::new(LAUNCHCTL),
+        ["bootstrap", "system", plist_arg.as_str()],
+        RunOpts::timeout(30),
+    )
+    .await;
     match res {
         Ok(out) if out.success() => {
-            tracing::warn!(version, "Parabellum update handed to launchd; the daemon will be restarted by the package");
+            tracing::warn!(
+                version,
+                "Parabellum update handed to launchd; the daemon will be restarted by the package"
+            );
             Ok(format!(
                 "Installation de Parabellum {version} lancée (journal : {}) — le service va redémarrer",
                 log.display()
@@ -187,13 +216,18 @@ mod tests {
     #[test]
     fn job_plist_is_a_one_shot_installer() {
         let xml = render_job_plist(
-            Path::new("/Library/Application Support/Parabellum/state/selfupdate/Parabellum-0.2.0.pkg"),
+            Path::new(
+                "/Library/Application Support/Parabellum/state/selfupdate/Parabellum-0.2.0.pkg",
+            ),
             Path::new("/Library/Logs/Parabellum/selfupdate.log"),
         )
         .unwrap();
         let v = plist::Value::from_reader_xml(xml.as_bytes()).unwrap();
         let d = v.as_dictionary().unwrap();
-        assert_eq!(d.get("Label").and_then(|x| x.as_string()), Some(SELFUPDATE_LABEL));
+        assert_eq!(
+            d.get("Label").and_then(|x| x.as_string()),
+            Some(SELFUPDATE_LABEL)
+        );
         let args: Vec<&str> = d
             .get("ProgramArguments")
             .and_then(|a| a.as_array())
@@ -231,12 +265,20 @@ mod tests {
         let dl = d.path().join("Parabellum-0.2.0.pkg");
         std::fs::write(&dl, b"xar! fake pkg").unwrap();
         let sig = key.sign(b"xar! fake pkg");
-        let staged = stage_verified_pkg(&paths, &dl, "0.2.0", &sig, &key.public_b64()).await.unwrap();
-        assert_eq!(staged, self_update_staging_dir(&paths).join("Parabellum-0.2.0.pkg"));
+        let staged = stage_verified_pkg(&paths, &dl, "0.2.0", &sig, &key.public_b64())
+            .await
+            .unwrap();
+        assert_eq!(
+            staged,
+            self_update_staging_dir(&paths).join("Parabellum-0.2.0.pkg")
+        );
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let m = std::fs::metadata(self_update_staging_dir(&paths)).unwrap().permissions().mode();
+            let m = std::fs::metadata(self_update_staging_dir(&paths))
+                .unwrap()
+                .permissions()
+                .mode();
             assert_eq!(m & 0o777, 0o700);
         }
         // Tampered download: the copy fails verification.
@@ -245,7 +287,11 @@ mod tests {
             stage_verified_pkg(&paths, &dl, "0.2.0", &sig, &key.public_b64()).await,
             Err(UpdateError::Signature(_))
         ));
-        assert!(stage_verified_pkg(&paths, &dl, "../x", &sig, &key.public_b64()).await.is_err());
+        assert!(
+            stage_verified_pkg(&paths, &dl, "../x", &sig, &key.public_b64())
+                .await
+                .is_err()
+        );
         if !cfg!(target_os = "macos") {
             assert!(matches!(
                 launch_self_update(&paths, &dl, "0.2.0", &sig, &key.public_b64()).await,

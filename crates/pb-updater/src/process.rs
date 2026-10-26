@@ -44,7 +44,13 @@ impl CmdOutput {
     /// Short single-line summary for error messages.
     pub(crate) fn summary(&self) -> String {
         let c = self.combined();
-        let line: String = c.lines().rfind(|l| !l.trim().is_empty()).unwrap_or("").chars().take(300).collect();
+        let line: String = c
+            .lines()
+            .rfind(|l| !l.trim().is_empty())
+            .unwrap_or("")
+            .chars()
+            .take(300)
+            .collect();
         format!("code {:?} : {line}", self.code)
     }
 }
@@ -67,7 +73,10 @@ pub(crate) struct RunOpts {
 
 impl RunOpts {
     pub(crate) fn timeout(secs: u64) -> Self {
-        Self { timeout: Duration::from_secs(secs), untrusted: Untrusted::Refuse }
+        Self {
+            timeout: Duration::from_secs(secs),
+            untrusted: Untrusted::Refuse,
+        }
     }
 
     pub(crate) fn as_owner_if_untrusted(mut self) -> Self {
@@ -77,7 +86,11 @@ impl RunOpts {
 }
 
 /// Run `program args…` and capture its output.
-pub(crate) async fn run<I, S>(program: &Path, args: I, opts: RunOpts) -> Result<CmdOutput, UpdateError>
+pub(crate) async fn run<I, S>(
+    program: &Path,
+    args: I,
+    opts: RunOpts,
+) -> Result<CmdOutput, UpdateError>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
@@ -97,7 +110,10 @@ where
     S: AsRef<OsStr>,
 {
     if !program.is_absolute() {
-        return Err(UpdateError::Command(format!("chemin non absolu refusé : {}", program.display())));
+        return Err(UpdateError::Command(format!(
+            "chemin non absolu refusé : {}",
+            program.display()
+        )));
     }
     let name = program.display().to_string();
     let info = crate::trust::inspect_binary_under(program, boundary)
@@ -128,7 +144,9 @@ where
         // std drops supplementary groups (setgroups(0)) before setgid/setuid when started as root.
         cmd.gid(gid).uid(uid).current_dir("/");
     }
-    let mut child = cmd.spawn().map_err(|e| UpdateError::Command(format!("{name} : {e}")))?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| UpdateError::Command(format!("{name} : {e}")))?;
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     let read_out = async move {
@@ -158,7 +176,10 @@ where
         }
         Err(_) => {
             let _ = child.start_kill();
-            Err(UpdateError::Timeout(format!("{name} ({} s)", opts.timeout.as_secs())))
+            Err(UpdateError::Timeout(format!(
+                "{name} ({} s)",
+                opts.timeout.as_secs()
+            )))
         }
     }
 }
@@ -182,17 +203,30 @@ mod tests {
 
     #[tokio::test]
     async fn runs_and_times_out() {
-        let out = run(Path::new("/bin/sh"), ["-c", "echo hi; echo err >&2; exit 3"], RunOpts::timeout(10))
-            .await
-            .unwrap();
+        let out = run(
+            Path::new("/bin/sh"),
+            ["-c", "echo hi; echo err >&2; exit 3"],
+            RunOpts::timeout(10),
+        )
+        .await
+        .unwrap();
         assert_eq!(out.code, Some(3));
         assert_eq!(out.stdout.trim(), "hi");
         assert!(out.combined().contains("err"));
-        let err = run(Path::new("/bin/sleep"), ["5"], RunOpts { timeout: Duration::from_millis(200), untrusted: Untrusted::Refuse })
-            .await
-            .unwrap_err();
+        let err = run(
+            Path::new("/bin/sleep"),
+            ["5"],
+            RunOpts {
+                timeout: Duration::from_millis(200),
+                untrusted: Untrusted::Refuse,
+            },
+        )
+        .await
+        .unwrap_err();
         assert!(matches!(err, UpdateError::Timeout(_)));
-        assert!(run(Path::new("sh"), ["-c", "true"], RunOpts::timeout(1)).await.is_err());
+        assert!(run(Path::new("sh"), ["-c", "true"], RunOpts::timeout(1))
+            .await
+            .is_err());
     }
 
     #[tokio::test]
@@ -211,16 +245,25 @@ mod tests {
         std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
 
         // Root-owned chain: runs as root.
-        let out = run_checked(&tool, Vec::<String>::new(), RunOpts::timeout(10), root).await.unwrap();
+        let out = run_checked(&tool, Vec::<String>::new(), RunOpts::timeout(10), root)
+            .await
+            .unwrap();
         assert_eq!(out.stdout.trim(), "0");
 
         // User-owned directory (like /opt/homebrew): refused by default, run as the owner on request.
         std::os::unix::fs::chown(&brew, Some(65534), Some(65534)).unwrap();
-        let err = run_checked(&tool, Vec::<String>::new(), RunOpts::timeout(10), root).await.unwrap_err();
-        assert!(matches!(err, UpdateError::Untrusted(_)), "{err}");
-        let out = run_checked(&tool, Vec::<String>::new(), RunOpts::timeout(10).as_owner_if_untrusted(), root)
+        let err = run_checked(&tool, Vec::<String>::new(), RunOpts::timeout(10), root)
             .await
-            .unwrap();
+            .unwrap_err();
+        assert!(matches!(err, UpdateError::Untrusted(_)), "{err}");
+        let out = run_checked(
+            &tool,
+            Vec::<String>::new(),
+            RunOpts::timeout(10).as_owner_if_untrusted(),
+            root,
+        )
+        .await
+        .unwrap();
         assert_eq!(out.stdout.trim(), "65534");
         assert!(trusted_for_root(&tool).is_err());
     }

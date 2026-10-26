@@ -17,7 +17,7 @@ pub fn prepare_dirs(paths: &Paths, as_root: bool) -> std::io::Result<()> {
         if !ours {
             continue;
         }
-        let private = dir == paths.quarantine_dir() || dir == paths.state_dir();
+        let private = dir == paths.quarantine_dir() || dir == paths.state_dir() || dir == paths.tmp_dir();
         let mode = if private { 0o700 } else { 0o755 };
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(mode))?;
         if as_root {
@@ -144,11 +144,14 @@ pub fn init_logging(paths: &Paths) -> LogGuard {
         .filename_suffix("log")
         .max_log_files(7)
         .build(&dir);
-    let stderr_layer = tracing_subscriber::fmt::layer()
-        .with_writer(std::io::stderr)
-        .with_target(false);
+    // Under launchd stderr goes to a file nobody rotates: only mirror logs there on a terminal.
+    let tty = std::io::IsTerminal::is_terminal(&std::io::stderr());
+    let stderr_layer = |enabled: bool| {
+        enabled.then(|| tracing_subscriber::fmt::layer().with_writer(std::io::stderr).with_target(false))
+    };
     match appender {
         Ok(appender) => {
+            let stderr_layer = stderr_layer(tty);
             let (writer, guard) = tracing_appender::non_blocking(appender);
             let file_layer = tracing_subscriber::fmt::layer()
                 .with_writer(writer)
@@ -164,9 +167,10 @@ pub fn init_logging(paths: &Paths) -> LogGuard {
             }
         }
         Err(e) => {
+            // No log file: stderr is the only place left.
             let _ = tracing_subscriber::registry()
                 .with(filter)
-                .with(stderr_layer)
+                .with(stderr_layer(true))
                 .try_init();
             tracing::warn!(error = %e, dir = %dir.display(), "file logging unavailable");
             LogGuard { _guard: None }
@@ -294,6 +298,7 @@ mod tests {
         let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode(&paths.quarantine_dir()), 0o700);
         assert_eq!(mode(&paths.state_dir()), 0o700);
+        assert_eq!(mode(&paths.tmp_dir()), 0o700);
         assert_eq!(mode(&paths.db_dir()), 0o755);
         assert_eq!(std::fs::read_dir(paths.tmp_dir()).unwrap().count(), 0);
     }

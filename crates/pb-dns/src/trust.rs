@@ -42,7 +42,10 @@ pub fn inspect_binary_under(path: &Path, boundary: &Path) -> std::io::Result<Tru
     let canonical = std::fs::canonicalize(path)?;
     let md = std::fs::metadata(&canonical)?;
     if !md.is_file() {
-        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("{} n'est pas un fichier", canonical.display())));
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{} n'est pas un fichier", canonical.display()),
+        ));
     }
     let mut reasons = Vec::new();
     let mut run_as = None;
@@ -52,7 +55,10 @@ pub fn inspect_binary_under(path: &Path, boundary: &Path) -> std::io::Result<Tru
             run_as.get_or_insert((md.uid(), md.gid()));
         }
         if md.mode() & 0o022 != 0 {
-            reasons.push(format!("{} est modifiable par le groupe ou par tous", p.display()));
+            reasons.push(format!(
+                "{} est modifiable par le groupe ou par tous",
+                p.display()
+            ));
         }
     };
     check(&canonical, &md);
@@ -64,12 +70,22 @@ pub fn inspect_binary_under(path: &Path, boundary: &Path) -> std::io::Result<Tru
         }
     }
     let trusted = reasons.is_empty();
-    Ok(TrustInfo { canonical, trusted, reasons, run_as: if trusted { None } else { run_as } })
+    Ok(TrustInfo {
+        canonical,
+        trusted,
+        reasons,
+        run_as: if trusted { None } else { run_as },
+    })
 }
 
 #[cfg(not(unix))]
 pub fn inspect_binary_under(path: &Path, _boundary: &Path) -> std::io::Result<TrustInfo> {
-    Ok(TrustInfo { canonical: path.to_path_buf(), trusted: false, reasons: vec!["plateforme non unix".into()], run_as: None })
+    Ok(TrustInfo {
+        canonical: path.to_path_buf(),
+        trusted: false,
+        reasons: vec!["plateforme non unix".into()],
+        run_as: None,
+    })
 }
 
 #[cfg(all(test, unix))]
@@ -89,6 +105,9 @@ mod tests {
         assert_eq!(inspect_binary_under(&bin, root).unwrap().trusted, root_user);
         std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o757)).unwrap();
         assert!(!inspect_binary_under(&bin, root).unwrap().trusted);
-        assert!(!inspect_binary(&bin).unwrap().trusted, "/tmp is world-writable");
+        assert!(
+            !inspect_binary(&bin).unwrap().trusted,
+            "/tmp is world-writable"
+        );
     }
 }

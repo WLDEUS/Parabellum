@@ -81,7 +81,8 @@ async fn stop(p: &mut Option<Proc>, pidfile: &Path) {
 
 /// The supervised child is still running (not exited, not yet reaped).
 fn child_alive(p: &mut Option<Proc>) -> bool {
-    p.as_mut().is_some_and(|p| matches!(p.child.try_wait(), Ok(None)))
+    p.as_mut()
+        .is_some_and(|p| matches!(p.child.try_wait(), Ok(None)))
 }
 
 /// Last non-empty line of the proxy log (for error messages), bounded.
@@ -116,7 +117,10 @@ impl DnsSupervisor {
             .prepare(dns, rebuild_lists)
             .await
             .map_err(|e| e.to_string())?;
-        let bin: PathBuf = self.manager.checked_proxy_binary().map_err(|e| e.to_string())?;
+        let bin: PathBuf = self
+            .manager
+            .checked_proxy_binary()
+            .map_err(|e| e.to_string())?;
         let child = Command::new(&bin)
             .arg("-config")
             .arg(&config)
@@ -388,6 +392,65 @@ mod tests {
             net.lock().unwrap().services["Wi-Fi"],
             vec!["1.1.1.1".to_string()]
         );
+        sd_tx.send(true).unwrap();
+        tokio::time::timeout(Duration::from_secs(5), task)
+            .await
+            .unwrap()
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn refuses_non_loopback_listen_without_spawning() {
+        let d = tempfile::tempdir().unwrap();
+        let (m, net) = fake_manager(d.path(), &[("Wi-Fi", &["192.168.1.1"])]);
+        let m = Arc::new(m);
+        let bin = m.proxy_binary();
+        std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
+        std::fs::write(&bin, "#!/bin/sh\nexec sleep 30\n").unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let mut config = Config::default();
+        config.dns.enabled = true;
+        config.dns.listen = "0.0.0.0:53".into();
+        let (_cfg_tx, cfg_rx) = watch::channel(config.clone());
+        let (sd_tx, sd_rx) = watch::channel(false);
+        let task = tokio::spawn(DnsSupervisor::new(m.clone()).run(cfg_rx, sd_rx));
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert!(!m.pidfile_path().exists(), "no proxy spawned");
+        let st = m.status(&config.dns).await;
+        assert!(st.message.unwrap_or_default().contains("locale"));
+        assert!(net.lock().unwrap().set_calls.is_empty());
+        sd_tx.send(true).unwrap();
+        tokio::time::timeout(Duration::from_secs(5), task)
+            .await
+            .unwrap()
+            .unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn kills_a_stale_proxy_at_start() {
+        let d = tempfile::tempdir().unwrap();
+        let (m, _net) = fake_manager(d.path(), &[]);
+        let m = Arc::new(m);
+        let bin = m.proxy_binary();
+        std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
+        std::fs::copy("/bin/sleep", &bin).unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let mut orphan = tokio::process::Command::new(&bin)
+            .arg("30")
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap();
+        crate::pidfile::write_pidfile(&m.pidfile_path(), orphan.id().unwrap()).unwrap();
+        let (_cfg_tx, cfg_rx) = watch::channel(Config::default());
+        let (sd_tx, sd_rx) = watch::channel(false);
+        let task = tokio::spawn(DnsSupervisor::new(m.clone()).run(cfg_rx, sd_rx));
+        let status = tokio::time::timeout(Duration::from_secs(5), orphan.wait())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!status.success(), "stale proxy was signalled");
+        assert!(!m.pidfile_path().exists());
         sd_tx.send(true).unwrap();
         tokio::time::timeout(Duration::from_secs(5), task)
             .await

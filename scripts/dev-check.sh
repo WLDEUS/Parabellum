@@ -137,6 +137,15 @@ if command -v shellcheck >/dev/null 2>&1; then
 else
     opt "shellcheck" "brew install shellcheck (make lint vérifie aussi les scripts)"
 fi
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    if [[ -n "$(pb_find_sign_identity valid)" ]]; then
+        ok "certificat de signature" "« $PB_SIGN_CERT_NAME » (accès complet au disque conservé)"
+    elif [[ -n "$(pb_find_sign_identity any)" ]]; then
+        opt "certificat de signature" "présent mais non approuvé : scripts/setup-codesign-cert.sh"
+    else
+        opt "certificat de signature" "absent : make codesign-cert (sinon accès complet au disque perdu à chaque MAJ)"
+    fi
+fi
 if [[ -s "$PB_REPO_ROOT/keys/parabellum-db.pub" || -n "${PARABELLUM_DB_PUBKEY:-}" ]]; then
     ok "clé publique de la base" "keys/parabellum-db.pub"
 else

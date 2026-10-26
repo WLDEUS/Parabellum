@@ -3,6 +3,7 @@
 use crate::backends::{Backends, MonitorContext};
 use crate::ctx::Ctx;
 use crate::store::Store;
+use crate::ipc::AccessPolicy;
 use crate::{actions, baseline, ipc, jobs, realtime, router, scheduler, setup, status};
 use pb_core::events::MonitorEvent;
 use pb_core::model::*;
@@ -27,7 +28,12 @@ pub struct DaemonOptions {
     pub start_monitors: bool,
     /// Start scheduled work (updates, battery polling, component bootstrap, DNS stats).
     pub start_scheduler: bool,
+    /// Override the access policy (tests); default: [`AccessPolicy::for_mode`]`(dev_mode)`.
+    pub access: Option<AccessPolicy>,
 }
+
+/// kv: version of the daemon that ran last (detects updates).
+pub const KV_LAST_VERSION: &str = "daemon_version";
 
 /// A running daemon.
 pub struct Daemon {
@@ -58,13 +64,27 @@ pub async fn start(opts: DaemonOptions) -> anyhow::Result<Daemon> {
         .kv_get_i64(router::KV_PAUSED_UNTIL)?
         .filter(|t| *t > now);
 
-    let ctx = Arc::new(Ctx::new(
+    let last_version = store.kv_get(KV_LAST_VERSION)?;
+    store.kv_set(KV_LAST_VERSION, pb_core::VERSION)?;
+    let mut c = Ctx::new(
         opts.paths.clone(),
         opts.dev_mode,
         store,
         opts.backends,
         loaded.config.clone(),
-    ));
+    );
+    if let Some(a) = opts.access {
+        c.access = a;
+    }
+    let ctx = Arc::new(c);
+    if as_root {
+        match tokio::task::spawn_blocking(crate::auth::register_admin_right).await {
+            Ok(Ok(true)) => tracing::info!(right = pb_core::ipc::ADMIN_RIGHT, "authorization right registered"),
+            Ok(Ok(false)) => {}
+            Ok(Err(e)) => tracing::error!(error = %e, "cannot register the authorization right"),
+            Err(e) => tracing::error!(error = %e, "authorization right task failed"),
+        }
+    }
     {
         let mut st = ctx.state();
         st.paused_until = paused;
@@ -84,6 +104,24 @@ pub async fn start(opts: DaemonOptions) -> anyhow::Result<Daemon> {
     }
     if !scheduler::reload_engine(&ctx).await {
         tracing::warn!("running without a scanning engine (no threat DB yet?)");
+    }
+    if last_version.as_deref().is_some_and(|v| v != pb_core::VERSION) {
+        let m = ctx.backends.monitors.clone();
+        let fda = tokio::task::spawn_blocking(move || m.has_full_disk_access()).await.unwrap_or(false);
+        if !fda {
+            let a = actions::alert(
+                AlertKind::System,
+                Severity::High,
+                "Ré-accorder l'accès complet au disque à parabellumd après la mise à jour",
+                format!(
+                    "Parabellum est passé de la version {} à {} : macOS a retiré l'accès complet au disque. \
+                     Réglages Système > Confidentialité et sécurité > Accès complet au disque : réactivez parabellumd.",
+                    last_version.as_deref().unwrap_or("?"),
+                    pb_core::VERSION
+                ),
+            );
+            actions::raise_alert(&ctx, a, None).await;
+        }
     }
 
     let listener = ipc::bind(&ctx.paths, ctx.dev_mode)?;

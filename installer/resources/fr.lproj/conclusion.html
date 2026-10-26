@@ -27,8 +27,9 @@
   <li>Dans le Terminal : <code>sudo launchctl kickstart -k system/com.wldeus.parabellum.daemon</code></li>
 </ol>
 <p>Sans cet accès, la surveillance temps réel (eslogger) et l'analyse de vos dossiers restent limitées
-et l'app affiche « Protection dégradée ». Après chaque mise à jour de Parabellum, retirez puis rajoutez
-<b>parabellumd</b> dans cette liste : la signature ad hoc lie l'autorisation à la version exacte du binaire.</p>
+et l'app affiche « Protection dégradée ». Si cette version est signée avec le certificat « Parabellum Local
+Signing », l'autorisation est conservée aux mises à jour suivantes ; si elle est signée ad hoc, retirez puis
+rajoutez <b>parabellumd</b> dans cette liste après chaque mise à jour.</p>
 
 <h2>2. Bloqueur de pubs dans les navigateurs</h2>
 <ul>
@@ -39,7 +40,7 @@ et l'app affiche « Protection dégradée ». Après chaque mise à jour de Para
 <p>L'app Parabellum vérifie leur état (menu <b>Pubs et trackers</b>). Le blocage DNS global se règle aussi dans l'app.</p>
 
 <div class="note">
-<b>Gatekeeper :</b> ce paquet n'est pas signé par Apple (signature ad hoc). Pour les prochaines versions
+<b>Gatekeeper :</b> ce paquet n'est pas signé par Apple (certificat local ou signature ad hoc). Pour les prochaines versions
 téléchargées, macOS demandera de confirmer dans <b>Réglages Système &gt; Confidentialité et sécurité &gt;
 Ouvrir quand même</b>.<br>
 État : <code>parabellum status</code> · Journaux : <code>/Library/Logs/Parabellum/</code> ·

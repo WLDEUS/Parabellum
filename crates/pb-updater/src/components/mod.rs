@@ -750,7 +750,9 @@ impl ComponentManager {
             }
             (Kind::Parabellum, _) => {
                 let (sig, key) = minisig.ok_or(UpdateError::MissingPublicKey)?;
-                let msg = crate::selfupdate::launch_self_update(&self.paths, &asset_path, v, &sig, &key).await?;
+                let msg =
+                    crate::selfupdate::launch_self_update(&self.paths, &asset_path, v, &sig, &key)
+                        .await?;
                 Ok((msg, false))
             }
             (Kind::Lulu, Verify::AppTeamId(team)) => self.install_lulu(&asset_path, team, v).await,

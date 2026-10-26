@@ -46,6 +46,8 @@ pub struct Ctx {
     pub paths: Paths,
     /// `PARABELLUM_ROOT` set: unprivileged development instance (relaxed peer checks, no chown).
     pub dev_mode: bool,
+    /// Who may run protection-weakening commands.
+    pub access: crate::ipc::AccessPolicy,
     pub store: Store,
     pub bus: EventBus,
     pub backends: Backends,
@@ -79,6 +81,7 @@ impl Ctx {
         Self {
             paths,
             dev_mode,
+            access: crate::ipc::AccessPolicy::for_mode(dev_mode),
             store,
             bus: EventBus::new(),
             backends,

@@ -182,7 +182,11 @@ impl DnsManager {
         }
         let info = crate::trust::inspect_binary_under(&bin, &self.trust_boundary)?;
         if crate::trust::running_as_root() && !info.trusted {
-            return Err(DnsError::Untrusted(format!("{} : {}", bin.display(), info.reasons.join(" ; "))));
+            return Err(DnsError::Untrusted(format!(
+                "{} : {}",
+                bin.display(),
+                info.reasons.join(" ; ")
+            )));
         }
         Ok(info.canonical)
     }
@@ -777,5 +781,68 @@ pub(crate) mod tests {
         let text = std::fs::read_to_string(p).unwrap();
         assert!(text.contains("blocked-names.txt") && !text.contains("user_name"));
         assert!(m.runtime_dir().is_dir());
+    }
+
+    #[tokio::test]
+    async fn enable_only_prepares_and_refuses_non_loopback() {
+        let d = tempfile::tempdir().unwrap();
+        let (m, net) = fake_manager(d.path(), &[("Wi-Fi", &["192.168.1.1"])]);
+        let bin = m.proxy_binary();
+        std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
+        std::fs::write(&bin, "#!/bin/sh\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let st = m
+            .enable(&DnsConfig {
+                enabled: true,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert!(st.enabled && !st.running);
+        assert!(m.proxy_config_path().is_file() && m.dns_dir().join(BLOCKED_NAMES_FILE).is_file());
+        assert!(
+            net.lock().unwrap().set_calls.is_empty(),
+            "enable() never touches the system DNS"
+        );
+        assert_eq!(load_saved(&m.saved_dns_path()), SavedState::Absent);
+
+        for bad in [
+            "0.0.0.0:53",
+            "192.168.1.10:53",
+            "[::]:53",
+            "10.0.0.1:53",
+            "[fe80::1]:53",
+            "localhost:53",
+        ] {
+            assert!(our_servers(bad).is_err(), "{bad}");
+            let cfg = DnsConfig {
+                enabled: true,
+                listen: bad.into(),
+                ..Default::default()
+            };
+            assert!(
+                matches!(m.enable(&cfg).await, Err(DnsError::Config(_))),
+                "{bad}"
+            );
+        }
+        assert_eq!(our_servers("127.0.0.1:53").unwrap(), vec!["127.0.0.1"]);
+        assert_eq!(our_servers("[::1]:53").unwrap(), vec!["::1"]);
+
+        // A group/world-writable binary is refused when running as root.
+        if crate::trust::running_as_root() {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o777)).unwrap();
+            }
+            assert!(matches!(
+                m.checked_proxy_binary(),
+                Err(DnsError::Untrusted(_))
+            ));
+        }
     }
 }

@@ -42,7 +42,10 @@ pub(crate) fn inspect_binary_under(path: &Path, boundary: &Path) -> std::io::Res
     let canonical = std::fs::canonicalize(path)?;
     let md = std::fs::metadata(&canonical)?;
     if !md.is_file() {
-        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("{} n'est pas un fichier", canonical.display())));
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{} n'est pas un fichier", canonical.display()),
+        ));
     }
     let mut reasons = Vec::new();
     let mut run_as = None;
@@ -52,7 +55,10 @@ pub(crate) fn inspect_binary_under(path: &Path, boundary: &Path) -> std::io::Res
             run_as.get_or_insert((md.uid(), md.gid()));
         }
         if md.mode() & 0o022 != 0 {
-            reasons.push(format!("{} est modifiable par le groupe ou par tous", p.display()));
+            reasons.push(format!(
+                "{} est modifiable par le groupe ou par tous",
+                p.display()
+            ));
         }
     };
     check(&canonical, &md);
@@ -64,12 +70,22 @@ pub(crate) fn inspect_binary_under(path: &Path, boundary: &Path) -> std::io::Res
         }
     }
     let trusted = reasons.is_empty();
-    Ok(TrustInfo { canonical, trusted, reasons, run_as: if trusted { None } else { run_as } })
+    Ok(TrustInfo {
+        canonical,
+        trusted,
+        reasons,
+        run_as: if trusted { None } else { run_as },
+    })
 }
 
 #[cfg(not(unix))]
 pub(crate) fn inspect_binary_under(path: &Path, _boundary: &Path) -> std::io::Result<TrustInfo> {
-    Ok(TrustInfo { canonical: path.to_path_buf(), trusted: false, reasons: vec!["plateforme non unix".into()], run_as: None })
+    Ok(TrustInfo {
+        canonical: path.to_path_buf(),
+        trusted: false,
+        reasons: vec!["plateforme non unix".into()],
+        run_as: None,
+    })
 }
 
 #[cfg(all(test, unix))]
@@ -97,7 +113,11 @@ mod tests {
 
         let me = unsafe { libc::geteuid() };
         let info = inspect_binary_under(&link, root).unwrap();
-        assert_eq!(info.canonical, std::fs::canonicalize(&bin).unwrap(), "symlinks are resolved");
+        assert_eq!(
+            info.canonical,
+            std::fs::canonicalize(&bin).unwrap(),
+            "symlinks are resolved"
+        );
         assert_eq!(info.trusted, me == 0, "{:?}", info.reasons);
 
         // World-writable file.
@@ -120,7 +140,10 @@ mod tests {
             assert_eq!(info.run_as, Some((501, 20)));
             // File owned by another user wins as identity.
             std::os::unix::fs::chown(&bin, Some(502), Some(20)).unwrap();
-            assert_eq!(inspect_binary_under(&bin, root).unwrap().run_as, Some((502, 20)));
+            assert_eq!(
+                inspect_binary_under(&bin, root).unwrap().run_as,
+                Some((502, 20))
+            );
             std::os::unix::fs::chown(&bin_dir, Some(0), Some(0)).unwrap();
             std::os::unix::fs::chown(&bin, Some(0), Some(0)).unwrap();
             // Root-owned but world-writable dir: untrusted and no unprivileged identity ⇒ must be skipped.
@@ -132,7 +155,10 @@ mod tests {
 
         // /tmp (sticky, world-writable) is never a trusted ancestor.
         assert!(!inspect_binary(&bin).unwrap().trusted);
-        assert!(inspect_binary_under(&bin_dir, root).is_err(), "directories are not binaries");
+        assert!(
+            inspect_binary_under(&bin_dir, root).is_err(),
+            "directories are not binaries"
+        );
         assert!(inspect_binary(&root.join("missing")).is_err());
     }
 }

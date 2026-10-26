@@ -924,9 +924,17 @@ mod tests {
             f.q.quarantine(&prot, &det(), "user", None),
             Err(QuarantineError::Denied(_))
         ));
-        // A root itself, a directory containing a denied prefix, and `..` tricks are refused.
+        // A root containing a denied prefix (denied wins), a bare root, and `..` tricks are refused.
         assert!(matches!(
             f.q.quarantine(&f.allowed, &det(), "user", None),
+            Err(QuarantineError::Denied(_))
+        ));
+        let bare = QuarantinePolicy {
+            allowed_roots: vec![f.allowed.clone()],
+            denied_prefixes: vec![],
+        };
+        assert!(matches!(
+            bare.check(&f.allowed),
             Err(QuarantineError::OutsideAllowedRoots(_))
         ));
         let sneaky = f.allowed.join("..").join("outside/x");
@@ -1129,7 +1137,7 @@ mod tests {
         ));
         assert!(matches!(
             p.check(Path::new("/Library/Application Support")),
-            Err(QuarantineError::OutsideAllowedRoots(_))
+            Err(QuarantineError::Denied(_))
         ));
         assert!(p
             .check(Path::new("/Library/Application Support/Evil/agent"))
