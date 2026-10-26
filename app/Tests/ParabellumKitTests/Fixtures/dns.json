@@ -1,0 +1,12 @@
+{
+  "blocked_domains": 402113,
+  "enabled": true,
+  "list_version": "2026.10.25.1",
+  "listen": "127.0.0.1:53",
+  "managed_services": [
+    "Wi-Fi",
+    "USB 10/100/1000 LAN"
+  ],
+  "queries_blocked_24h": 5321,
+  "running": true
+}

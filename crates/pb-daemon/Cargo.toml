@@ -1,0 +1,48 @@
+[package]
+name = "pb-daemon"
+description = "parabellumd: root LaunchDaemon orchestrating monitors, engine, updater, DNS and the IPC server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "pb_daemon"
+path = "src/lib.rs"
+
+[[bin]]
+name = "parabellumd"
+path = "src/main.rs"
+
+[dependencies]
+pb-core = { workspace = true }
+pb-engine = { workspace = true }
+pb-monitor = { workspace = true }
+pb-updater = { workspace = true }
+pb-dns = { workspace = true }
+tokio = { workspace = true }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = "0.2"
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+libc = { workspace = true }
+futures = { workspace = true }
+chrono = { workspace = true }
+reqwest = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+async-trait = "0.1"
+base64 = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+zip = { workspace = true }
+pb-cli = { path = "../pb-cli" }

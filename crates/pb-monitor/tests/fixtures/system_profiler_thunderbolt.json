@@ -1,0 +1,19 @@
+{
+  "SPThunderboltDataType": [
+    {
+      "_name": "thunderboltusb4_bus_0",
+      "device_name_key": "MacBook Pro",
+      "vendor_name_key": "Apple Inc.",
+      "switch_uid_key": "0x112233445566778",
+      "_items": [
+        {
+          "_name": "TS4",
+          "device_name_key": "TS4",
+          "vendor_name_key": "CalDigit, Inc.",
+          "switch_uid_key": "0x00D4A2BD8A7C3F00",
+          "mode_key": "thunderbolt_four"
+        }
+      ]
+    }
+  ]
+}

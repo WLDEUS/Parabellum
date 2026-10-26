@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>BusProtocol</key>
+	<string>Disk Image</string>
+	<key>DeviceIdentifier</key>
+	<string>disk5s1</string>
+	<key>Ejectable</key>
+	<true/>
+	<key>FilesystemType</key>
+	<string>apfs</string>
+	<key>Internal</key>
+	<false/>
+	<key>MediaName</key>
+	<string></string>
+	<key>MountPoint</key>
+	<string>/Volumes/Installer</string>
+	<key>RemovableMedia</key>
+	<true/>
+	<key>VolumeName</key>
+	<string>Installer</string>
+	<key>VolumeUUID</key>
+	<string>0F1E2D3C-4B5A-4978-8695-A4B3C2D1E0F9</string>
+	<key>WritableVolume</key>
+	<false/>
+	<key>VirtualOrPhysical</key>
+	<string>Virtual</string>
+</dict>
+</plist>

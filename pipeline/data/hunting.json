@@ -1,0 +1,150 @@
+{
+  "platform": "darwin",
+  "version": "1.0.0",
+  "queries": {
+    "launchd_user_writable_programs": {
+      "query": "SELECT path, label, program, program_arguments, run_at_load, keep_alive, username FROM launchd WHERE (path LIKE '/Users/%/Library/LaunchAgents/%' OR path LIKE '/Library/LaunchAgents/%' OR path LIKE '/Library/LaunchDaemons/%') AND (program LIKE '/Users/Shared/%' OR program LIKE '/tmp/%' OR program LIKE '/private/tmp/%' OR program LIKE '/var/tmp/%' OR program LIKE '%/.%' OR program_arguments LIKE '%/Users/Shared/%' OR program_arguments LIKE '%/tmp/%' OR program_arguments LIKE '%/.%' OR program_arguments LIKE '%curl %' OR program_arguments LIKE '%osascript%' OR program_arguments LIKE '%base64%' OR program_arguments LIKE '%python% -c %' OR program_arguments LIKE '%bash -c %' OR program_arguments LIKE '%sh -c %');",
+      "interval": 86400,
+      "snapshot": true,
+      "description": "Launch agents/daemons running from temporary, shared or hidden locations, or wrapping shell/osascript/curl one-liners (Adload, Shlayer, AMOS, Cuckoo persistence)."
+    },
+    "launchd_hidden_plists": {
+      "query": "SELECT path, label, program, program_arguments, run_at_load FROM launchd WHERE name LIKE '.%' OR label LIKE '.%';",
+      "interval": 86400,
+      "snapshot": true,
+      "description": "Hidden (dot-prefixed) launchd property lists."
+    },
+    "launchd_unsigned_programs": {
+      "query": "SELECT l.path AS plist, l.label, l.program, s.signed, s.identifier, s.team_identifier, s.authority FROM launchd l JOIN signature s ON s.path = l.program WHERE l.program != '' AND l.program NOT LIKE '/System/%' AND l.program NOT LIKE '/usr/libexec/%' AND s.signed = 0;",
+      "interval": 86400,
+      "snapshot": true,
+      "description": "Launchd jobs whose executable is not code-signed."
+    },
+    "startup_items": {
+      "query": "SELECT name, path, args, type, source, status, username FROM startup_items;",
+      "interval": 86400,
+      "snapshot": true,
+      "description": "Login items, launch agents/daemons and other startup items (diffed by the daemon against its baseline)."
+    },
+    "launchd_overrides": {
+      "query": "SELECT label, key, value, uid, path FROM launchd_overrides;",
+      "interval": 86400,
+      "snapshot": true,
+      "description": "launchd overrides (jobs force-enabled or disabled)."
+    },
+    "crontab": {
+      "query": "SELECT event, minute, hour, day_of_month, month, day_of_week, command, path FROM crontab;",
+      "interval": 86400,
+      "snapshot": true,
+      "description": "cron jobs (rare on macOS, a classic persistence spot)."
+    },
+    "processes_deleted_binary": {
+      "query": "SELECT pid, name, path, cmdline, parent, uid FROM processes WHERE on_disk = 0 AND path != '';",
+      "interval": 86400,
+      "snapshot": true,
+      "description": "Running processes whose executable was deleted from disk (droppers that self-delete)."
+    },
+    "processes_from_temp_or_shared": {
+      "query": "SELECT pid, name, path, cmdline, parent, uid FROM processes WHERE path LIKE '/Users/Shared/%' OR path LIKE '/private/tmp/%' OR path LIKE '/tmp/%' OR path LIKE '/private/var/tmp/%' OR path LIKE '/private/var/folders/%/T/%' OR path LIKE '%/.%';",
+      "interval": 86400,
+      "snapshot": true,
+      "description": "Processes executing from temporary, shared or hidden paths."
+    },
+    "processes_unsigned": {
+      "query": "SELECT p.pid, p.name, p.path, s.signed, s.identifier, s.team_identifier FROM processes p JOIN signature s ON s.path = p.path WHERE p.path != '' AND p.path NOT LIKE '/System/%' AND p.path NOT LIKE '/usr/%' AND p.path NOT LIKE '/bin/%' AND p.path NOT LIKE '/sbin/%' AND s.signed = 0;",
+      "interval": 86400,
+      "snapshot": true,
+      "description": "Running unsigned executables outside the system volume."
+    },
+    "listening_ports_unsigned": {
+      "query": "SELECT DISTINCT lp.port, lp.protocol, lp.address, p.pid, p.name, p.path FROM listening_ports lp JOIN processes p USING (pid) JOIN signature s ON s.path = p.path WHERE lp.port != 0 AND lp.address NOT IN ('127.0.0.1', '::1') AND s.signed = 0;",
+      "interval": 86400,
+      "snapshot": true,
+      "description": "Unsigned processes listening on non-loopback addresses (backdoors, reverse shells)."
+    },
+    "kernel_extensions_third_party": {
+      "query": "SELECT name, version, path FROM kernel_extensions WHERE name NOT LIKE 'com.apple.%' AND name != '__kernel__';",
+      "interval": 86400,
+      "snapshot": true,
+      "description": "Loaded third-party kernel extensions."
+    },
+    "system_extensions": {
+      "query": "SELECT identifier, version, state, category, team, bundle_path, mdm_managed FROM system_extensions;",
+      "interval": 86400,
+      "snapshot": true,
+      "description": "Installed system extensions (network filters, endpoint security clients, drivers)."
+    },
+    "authorization_plugins": {
+      "query": "SELECT label, plugin, mechanism, privileged, entry FROM authorization_mechanisms WHERE plugin NOT IN ('builtin', 'loginwindow', 'HomeDirMechanism', 'MCXMechanism', 'CryptoTokenKit', 'PKINITMechanism', 'KerberosAgent', 'LocalAuthentication', 'SecurityAgentHelper', 'DiskUnlock', 'TeamViewerAuthPlugin');",
+      "interval": 86400,
+      "snapshot": true,
+      "description": "Non-default authorization plug-ins (credential theft at login)."
+    },
+    "sudoers": {
+      "query": "SELECT source, header, rule_details FROM sudoers WHERE rule_details LIKE '%NOPASSWD%';",
+      "interval": 86400,
+      "snapshot": true,
+      "description": "Password-less sudo rules."
+    },
+    "authorized_keys": {
+      "query": "SELECT u.username, a.algorithm, a.comment, a.key_file FROM users u CROSS JOIN authorized_keys a USING (uid);",
+      "interval": 86400,
+      "snapshot": true,
+      "description": "SSH authorized keys (unexpected remote access)."
+    },
+    "chrome_extensions": {
+      "query": "SELECT u.username, c.browser_type, c.name, c.identifier, c.version, c.from_webstore, c.permissions, c.path FROM users u CROSS JOIN chrome_extensions c USING (uid);",
+      "interval": 86400,
+      "snapshot": true,
+      "description": "Chromium-family browser extensions (flag the ones not from the Web Store or with broad permissions)."
+    },
+    "safari_extensions": {
+      "query": "SELECT u.username, s.name, s.identifier, s.version, s.developer_id, s.path FROM users u CROSS JOIN safari_extensions s USING (uid);",
+      "interval": 86400,
+      "snapshot": true,
+      "description": "Safari extensions (adware such as Pirrit/Bundlore installs rogue ones)."
+    },
+    "browser_plugins": {
+      "query": "SELECT u.username, b.name, b.identifier, b.version, b.path, b.disabled FROM users u CROSS JOIN browser_plugins b USING (uid);",
+      "interval": 86400,
+      "snapshot": true,
+      "description": "Legacy browser plug-ins."
+    },
+    "hidden_files_in_shared_and_tmp": {
+      "query": "SELECT path, size, mtime, mode FROM file WHERE (path LIKE '/Users/Shared/.%' OR path LIKE '/private/tmp/.%' OR path LIKE '/private/var/tmp/.%' OR path LIKE '/Library/Application Support/.%') AND type = 'regular';",
+      "interval": 86400,
+      "snapshot": true,
+      "description": "Hidden regular files in shared/temporary locations (common AMOS / Adload / XLoader staging spots)."
+    },
+    "etc_hosts_overrides": {
+      "query": "SELECT address, hostnames FROM etc_hosts WHERE address NOT IN ('127.0.0.1', '::1', '255.255.255.255', 'fe80::1%lo0') AND hostnames NOT IN ('localhost', 'broadcasthost');",
+      "interval": 86400,
+      "snapshot": true,
+      "description": "/etc/hosts entries redirecting names to other addresses (hijack of update or banking domains)."
+    },
+    "dns_resolvers": {
+      "query": "SELECT type, address, options FROM dns_resolvers WHERE type = 'nameserver';",
+      "interval": 86400,
+      "snapshot": true,
+      "description": "Configured DNS resolvers (unexpected resolver = DNS hijack; compared with the Parabellum DNS state)."
+    },
+    "security_posture": {
+      "query": "SELECT (SELECT assessments_enabled FROM gatekeeper) AS gatekeeper, (SELECT enabled FROM sip_config WHERE config_flag = 'sip') AS sip, (SELECT global_state FROM alf) AS firewall, (SELECT COUNT(*) FROM disk_encryption WHERE encrypted = 1) AS encrypted_volumes;",
+      "interval": 86400,
+      "snapshot": true,
+      "description": "Gatekeeper, SIP, application firewall and FileVault status."
+    },
+    "xprotect_reports": {
+      "query": "SELECT name, user_action, time FROM xprotect_reports;",
+      "interval": 86400,
+      "snapshot": true,
+      "description": "XProtect detections reported by macOS."
+    },
+    "apps_unsigned": {
+      "query": "SELECT a.name, a.path, a.bundle_identifier, s.signed, s.team_identifier FROM apps a JOIN signature s ON s.path = a.path WHERE a.path LIKE '/Applications/%' AND s.signed = 0;",
+      "interval": 86400,
+      "snapshot": true,
+      "description": "Unsigned applications in /Applications."
+    }
+  }
+}

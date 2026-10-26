@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<title>Bienvenue dans Parabellum</title>
+<style>
+  body { font: 13px -apple-system, "Helvetica Neue", sans-serif; line-height: 1.45; margin: 0 4px; }
+  h1 { font-size: 17px; margin: 0 0 8px; }
+  h2 { font-size: 13px; margin: 14px 0 4px; }
+  ul { margin: 4px 0; padding-left: 20px; }
+  li { margin: 2px 0; }
+  code { font: 12px ui-monospace, Menlo, monospace; background: rgba(127,127,127,.15); padding: 0 3px; border-radius: 3px; }
+  .note { margin-top: 12px; padding: 8px 10px; border-radius: 6px; background: rgba(127,127,127,.12); }
+</style>
+</head>
+<body>
+<h1>Parabellum, antivirus libre pour votre Mac</h1>
+<p>Parabellum assemble des outils open source éprouvés (ClamAV, YARA-X, osquery, eslogger d'Apple,
+outils Objective-See, dnscrypt-proxy) derrière une seule app de barre de menus.</p>
+
+<h2>Ce qui va être installé</h2>
+<ul>
+  <li><code>/Applications/Parabellum.app</code> : l'app de barre de menus</li>
+  <li><code>/Library/Application Support/Parabellum/</code> : le service <code>parabellumd</code> (root), la CLI et la base de menaces</li>
+  <li><code>/usr/local/bin/parabellum</code> : la commande <code>parabellum</code> dans le Terminal</li>
+  <li>Un service de fond (LaunchDaemon) et un agent de connexion pour l'app</li>
+</ul>
+
+<h2>Au premier démarrage</h2>
+<ul>
+  <li>Le service télécharge la base de menaces signée et installe ClamAV, osquery et dnscrypt-proxy depuis leurs sources officielles (signatures vérifiées).</li>
+  <li>macOS peut afficher « Éléments d'arrière-plan ajoutés » : c'est normal, laissez-les autorisés.</li>
+</ul>
+
+<div class="note">Mac Apple Silicon et macOS 14 ou plus récent requis. Le paquet n'est pas signé par Apple
+(signature ad hoc) : c'est attendu pour un outil personnel.</div>
+</body>
+</html>

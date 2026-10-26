@@ -1,0 +1,64 @@
+# Parabellum DNS allowlist -> dns/allowlist.txt in the bundle. Never blocked, wins over every list;
+# an entry also allows its subdomains (dnscrypt-proxy `allowed_names` semantics).
+# Keep it CONSERVATIVE: only names whose blocking breaks the Mac, its updates or captive portals.
+# Do not add whole multi-tenant hosting platforms here (they would whitelist malware too).
+
+# --- Captive-portal and connectivity checks (Wi-Fi login pages break without them) ---
+captive.apple.com
+connectivitycheck.gstatic.com
+detectportal.firefox.com
+www.msftconnecttest.com
+
+# --- Apple: software update, notarization/OCSP, App Store, iCloud, push, time ---
+swscan.apple.com
+swdist.apple.com
+swcdn.apple.com
+updates.cdn-apple.com
+updates-http.cdn-apple.com
+mesu.apple.com
+gdmf.apple.com
+ocsp.apple.com
+ocsp2.apple.com
+crl.apple.com
+valid.apple.com
+api.apple-cloudkit.com
+gs.apple.com
+gsa.apple.com
+identity.apple.com
+appattest.apple.com
+push.apple.com
+time.apple.com
+time-ios.apple.com
+osxapps.itunes.apple.com
+mzstatic.com
+itunes.apple.com
+apps.apple.com
+icloud.com
+icloud-content.com
+configuration.apple.com
+albert.apple.com
+deviceenrollment.apple.com
+deviceservices-external.apple.com
+setup.icloud.com
+lcdn-registration.apple.com
+suconfig.apple.com
+xprotect.apple.com
+
+# --- Certificate revocation / timestamping used by codesign & notarization ---
+ocsp.digicert.com
+crl3.digicert.com
+crl4.digicert.com
+ocsp.sectigo.com
+ocsp.globalsign.com
+timestamp.apple.com
+
+# --- Parabellum's own update channel and the components it installs ---
+github.com
+api.github.com
+objects.githubusercontent.com
+release-assets.githubusercontent.com
+raw.githubusercontent.com
+database.clamav.net
+formulae.brew.sh
+ghcr.io
+pkg-containers.githubusercontent.com

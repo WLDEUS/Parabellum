@@ -1,0 +1,34 @@
+{
+  "SPBluetoothDataType": [
+    {
+      "controller_properties": {
+        "controller_address": "F8:4D:89:00:11:22",
+        "controller_chipset": "BCM_4387",
+        "controller_state": "attrib_on",
+        "controller_transport": "PCIe",
+        "controller_vendorID": "0x004C (Apple)"
+      },
+      "device_connected": [
+        {
+          "Magic Keyboard": {
+            "device_address": "A4:83:E7:11:22:33",
+            "device_minorType": "Keyboard",
+            "device_productID": "0x0267",
+            "device_vendorID": "0x004C",
+            "device_batteryLevelMain": "80%"
+          }
+        }
+      ],
+      "device_not_connected": [
+        {
+          "AirPods Pro": {
+            "device_address": "F4:34:F0:AA:BB:CC",
+            "device_minorType": "Headphones",
+            "device_productID": "0x200E",
+            "device_vendorID": "0x004C"
+          }
+        }
+      ]
+    }
+  ]
+}

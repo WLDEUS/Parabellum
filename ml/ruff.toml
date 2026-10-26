@@ -1,0 +1,4 @@
+extend = "../pipeline/ruff.toml"
+
+[lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "S108", "PTH", "E501"]

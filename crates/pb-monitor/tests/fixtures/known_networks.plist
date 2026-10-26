@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>wifi.network.ssid.Café Wi-Fi</key>
+	<dict>
+		<key>SSID</key>
+		<data>
+		Q2Fmw6kgV2ktRmk=
+		</data>
+		<key>AddedAt</key>
+		<date>2026-01-05T10:00:00Z</date>
+		<key>SupportedSecurityTypes</key>
+		<string>WPA2 Personal</string>
+		<key>Hidden</key>
+		<false/>
+		<key>AddReason</key>
+		<string>Manual</string>
+	</dict>
+	<key>wifi.network.ssid.HomeNet</key>
+	<dict>
+		<key>SupportedSecurityTypes</key>
+		<string>WPA3 Personal</string>
+	</dict>
+	<key>wifi.network.passpoint.x</key>
+	<dict>
+		<key>Domain</key>
+		<string>ignored</string>
+	</dict>
+</dict>
+</plist>

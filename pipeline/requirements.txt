@@ -1,0 +1,5 @@
+# Runtime dependencies of the nightly pipeline (Python 3.12). Pinned; yara-x must stay on the same
+# minor version as the Rust crate (workspace Cargo.toml: yara-x = "1.22").
+yara-x==1.22.0
+pyzipper==0.4.0
+pycryptodomex==3.23.0

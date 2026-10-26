@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+	<dict>
+		<key>IOObjectClass</key>
+		<string>IOThunderboltSwitchType5</string>
+		<key>IORegistryEntryName</key>
+		<string>IOThunderboltSwitchType5</string>
+		<key>IORegistryEntryID</key>
+		<integer>4294969000</integer>
+		<key>Device Vendor Name</key>
+		<string>Apple Inc.</string>
+		<key>Device Model Name</key>
+		<string>iOS</string>
+		<key>Vendor ID</key>
+		<integer>1</integer>
+		<key>Device ID</key>
+		<integer>0</integer>
+		<key>UID</key>
+		<integer>1234605616436508552</integer>
+		<key>Depth</key>
+		<integer>0</integer>
+		<key>Route String</key>
+		<integer>0</integer>
+	</dict>
+	<dict>
+		<key>IOObjectClass</key>
+		<string>IOThunderboltSwitchType3</string>
+		<key>IORegistryEntryName</key>
+		<string>IOThunderboltSwitchType3</string>
+		<key>IORegistryEntryID</key>
+		<integer>4294972000</integer>
+		<key>Device Vendor Name</key>
+		<string>CalDigit, Inc.</string>
+		<key>Device Model Name</key>
+		<string>TS4</string>
+		<key>Vendor ID</key>
+		<integer>61</integer>
+		<key>Device ID</key>
+		<integer>51</integer>
+		<key>UID</key>
+		<integer>59851630018576128</integer>
+		<key>Depth</key>
+		<integer>1</integer>
+		<key>Route String</key>
+		<integer>1</integer>
+	</dict>
+</array>
+</plist>

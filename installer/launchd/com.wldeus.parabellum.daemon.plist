@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Installed as /Library/LaunchDaemons/com.wldeus.parabellum.daemon.plist (root:wheel 0644). -->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.wldeus.parabellum.daemon</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Library/Application Support/Parabellum/bin/parabellumd</string>
+	</array>
+	<key>AssociatedBundleIdentifiers</key>
+	<array>
+		<string>com.wldeus.parabellum</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ThrottleInterval</key>
+	<integer>10</integer>
+	<key>ProcessType</key>
+	<string>Standard</string>
+	<key>StandardOutPath</key>
+	<string>/Library/Logs/Parabellum/parabellumd.stdout.log</string>
+	<!-- stderr: panics and early startup errors only (the daemon logs to parabellumd.log itself). -->
+	<key>StandardErrorPath</key>
+	<string>/Library/Logs/Parabellum/parabellumd.stderr.log</string>
+	<key>SoftResourceLimits</key>
+	<dict>
+		<key>NumberOfFiles</key>
+		<integer>4096</integer>
+	</dict>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>RUST_LOG</key>
+		<string>info</string>
+	</dict>
+</dict>
+</plist>

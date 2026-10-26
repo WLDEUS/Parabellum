@@ -1,0 +1,82 @@
+========================
+ Records for UID 501 : 7C5C27E2-0B44-4F6C-8E0A-1E9F7D7A2B11
+========================
+
+ ServiceManagement migrated: true
+ SharedFileList migrated: true
+
+ Items:
+
+ #1:
+                 UUID: 8D4A0B1E-2F7D-4C19-9B51-3E2A6C7D8E90
+                 Name: Docker
+       Developer Name: Docker Inc
+      Team Identifier: 9BNSXJN65R
+                 Type: app (0x2)
+                Flags: [  ] (0)
+          Disposition: [enabled, allowed, visible, notified] (0xb)
+           Identifier: 2.com.docker.docker
+                  URL: file:///Applications/Docker.app/
+           Generation: 0
+    Bundle Identifier: com.docker.docker
+    Embedded Item Identifiers:
+        #1:                 16.com.docker.vmnetd
+
+ #2:
+                 UUID: 1B2C3D4E-5F60-4718-9A0B-1C2D3E4F5A6B
+                 Name: com.docker.vmnetd.plist
+       Developer Name: Docker Inc
+      Team Identifier: 9BNSXJN65R
+                 Type: legacy daemon (0x10010)
+                Flags: [ legacy ] (0x1)
+          Disposition: [enabled, allowed, visible, notified] (0xb)
+           Identifier: 16.com.docker.vmnetd
+                  URL: file:///Library/LaunchDaemons/com.docker.vmnetd.plist
+      Executable Path: /Library/PrivilegedHelperTools/com.docker.vmnetd
+           Generation: 2
+    Parent Identifier: 2.com.docker.docker
+
+ #3:
+                 UUID: 9F8E7D6C-5B4A-4392-8170-6E5D4C3B2A19
+                 Name: Helper
+       Developer Name: (null)
+      Team Identifier: (null)
+                 Type: login item (0x4)
+                Flags: [  ] (0)
+          Disposition: [enabled, allowed, visible, notified] (0xb)
+           Identifier: 4.com.example.helper
+                  URL: file:///Applications/Example.app/Contents/Library/LoginItems/Helper.app/
+           Generation: 0
+    Parent Identifier: 2.com.example.app
+
+========================
+ Records for UID -2 : FFFFEEEE-DDDD-CCCC-BBBB-AAAA99998888
+========================
+
+ Items:
+
+ #1:
+                 UUID: 17A60CB8-537A-44D1-A6F8-2EBD22439076
+                 Name: AGSService
+       Developer Name: Adobe Creative Cloud
+      Team Identifier: JQ525L2MZD
+                 Type: curated legacy daemon (0x90010)
+          Disposition: [enabled, allowed, visible, notified] (0xb)
+           Identifier: Adobe_Genuine_Software_Integrity_Service
+                  URL: file:///Library/LaunchDaemons/com.adobe.agsservice.plist
+      Executable Path: /Library/Application Support/Adobe/AdobeGCClient/AGSService
+           Generation: 1
+    Parent Identifier: Adobe Creative Cloud
+
+#2 
+  UUID:              68D88F8B-A750-4A4D-AD31-520E2436FE9F
+  Name:              LuLu
+  Developer Name:    (null)
+  Team Identifier:   VBG97UB4TA
+  Type:              app  (0x2)
+  Disposition:       [enabled allowed visible notified] (11)
+  Indentifier:       com.objective-see.lulu.app
+  URL:               file:///Applications/LuLu.app/
+  Executable Path:   (null)
+  Generation:        2
+  Parent Identifier: (null)

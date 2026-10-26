@@ -1,0 +1,22 @@
+[
+  {
+    "detections": [
+      {
+        "confidence": 0.949999988079071,
+        "details": "rule macos_amos_osascript_prompt",
+        "engine": "yara",
+        "name": "MacOS.Stealer.AMOS",
+        "severity": "high"
+      }
+    ],
+    "id": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+    "mode": 420,
+    "original_path": "/Users/q/Downloads/Installer.dmg",
+    "owner_gid": 20,
+    "owner_uid": 501,
+    "quarantined_at": 1793000100,
+    "reason": "auto",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "size": 123456
+  }
+]

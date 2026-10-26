@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Product archive definition for productbuild (scripts/build-pkg.sh).
+  @VERSION@ is replaced at build time with [workspace.package] version from Cargo.toml.
+  The component package Parabellum-component.pkg is found through productbuild's package path.
+-->
+<installer-gui-script minSpecVersion="2">
+    <title>Parabellum</title>
+    <organization>com.wldeus</organization>
+    <welcome file="welcome.html" mime-type="text/html"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
+
+    <options customize="never" require-scripts="true" hostArchitectures="arm64" allow-external-scripts="false"/>
+    <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
+
+    <allowed-os-versions>
+        <os-version min="14.0"/>
+    </allowed-os-versions>
+    <volume-check>
+        <allowed-os-versions>
+            <os-version min="14.0"/>
+        </allowed-os-versions>
+    </volume-check>
+
+    <installation-check script="pb_installation_check()"/>
+    <script><![CDATA[
+function pb_is_apple_silicon() {
+    var arm64 = null;
+    var machine = null;
+    try { arm64 = system.sysctl('hw.optional.arm64'); } catch (e) { arm64 = null; }
+    try { machine = system.sysctl('hw.machine'); } catch (e) { machine = null; }
+    return arm64 == 1 || machine == 'arm64';
+}
+
+function pb_installation_check() {
+    if (!pb_is_apple_silicon()) {
+        my.result.type = 'Fatal';
+        my.result.title = 'Mac Apple Silicon requis';
+        my.result.message = 'Parabellum ne fonctionne que sur les Mac Apple Silicon (puce M1 ou plus récente). ' +
+            'Ce Mac utilise un processeur Intel : l\'installation est annulée.';
+        return false;
+    }
+    return true;
+}
+    ]]></script>
+
+    <choices-outline>
+        <line choice="default">
+            <line choice="com.wldeus.parabellum.pkg"/>
+        </line>
+    </choices-outline>
+    <choice id="default" title="Parabellum"/>
+    <choice id="com.wldeus.parabellum.pkg" visible="false">
+        <pkg-ref id="com.wldeus.parabellum.pkg"/>
+    </choice>
+    <pkg-ref id="com.wldeus.parabellum.pkg" version="@VERSION@" onConclusion="none">Parabellum-component.pkg</pkg-ref>
+</installer-gui-script>

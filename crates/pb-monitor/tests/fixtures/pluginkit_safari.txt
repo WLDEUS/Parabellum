@@ -1,0 +1,17 @@
++    org.zotero.zotero.SafariExtension(5.0.212)
+	            Path = /Applications/Zotero.app/Contents/PlugIns/ZoteroSafariExtension.appex
+	            UUID = A889E299-E826-4D0E-9EF9-A46AF9331D54
+	       Timestamp = 2026-07-27 20:53:57 +0000
+	             SDK = com.apple.Safari.web-extension
+	   Parent Bundle = /Applications/Zotero.app
+	    Display Name = Zotero Connector
+	      Short Name = ZoteroSafariExtension
+	     Parent Name = Zotero
+	        Platform = macOS
+
+-    com.example.blocker.ContentBlocker(2.1)
+	            Path = /Applications/Blocker.app/Contents/PlugIns/ContentBlocker.appex
+	            UUID = 11111111-2222-4333-8444-555555555555
+	             SDK = com.apple.Safari.content-blocker
+	   Parent Bundle = /Applications/Blocker.app
+	    Display Name = Blocker

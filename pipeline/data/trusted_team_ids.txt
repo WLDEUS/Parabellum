@@ -1,0 +1,37 @@
+# Trusted Apple Developer Team IDs -> allow/team_ids.txt in the bundle.
+# A binary signed with one of these Team IDs AND notarized (verified by the engine with codesign /
+# spctl) gets a lower suspicion score and is never flagged by ML alone. Signature-based detections
+# (hash DB, ClamAV, YARA high/critical) still apply: a stolen/abused certificate is not a free pass.
+#
+# Apple's own software is identified by the Apple anchor ("platform binary" / `anchor apple`), not by a
+# Team ID, and is handled separately by the engine.
+#
+# Every ID below was verified on 2026-10-25 by reading the code signature of an official artefact
+# (CodeDirectory teamID of a Developer ID-signed Mach-O, or the "Developer ID Installer" certificate
+# OU of a flat .pkg) downloaded from the vendor's official GitHub releases:
+#
+# Google LLC — santa-2024.9.pkg (github.com/google/santa/releases/download/2024.9/santa-2024.9.dmg),
+#   cert "Developer ID Installer: Google LLC (EQHXZ8M8AV)"
+EQHXZ8M8AV
+# Microsoft Corporation — powershell-7.4.6-osx-arm64.pkg (github.com/PowerShell/PowerShell releases),
+#   cert "Developer ID Installer: Microsoft Corporation (UBF8T346G9)"
+UBF8T346G9
+# Mozilla Corporation — geckodriver v0.35.0 macos-aarch64 (github.com/mozilla/geckodriver releases),
+#   CodeDirectory teamID 43AQ936H96
+43AQ936H96
+# Objective-See, LLC (LuLu, BlockBlock, KnockKnock, OverSight) — LuLu_2.6.3.dmg system extension
+#   (github.com/objective-see/LuLu releases), CodeDirectory teamID VBG97UB4TA
+VBG97UB4TA
+# Cisco (ClamAV) — clamav-1.4.1.macos.universal.pkg (github.com/Cisco-Talos/clamav releases),
+#   cert "Developer ID Installer: Cisco (DE8Y96K9QP)"
+DE8Y96K9QP
+# osquery (OSQUERY A Series of LF Projects, LLC) — osquery-5.14.1_1.macos_arm64.tar.gz, osqueryd
+#   CodeDirectory teamID 3522FA9PXF
+3522FA9PXF
+# GitHub, Inc. — gh_2.62.0_macOS_arm64.zip (github.com/cli/cli releases), CodeDirectory teamID VEKTX9H2N7
+VEKTX9H2N7
+
+# Not verified from here (vendor downloads unreachable from the build container). Check on the Mac:
+#   codesign -dv --verbose=2 /Applications/<App>.app 2>&1 | grep TeamIdentifier
+# then add the ID with its source. Candidates: Docker Inc (Docker Desktop), JetBrains s.r.o.,
+# AgileBits (1Password), Zoom, Slack, Dropbox, Signal, VideoLAN.

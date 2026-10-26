@@ -1,0 +1,6 @@
+# Only the public key is committed. Never commit a secret key.
+*.key
+*.sec
+*.secret
+*.key.*
+!parabellum-db.pub

@@ -1,0 +1,32 @@
+{
+  "extensions": {
+    "settings": {
+      "ddkjiahejlhfcafbddmgiahcphecmpfh": {
+        "account_extension_type": 0,
+        "active_permissions": { "api": ["declarativeNetRequest", "scripting", "storage"], "explicit_host": [], "manifest_permissions": [] },
+        "creation_flags": 9,
+        "first_install_time": "13372000000000000",
+        "from_webstore": true,
+        "location": 1,
+        "manifest": { "manifest_version": 3, "name": "uBlock Origin Lite", "version": "2025.1012.1500" },
+        "path": "ddkjiahejlhfcafbddmgiahcphecmpfh/2025.1012.1500_0",
+        "state": 1,
+        "was_installed_by_default": false
+      },
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": {
+        "from_webstore": true,
+        "location": 1,
+        "disable_reasons": [1],
+        "path": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/1.0_0"
+      },
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": {
+        "from_webstore": true,
+        "location": 1,
+        "state": 0,
+        "disable_reasons": 1,
+        "path": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/1.0_0"
+      }
+    }
+  },
+  "protection": { "macs": {} }
+}

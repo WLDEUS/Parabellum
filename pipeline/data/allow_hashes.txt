@@ -1,0 +1,3 @@
+# Extra known-good SHA-256 (one per line) merged into hashes/allow.sha256 and removed from the
+# malware set. This is where reviewed "report a false positive" submissions land.
+# Format: <sha256>  # comment (what it is, who reported, date)

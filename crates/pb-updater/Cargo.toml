@@ -1,0 +1,33 @@
+[package]
+name = "pb-updater"
+description = "Signed threat-DB updates with rollback, freshclam, third-party component manager, app self-update"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+build = "build.rs"
+
+[dependencies]
+pb-core = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true }
+minisign-verify = { workspace = true }
+tar = { workspace = true }
+flate2 = { workspace = true }
+zip = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+plist = { workspace = true }
+regex = { workspace = true }
+futures = { workspace = true }
+semver = "1"
+libc = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+minisign = "0.7"

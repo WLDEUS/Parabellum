@@ -1,0 +1,19 @@
+[
+  {
+    "actions": [
+      "restore",
+      "report_false_positive",
+      "acknowledge"
+    ],
+    "id": 12,
+    "kind": "malware",
+    "message": "MacOS.Stealer.AMOS détecté dans Installer.dmg",
+    "path": "/Users/q/Downloads/Installer.dmg",
+    "quarantine_id": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+    "severity": "critical",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "status": "open",
+    "title": "Menace mise en quarantaine",
+    "ts": 1793000100
+  }
+]

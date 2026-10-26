@@ -1,0 +1,30 @@
+[package]
+name = "pb-engine"
+description = "Scanning engine: hash DB, YARA-X, ClamAV wrapper, container handling, code signing, scoring, quarantine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+pb-core = { workspace = true }
+pb-ml = { workspace = true }
+yara-x = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+zip = { workspace = true }
+flate2 = { workspace = true }
+tar = { workspace = true }
+tempfile = { workspace = true }
+walkdir = { workspace = true }
+memmap2 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+libc = { workspace = true }
+plist = { workspace = true }
+
+[dev-dependencies]
+pb-ml = { workspace = true, features = ["test-util"] }

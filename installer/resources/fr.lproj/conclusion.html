@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<title>Parabellum est installé</title>
+<style>
+  body { font: 13px -apple-system, "Helvetica Neue", sans-serif; line-height: 1.45; margin: 0 4px; }
+  h1 { font-size: 17px; margin: 0 0 8px; }
+  h2 { font-size: 13px; margin: 14px 0 4px; }
+  ol, ul { margin: 4px 0; padding-left: 20px; }
+  li { margin: 3px 0; }
+  code { font: 12px ui-monospace, Menlo, monospace; background: rgba(127,127,127,.15); padding: 0 3px; border-radius: 3px; }
+  .note { margin-top: 12px; padding: 8px 10px; border-radius: 6px; background: rgba(127,127,127,.12); }
+</style>
+</head>
+<body>
+<h1>Parabellum est installé. Il reste 2 étapes.</h1>
+
+<h2>1. Accès complet au disque pour parabellumd (indispensable)</h2>
+<ol>
+  <li>Ouvrez <b>Réglages Système &gt; Confidentialité et sécurité &gt; Accès complet au disque</b>
+      (<a href="x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles">ouvrir</a>).</li>
+  <li>Cliquez sur <b>+</b>, puis tapez <b>Cmd + Maj + G</b> et collez :<br>
+      <code>/Library/Application Support/Parabellum/bin/parabellumd</code></li>
+  <li>Cliquez sur <b>Ouvrir</b> et vérifiez que l'interrupteur de <b>parabellumd</b> est activé.</li>
+  <li>Dans le Terminal : <code>sudo launchctl kickstart -k system/com.wldeus.parabellum.daemon</code></li>
+</ol>
+<p>Sans cet accès, la surveillance temps réel (eslogger) et l'analyse de vos dossiers restent limitées
+et l'app affiche « Protection dégradée ». Si cette version est signée avec le certificat « Parabellum Local
+Signing », l'autorisation est conservée aux mises à jour suivantes ; si elle est signée ad hoc, retirez puis
+rajoutez <b>parabellumd</b> dans cette liste après chaque mise à jour.</p>
+
+<h2>2. Bloqueur de pubs dans les navigateurs</h2>
+<ul>
+  <li><b>Chrome</b> : installez <a href="https://chromewebstore.google.com/detail/ublock-origin-lite/ddkjiahejlhfcafbddmgiahcphecmpfh">uBlock Origin Lite</a> depuis le Chrome Web Store.</li>
+  <li><b>Safari</b> : installez <a href="https://apps.apple.com/app/id6745342698">uBlock Origin Lite</a> depuis l'App Store,
+      puis activez-le dans <b>Safari &gt; Réglages &gt; Extensions</b>.</li>
+</ul>
+<p>L'app Parabellum vérifie leur état (menu <b>Pubs et trackers</b>). Le blocage DNS global se règle aussi dans l'app.</p>
+
+<div class="note">
+<b>Gatekeeper :</b> ce paquet n'est pas signé par Apple (certificat local ou signature ad hoc). Pour les prochaines versions
+téléchargées, macOS demandera de confirmer dans <b>Réglages Système &gt; Confidentialité et sécurité &gt;
+Ouvrir quand même</b>.<br>
+État : <code>parabellum status</code> · Journaux : <code>/Library/Logs/Parabellum/</code> ·
+Désinstaller : <code>sudo "/Library/Application Support/Parabellum/bin/uninstall.sh"</code>
+</div>
+</body>
+</html>

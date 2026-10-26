@@ -1,0 +1,8 @@
+3 extension(s)
+--- com.apple.system_extension.network_extension
+enabled	active	teamID	bundleID (version)	name	[state]
+*	*	VBG97UB4TA	com.objective-see.lulu.extension (2.6.1/2.6.1)	LuLu	[activated enabled]
+*	*	9BNSXJN65R	com.example.vpn.tunnel (1.0/12)	Example VPN	[activated enabled]
+--- com.apple.system_extension.endpoint_security
+enabled	active	teamID	bundleID (version)	name	[state]
+		ABCDE12345	com.example.es.extension (3.1/310)	Example ES	[activated waiting for user]

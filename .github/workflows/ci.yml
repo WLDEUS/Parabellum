@@ -1,0 +1,241 @@
+name: CI
+
+# Linux jobs on every push/PR; the (costly) macOS arm64 job only on main, tags and manual runs.
+# Every build/test step tees its output to ci-logs/*.log. On failure, compiler/test errors are turned
+# into check-run annotations (readable through the API without access to the logs) and, for the macOS
+# job, the log tails are pushed to the orphan branch `ci-logs` under runs/<run_id>/.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash # = bash --noprofile --norc -eo pipefail: `cmd | tee log` fails when cmd fails
+
+env:
+  CARGO_TERM_COLOR: never
+  CARGO_INCREMENTAL: "0"
+  # Turns the newest errors of ci-logs/*.log into at most 10 `::error file=…,line=…::…` annotations
+  # (rustc `error[...]` + `--> file:line:col`, Rust panics, Swift `file:line:col: error:`, XCTest
+  # `file:line: error:`, Python tracebacks), or one annotation with the tail of the failing log.
+  ANNOTATE_PY: |
+    import glob, os, re
+    ws = os.environ.get("GITHUB_WORKSPACE", "").rstrip("/") + "/"
+    def esc(s): return s.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+    def prop(s): return esc(s).replace(",", "%2C").replace(":", "%3A")
+    def rel(p): return p[len(ws):] if p.startswith(ws) else p.lstrip("./")
+    rust_hdr = re.compile(r"^error(\[E\d+\])?: (.+)$")
+    rust_loc = re.compile(r"^\s*--> ([^:\s]+):(\d+):(\d+)")
+    panic = re.compile(r"panicked at ([^:\s]+\.rs):(\d+):(\d+)")
+    swift = re.compile(r"^(\S+\.swift):(\d+):(?:(\d+):)? (?:fatal )?error: (.+)$")
+    pyerr = re.compile(r"^(\S+\.py):(\d+): (\w+(?:Error|Exception))$")
+    logs = sorted(glob.glob("ci-logs/*.log"), key=os.path.getmtime)
+    found, seen = [], set()
+    for log in reversed(logs):
+        pending = None
+        for line in open(log, errors="replace").read().splitlines():
+            m = swift.match(line)
+            if m:
+                found.append((rel(m[1]), m[2], m[3] or "1", m[4], os.path.basename(log)))
+                continue
+            m = rust_hdr.match(line)
+            if m:
+                pending = m[2]
+                continue
+            m = rust_loc.match(line)
+            if m and pending:
+                found.append((rel(m[1]), m[2], m[3], pending, os.path.basename(log)))
+                pending = None
+                continue
+            m = panic.search(line)
+            if m:
+                found.append((rel(m[1]), m[2], m[3], line.strip(), os.path.basename(log)))
+                continue
+            m = pyerr.match(line)
+            if m:
+                found.append((rel(m[1]), m[2], "1", m[3], os.path.basename(log)))
+    count = 0
+    for f, ln, col, msg, log in found:
+        if (f, ln, msg) in seen or count >= 10:
+            continue
+        seen.add((f, ln, msg))
+        count += 1
+        print(f"::error file={prop(f)},line={ln},col={col},title={prop(log)}::{esc(msg[:1000])}")
+    if count == 0 and logs:
+        tail = open(logs[-1], errors="replace").read().splitlines()[-40:]
+        print(f"::error title={prop(os.path.basename(logs[-1]))}::{esc(chr(10).join(tail)[-3500:])}")
+
+jobs:
+  rust-linux:
+    name: Rust (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # branch "stable" (2026-10)
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: mkdir -p ci-logs
+      - name: cargo fmt
+        run: cargo fmt --all --check 2>&1 | tee ci-logs/cargo-fmt.log
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee ci-logs/cargo-clippy.log
+      - name: cargo test
+        run: cargo test --workspace 2>&1 | tee ci-logs/cargo-test.log
+      - name: Annotate errors
+        if: failure()
+        run: python3 -c "$ANNOTATE_PY"
+
+  python:
+    name: Python (pipeline + ml)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pipeline/requirements*.txt
+            ml/requirements.txt
+      - name: Install dependencies
+        run: |
+          sudo apt-get install -y --no-install-recommends minisign
+          python -m pip install -r pipeline/requirements-dev.txt -r ml/requirements.txt
+      - run: mkdir -p ci-logs
+      - name: ruff
+        run: |
+          ruff check --output-format github pipeline ml
+          ruff format --check pipeline ml 2>&1 | tee ci-logs/ruff-format.log
+      - name: pytest (includes yara-x validation of rules/*.yar)
+        run: python -m pytest -q pipeline/tests ml/tests 2>&1 | tee ci-logs/pytest.log
+      - name: Annotate errors
+        if: failure()
+        run: python3 -c "$ANNOTATE_PY"
+
+  macos:
+    name: macOS arm64 build + pkg
+    # On PRs only when the PR carries the `build-macos` label (macOS minutes are costly on a private repo).
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'build-macos')
+    runs-on: macos-15 # arm64 (Apple silicon) image
+    timeout-minutes: 90
+    permissions:
+      contents: write # only to push failure logs to the `ci-logs` branch
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # branch "stable" (2026-10)
+        with:
+          toolchain: stable
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Cache SwiftPM
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: app/.build
+          key: spm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('app/Package.swift', 'app/Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-${{ runner.arch }}-
+      - run: mkdir -p ci-logs && { uname -a; sw_vers; xcodebuild -version; swift --version; rustc --version; } 2>&1 | tee ci-logs/00-environment.log
+      - name: cargo build --release (daemon + CLI, same target dir as build-pkg.sh)
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "14.0"
+        run: cargo build --locked --release --target aarch64-apple-darwin -p pb-daemon -p pb-cli 2>&1 | tee ci-logs/cargo-build.log
+      - name: swift build
+        working-directory: app
+        run: swift build -c release --arch arm64 2>&1 | tee ../ci-logs/swift-build.log
+      - name: swift test
+        working-directory: app
+        run: swift test 2>&1 | tee ../ci-logs/swift-test.log
+      # Stable code-signing identity (keeps Full Disk Access across updates). Not on PRs: PR builds
+      # never see the signing key and are signed ad hoc.
+      - name: Code-signing identity (certificate from secrets, else ad hoc)
+        if: github.event_name != 'pull_request'
+        env:
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_P12_PASSWORD: ${{ secrets.MACOS_SIGN_P12_PASSWORD }}
+        run: scripts/ci-codesign.sh import
+      - name: Build .pkg
+        run: |
+          if [[ ! -s keys/parabellum-db.pub ]]; then
+            echo "::warning::keys/parabellum-db.pub missing: CI package built without the DB public key"
+            export ALLOW_MISSING_PUBKEY=1
+          fi
+          scripts/build-pkg.sh --skip-build 2>&1 | tee ci-logs/build-pkg.log
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: parabellum-pkg-${{ github.sha }}
+          path: dist/*.pkg
+          retention-days: 7
+          if-no-files-found: error
+      - name: Annotate errors
+        if: failure()
+        run: python3 -c "$ANNOTATE_PY"
+      - name: Push failure logs to the ci-logs branch
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_NAME: macos
+        run: |
+          set -euo pipefail
+          dest="runs/${GITHUB_RUN_ID}"
+          remote="${CI_LOGS_REMOTE:-https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git}"
+          src="$PWD/ci-logs"
+          publish() {
+            local work
+            work="$(mktemp -d)"
+            git -C "$work" init -q
+            git -C "$work" config user.name "github-actions[bot]"
+            git -C "$work" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            if git -C "$work" fetch -q --depth 1 "$remote" ci-logs 2>/dev/null; then
+              git -C "$work" checkout -q -B ci-logs FETCH_HEAD
+            else
+              git -C "$work" symbolic-ref HEAD refs/heads/ci-logs # orphan branch, first run
+            fi
+            mkdir -p "$work/$dest"
+            for f in "$src"/*.log; do
+              [[ -f "$f" ]] && tail -n 400 "$f" > "$work/$dest/$(basename "$f")"
+            done
+            {
+              echo "# CI failure logs — run ${GITHUB_RUN_ID} (attempt ${GITHUB_RUN_ATTEMPT})"
+              echo
+              echo "- workflow: ${GITHUB_WORKFLOW} / job: ${JOB_NAME}"
+              echo "- ref: ${GITHUB_REF} — commit: ${GITHUB_SHA}"
+              echo "- run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+              echo "- each *.log holds the last 400 lines of one step; newest (failing) step first:"
+              for f in $(cd "$src" && ls -t -- *.log 2>/dev/null); do echo "  - $f"; done
+            } > "$work/$dest/README.md"
+            git -C "$work" add runs
+            git -C "$work" commit -q -m "CI logs: run ${GITHUB_RUN_ID} (${GITHUB_SHA::12}, ${JOB_NAME})"
+            git -C "$work" push -q "$remote" HEAD:refs/heads/ci-logs
+          }
+          for attempt in 1 2 3; do
+            if publish; then
+              echo "::notice title=ci-logs::failure logs pushed to branch ci-logs under ${dest}/"
+              exit 0
+            fi
+            sleep $((attempt * 5))
+          done
+          echo "::warning::could not push the ci-logs branch"
+      - name: Delete the temporary signing keychain
+        if: always()
+        run: scripts/ci-codesign.sh cleanup

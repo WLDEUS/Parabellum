@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+	<dict>
+		<key>IOObjectClass</key>
+		<string>IOUSBHostDevice</string>
+		<key>IORegistryEntryName</key>
+		<string>Ultra</string>
+		<key>IORegistryEntryID</key>
+		<integer>4294971234</integer>
+		<key>idVendor</key>
+		<integer>1921</integer>
+		<key>idProduct</key>
+		<integer>21889</integer>
+		<key>USB Product Name</key>
+		<string>Ultra</string>
+		<key>USB Vendor Name</key>
+		<string>SanDisk</string>
+		<key>USB Serial Number</key>
+		<string>4C530001230712112440</string>
+		<key>kUSBSerialNumberString</key>
+		<string>4C530001230712112440</string>
+		<key>locationID</key>
+		<integer>17825792</integer>
+		<key>bDeviceClass</key>
+		<integer>0</integer>
+		<key>Device Speed</key>
+		<integer>2</integer>
+		<key>Built-In</key>
+		<false/>
+		<key>IORegistryEntryChildren</key>
+		<array>
+			<dict>
+				<key>IOObjectClass</key>
+				<string>IOUSBHostInterface</string>
+				<key>IORegistryEntryName</key>
+				<string>IOUSBHostInterface@0</string>
+				<key>bInterfaceClass</key>
+				<integer>8</integer>
+				<key>bInterfaceSubClass</key>
+				<integer>6</integer>
+				<key>bInterfaceProtocol</key>
+				<integer>80</integer>
+			</dict>
+		</array>
+	</dict>
+	<dict>
+		<key>IOObjectClass</key>
+		<string>IOUSBHostDevice</string>
+		<key>IORegistryEntryName</key>
+		<string>Keyboard</string>
+		<key>IORegistryEntryID</key>
+		<integer>4294971300</integer>
+		<key>idVendor</key>
+		<integer>1452</integer>
+		<key>idProduct</key>
+		<integer>545</integer>
+		<key>kUSBProductString</key>
+		<string>Apple Keyboard</string>
+		<key>kUSBVendorString</key>
+		<string>Apple Inc.</string>
+		<key>locationID</key>
+		<integer>17825792</integer>
+		<key>bDeviceClass</key>
+		<integer>0</integer>
+		<key>IORegistryEntryChildren</key>
+		<array>
+			<dict>
+				<key>IOObjectClass</key>
+				<string>IOUSBHostInterface</string>
+				<key>bInterfaceClass</key>
+				<integer>3</integer>
+			</dict>
+			<dict>
+				<key>IOObjectClass</key>
+				<string>IOUSBHostInterface</string>
+				<key>bInterfaceClass</key>
+				<integer>3</integer>
+			</dict>
+		</array>
+	</dict>
+</array>
+</plist>

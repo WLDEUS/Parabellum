@@ -1,0 +1,82 @@
+{
+  "devices": {
+    "alert_bluetooth": true,
+    "alert_network_interfaces": true,
+    "alert_new_hid": true,
+    "alert_other_usb": true,
+    "alert_thunderbolt": true,
+    "alert_wifi_networks": true,
+    "block_new_hid": false,
+    "scan_volumes": true
+  },
+  "dns": {
+    "block_ads": true,
+    "block_malware": true,
+    "block_trackers": true,
+    "custom_allow": [],
+    "custom_block": [],
+    "enabled": false,
+    "listen": "127.0.0.1:53",
+    "upstream_servers": [
+      "cloudflare",
+      "quad9-doh-ip4-port443-filter-pri"
+    ]
+  },
+  "energy": {
+    "background_qos": true,
+    "pause_on_battery_below": 20
+  },
+  "ml": {
+    "enabled": true,
+    "only_untrusted": true,
+    "suspicious_threshold": 0.8500000238418579
+  },
+  "notifications": {
+    "enabled": true,
+    "min_severity": "medium"
+  },
+  "persistence": {
+    "enabled": true,
+    "full_scan_interval_minutes": 360,
+    "osquery_hunting": true
+  },
+  "privacy": {
+    "virustotal_api_key": null,
+    "virustotal_lookup": false
+  },
+  "realtime": {
+    "auto_quarantine": true,
+    "enabled": true,
+    "eslogger": true,
+    "fsevents": true,
+    "kill_malicious_processes": true,
+    "scan_on_exec": true
+  },
+  "scan": {
+    "archive_max_depth": 3,
+    "archive_max_entries": 20000,
+    "archive_max_total_mb": 1024,
+    "clamav_on_demand": true,
+    "clamav_realtime": false,
+    "exclude_paths": [],
+    "expand_pkg": true,
+    "max_file_size_mb": 200,
+    "mount_dmg": true,
+    "watch_paths": [
+      "~/Downloads",
+      "~/Desktop",
+      "~/Documents",
+      "/Applications",
+      "~/Applications"
+    ]
+  },
+  "updates": {
+    "app_releases_api": "https://api.github.com/repos/WLDEUS/Parabellum/releases",
+    "auto_update_app": false,
+    "auto_update_components": true,
+    "daily_hour": 3,
+    "db_base_url": "https://github.com/WLDEUS/Parabellum/releases/download/db-latest",
+    "freshclam": true,
+    "github_token": null
+  }
+}

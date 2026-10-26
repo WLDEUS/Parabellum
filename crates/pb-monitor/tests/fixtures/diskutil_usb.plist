@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Bootable</key>
+	<false/>
+	<key>BusProtocol</key>
+	<string>USB</string>
+	<key>CanBeMadeBootable</key>
+	<false/>
+	<key>DeviceIdentifier</key>
+	<string>disk4s1</string>
+	<key>DeviceNode</key>
+	<string>/dev/disk4s1</string>
+	<key>Ejectable</key>
+	<true/>
+	<key>FilesystemName</key>
+	<string>MS-DOS (FAT32)</string>
+	<key>FilesystemType</key>
+	<string>msdos</string>
+	<key>FilesystemUserVisibleName</key>
+	<string>MS-DOS (FAT32)</string>
+	<key>Internal</key>
+	<false/>
+	<key>MediaName</key>
+	<string></string>
+	<key>MountPoint</key>
+	<string>/Volumes/USBKEY</string>
+	<key>ParentWholeDisk</key>
+	<string>disk4</string>
+	<key>RemovableMedia</key>
+	<true/>
+	<key>Removable</key>
+	<true/>
+	<key>Size</key>
+	<integer>31457280000</integer>
+	<key>TotalSize</key>
+	<integer>31457280000</integer>
+	<key>VirtualOrPhysical</key>
+	<string>Physical</string>
+	<key>VolumeName</key>
+	<string>USBKEY</string>
+	<key>VolumeUUID</key>
+	<string>6A7F2B1C-3D4E-3F5A-9B8C-7D6E5F4A3B2C</string>
+	<key>WritableVolume</key>
+	<true/>
+	<key>Whole</key>
+	<false/>
+</dict>
+</plist>

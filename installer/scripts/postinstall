@@ -1,0 +1,174 @@
+#!/bin/bash
+# Parabellum postinstall (run as root by Installer.app / installer(8) after the payload is in place).
+#
+#  1. directory tree of crates/pb-core/src/paths.rs with owners and modes
+#  2. owners/modes of binaries and launchd plists, quarantine xattr removed
+#  3. /usr/local/bin/parabellum -> "/Library/Application Support/Parabellum/bin/parabellum"
+#  4. LaunchDaemon bootstrapped and started (self-update, state/self-update.marker present: the
+#     running daemon is restarted on the new binary with `kickstart -k`, then the marker is removed);
+#     if it does not come up while DNS still points to the
+#     local resolver, DNS is handed back (restore-dns.sh) so the Mac never loses Internet access
+#  5. menu bar app started in the console user's GUI session
+#
+# config.toml is NOT written here: the daemon creates it with defaults on first start.
+# Output goes to /var/log/install.log (Installer captures script stdout/stderr there).
+# Only a missing daemon binary (broken payload) fails the installation; every other step is
+# best effort and logged. Compatible with macOS /bin/bash 3.2.
+set -euo pipefail
+PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH
+
+readonly ROOT="/Library/Application Support/Parabellum"
+readonly BIN="$ROOT/bin"
+readonly LOG_DIR="/Library/Logs/Parabellum"
+readonly APP="/Applications/Parabellum.app"
+readonly CLI_LINK="/usr/local/bin/parabellum"
+readonly DAEMON_LABEL="com.wldeus.parabellum.daemon"
+readonly UI_LABEL="com.wldeus.parabellum.ui"
+readonly DAEMON_PLIST="/Library/LaunchDaemons/$DAEMON_LABEL.plist"
+readonly AGENT_PLIST="/Library/LaunchAgents/$UI_LABEL.plist"
+readonly SELF_UPDATE_MARKER="$ROOT/state/self-update.marker"
+
+log() { printf 'parabellum postinstall: %s\n' "$*"; }
+
+# Run a non-critical command; log and continue on failure.
+run() {
+    local rc=0
+    "$@" || rc=$?
+    if ((rc != 0)); then
+        log "échec ignoré (code $rc) : $*"
+    fi
+    return 0
+}
+
+target_volume="${3:-/}"
+if [[ "$target_volume" != "/" ]]; then
+    log "volume cible « $target_volume » différent de /, configuration ignorée"
+    exit 0
+fi
+
+if [[ ! -x "$BIN/parabellumd" ]]; then
+    log "ERREUR : $BIN/parabellumd absent, paquet incomplet"
+    exit 1
+fi
+
+# 1. Directory tree (root:wheel). quarantine/, state/ and tmp/ (untrusted DMG/PKG expansion) are 0700.
+make_dir() {
+    local mode="$1" dir="$2"
+    run /bin/mkdir -p "$dir"
+    run /usr/sbin/chown root:wheel "$dir"
+    run /bin/chmod "$mode" "$dir"
+}
+make_dir 0755 "$ROOT"
+for sub in bin db db/versions db/downloads clamav clamav/db components dns cache; do
+    make_dir 0755 "$ROOT/$sub"
+done
+for sub in quarantine state tmp; do
+    make_dir 0700 "$ROOT/$sub"
+done
+make_dir 0755 "$LOG_DIR"
+log "arborescence prête : $ROOT"
+
+# 2. Binaries, scripts and launchd plists.
+for f in parabellumd parabellum uninstall.sh restore-dns.sh; do
+    if [[ -e "$BIN/$f" ]]; then
+        run /usr/sbin/chown root:wheel "$BIN/$f"
+        run /bin/chmod 0755 "$BIN/$f"
+    fi
+done
+for f in "$DAEMON_PLIST" "$AGENT_PLIST"; do
+    run /usr/sbin/chown root:wheel "$f"
+    run /bin/chmod 0644 "$f"
+done
+/usr/bin/xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
+/usr/bin/xattr -dr com.apple.quarantine "$BIN" 2>/dev/null || true
+
+# 3. CLI on the PATH (/usr/local/bin may not exist on Apple Silicon Macs).
+if [[ ! -d /usr/local/bin ]]; then
+    make_dir 0755 /usr/local/bin
+fi
+if [[ -d "$CLI_LINK" && ! -L "$CLI_LINK" ]]; then
+    log "$CLI_LINK est un dossier, lien de la CLI non créé"
+else
+    run /bin/ln -sfn "$BIN/parabellum" "$CLI_LINK"
+fi
+
+# 4. Daemon.
+daemon_pid() {
+    /bin/launchctl print "system/$DAEMON_LABEL" 2>/dev/null |
+        /usr/bin/awk '$1 == "pid" && $2 == "=" { print $3; exit }' || true
+}
+
+run /bin/launchctl enable "system/$DAEMON_LABEL"
+bootstrapped=0
+self_update=0
+if [[ -f "$SELF_UPDATE_MARKER" || -L "$SELF_UPDATE_MARKER" ]]; then
+    self_update=1
+    run /bin/rm -f "$SELF_UPDATE_MARKER"
+    log "mise à jour lancée par le daemon (marqueur supprimé)"
+fi
+for attempt in 1 2 3; do
+    if ((self_update == 1)) && /bin/launchctl print "system/$DAEMON_LABEL" >/dev/null 2>&1; then
+        break # still running the old binary: restarted below with kickstart -k
+    fi
+    if /bin/launchctl bootstrap system "$DAEMON_PLIST" 2>/dev/null; then
+        bootstrapped=1
+        break
+    fi
+    if /bin/launchctl print "system/$DAEMON_LABEL" >/dev/null 2>&1; then
+        break # already loaded (preinstall could not unload it)
+    fi
+    log "bootstrap du daemon : tentative $attempt échouée, nouvel essai"
+    /bin/sleep 1
+done
+if ((bootstrapped == 1)); then
+    log "daemon chargé ($DAEMON_PLIST)"
+    run /bin/launchctl kickstart "system/$DAEMON_LABEL"
+else
+    log "daemon déjà chargé : redémarrage sur le nouveau binaire"
+    run /bin/launchctl kickstart -k "system/$DAEMON_LABEL"
+fi
+
+pid=""
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    pid="$(daemon_pid)"
+    [[ -z "$pid" ]] || break
+    /bin/sleep 1
+done
+if [[ -n "$pid" ]]; then
+    log "daemon démarré (pid $pid)"
+else
+    log "ATTENTION : le daemon ne tourne pas, voir $LOG_DIR et : sudo launchctl print system/$DAEMON_LABEL"
+    # Fail-open: without the daemon (and its dnscrypt-proxy), DNS on 127.0.0.1 would cut Internet off.
+    if ! /usr/bin/pgrep -x dnscrypt-proxy >/dev/null 2>&1 && [[ -f "$BIN/restore-dns.sh" ]]; then
+        run /bin/bash "$BIN/restore-dns.sh" --saved "$ROOT/dns/saved-dns.json"
+    fi
+fi
+
+# 5. Menu bar app in the console user's session (other sessions get it at next login).
+console_user="$(/usr/bin/stat -f %Su /dev/console 2>/dev/null || true)"
+case "$console_user" in
+    "" | root | loginwindow | _mbsetupuser) console_user="" ;;
+esac
+if [[ -z "$console_user" ]]; then
+    log "aucune session graphique ouverte : l'app démarrera à la prochaine connexion"
+    exit 0
+fi
+console_uid="$(/usr/bin/id -u "$console_user" 2>/dev/null || true)"
+if [[ -z "$console_uid" ]]; then
+    log "uid introuvable pour $console_user : l'app démarrera à la prochaine connexion"
+    exit 0
+fi
+
+run /bin/launchctl enable "gui/$console_uid/$UI_LABEL"
+if /bin/launchctl bootstrap "gui/$console_uid" "$AGENT_PLIST" 2>/dev/null; then
+    log "app lancée pour $console_user (gui/$console_uid/$UI_LABEL)"
+elif /bin/launchctl print "gui/$console_uid/$UI_LABEL" >/dev/null 2>&1; then
+    run /bin/launchctl kickstart -k "gui/$console_uid/$UI_LABEL"
+    log "app relancée pour $console_user"
+else
+    log "bootstrap de l'agent impossible, lancement direct de l'app"
+    run /bin/launchctl asuser "$console_uid" /usr/bin/sudo -u "$console_user" /usr/bin/open -a "$APP"
+fi
+
+exit 0

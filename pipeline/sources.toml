@@ -1,0 +1,295 @@
+# Parabellum threat-DB sources. Read by `python -m pipeline.build`.
+#
+# Every URL below was checked on 2026-10-25/26 (see pipeline/README.md, "Sources and verification").
+# `{ABUSECH_AUTH_KEY}` is substituted at runtime from the env/secret of the same name and never
+# written to the manifest (shown there as `<AUTH-KEY>`) nor to logs.
+#
+# Licences: personal use on one Mac, no redistribution of the bundle outside the owner's private
+# GitHub releases. Re-check every licence before publishing the bundle publicly.
+
+[bundle]
+min_client_version = "0.1.0"
+# Refuse to publish (keep yesterday's release) if malware hashes or blocked domains drop by more.
+sanity_max_drop = 0.5
+
+[hashes]
+# Rolling window for all-platform MalwareBazaar hashes, and a hard cap: 2 M x 32 bytes = 64 MB for
+# hashes/malware.sha256 (the client mmaps it and binary-searches). macOS samples are kept beyond the
+# window (capped separately) since they are few and the most relevant ones.
+window_days = 365
+max_hashes = 2_000_000
+max_macos_named = 200_000
+# The full MalwareBazaar dump is only downloaded while the index holds fewer hashes than this.
+bootstrap_below = 1000
+
+[malwarebazaar]
+# `get_file_type` values (MalwareBazaar labels Mach-O samples "macho") and `get_taginfo` tags used to
+# collect macOS samples with names/sizes (-> hashes/malware_names.tsv, clamav/parabellum.hsb).
+# Unknown values just return no result.
+file_types = ["macho", "dmg", "pkg"]
+tags = [
+  "macOS", "OSX", "Mach-O", "dmg",
+  "AMOS", "AtomicStealer", "Atomic", "Poseidon", "PoseidonStealer", "Banshee", "BansheeStealer",
+  "Cuckoo", "CuckooStealer", "Cthulhu", "CthulhuStealer", "RustBucket", "KandyKorn", "XLoader",
+  "Adload", "Pirrit", "Shlayer", "Bundlore", "MacSync", "Odyssey", "OdysseyStealer", "Frigidstealer",
+]
+limit = 1000
+
+[detection]
+# Opt-in step (MALWARE_CORPUS=1): samples first seen in the last `days` days, at most `max_samples`.
+days = 2
+max_samples = 40
+
+# Lowercase MalwareBazaar tag -> canonical family name (used when a sample has no `signature`).
+[families]
+amos = "AMOS"
+atomicstealer = "AMOS"
+atomic = "AMOS"
+poseidon = "Poseidon"
+poseidonstealer = "Poseidon"
+banshee = "Banshee"
+bansheestealer = "Banshee"
+cuckoo = "Cuckoo"
+cuckoostealer = "Cuckoo"
+cthulhu = "Cthulhu"
+cthulhustealer = "Cthulhu"
+rustbucket = "RustBucket"
+kandykorn = "KandyKorn"
+xloader = "XLoader"
+adload = "Adload"
+pirrit = "Pirrit"
+shlayer = "Shlayer"
+bundlore = "Bundlore"
+macsync = "MacSync"
+odyssey = "Odyssey"
+odysseystealer = "Odyssey"
+frigidstealer = "FrigidStealer"
+
+# ------------------------------------------------------------------------------------------------
+# Hashes (abuse.ch). abuse.ch community data: free with an Auth-Key under abuse.ch fair use;
+# commercial use requires a subscription. Personal use is fine.
+# Keyless URLs (bazaar.abuse.ch/export/...) return 410 Gone since 2026-10-21: the v2 exports take the
+# key in the URL path (documented example: https://mb-api.abuse.ch/v2/files/exports/<KEY>/recent.csv).
+
+[[source]]
+name = "malwarebazaar-recent"
+kind = "hashes"
+fetcher = "mb_export"
+url = "https://mb-api.abuse.ch/v2/files/exports/{ABUSECH_AUTH_KEY}/recent.csv"
+license = "abuse.ch fair use (free Auth-Key; commercial use needs a subscription)"
+
+[[source]]
+# Bootstrap only (index < hashes.bootstrap_below). File name inferred from ThreatFox's documented
+# `full.csv.zip`; NOT verified (the MalwareBazaar export list is behind login). If it 404s the
+# source is reported fresh=false and the index simply fills up from `recent.csv` night after night.
+name = "malwarebazaar-full"
+kind = "hashes"
+fetcher = "mb_export"
+url = "https://mb-api.abuse.ch/v2/files/exports/{ABUSECH_AUTH_KEY}/full.csv.zip"
+license = "abuse.ch fair use (free Auth-Key; commercial use needs a subscription)"
+bootstrap_only = true
+
+[[source]]
+# POST query API with the `Auth-Key` header (documented on bazaar.abuse.ch/api).
+name = "malwarebazaar-macos"
+kind = "hashes"
+fetcher = "mb_api_macos"
+url = "https://mb-api.abuse.ch/api/v1/"
+license = "abuse.ch fair use (free Auth-Key; commercial use needs a subscription)"
+
+# ------------------------------------------------------------------------------------------------
+# Malware / phishing domains -> dns/malware.txt
+
+[[source]]
+# Documented v2 export (urlhaus.abuse.ch/api: `.../v2/files/exports/<KEY>/recent.csv`); `online.csv`
+# = URLs currently online. Hosts only; IP URLs and shared platforms are dropped.
+name = "urlhaus"
+kind = "domains"
+fetcher = "urlhaus_export"
+url = "https://urlhaus-api.abuse.ch/v2/files/exports/{ABUSECH_AUTH_KEY}/online.csv"
+license = "abuse.ch fair use (free Auth-Key; commercial use needs a subscription)"
+category = "malware"
+
+[[source]]
+# Documented v2 export (threatfox.abuse.ch/export: `.../v2/files/exports/<KEY>/full.csv.zip`):
+# IOCs of the last 6 months; `domain` and `url` IOCs with confidence >= 50 are kept.
+name = "threatfox"
+kind = "domains"
+fetcher = "threatfox_export"
+url = "https://threatfox-api.abuse.ch/v2/files/exports/{ABUSECH_AUTH_KEY}/full.csv.zip"
+license = "abuse.ch fair use (free Auth-Key; commercial use needs a subscription)"
+category = "malware"
+min_confidence = 50
+
+[[source]]
+# HaGeZi Threat Intelligence Feeds, "medium" (~560 k entries). The full `tif` list is 2.1 M
+# entries / 37 MB: too heavy for dnscrypt-proxy's RAM on a laptop. Wildcard "onlydomains" syntax:
+# one domain per line, subdomains implied — exactly the bundle semantics.
+name = "hagezi-tif-medium"
+kind = "domains"
+fetcher = "domain_list"
+url = "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/tif.medium-onlydomains.txt"
+license = "GPL-3.0 (hagezi/dns-blocklists)"
+category = "malware"
+format = "domains"
+min_entries = 10000
+
+# ------------------------------------------------------------------------------------------------
+# Ads -> dns/ads.txt
+
+[[source]]
+# HaGeZi Multi PRO (~210 k): ads, tracking, metrics, telemetry, phishing, malware, scam… recommended
+# "big broom" list. Switch to pro.mini-onlydomains.txt if anything breaks.
+name = "hagezi-pro"
+kind = "domains"
+fetcher = "domain_list"
+url = "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro-onlydomains.txt"
+license = "GPL-3.0 (hagezi/dns-blocklists)"
+category = "ads"
+format = "domains"
+min_entries = 10000
+
+[[source]]
+# OISD small (~60 k, "Block. Don't break."); domainswild2 = domains, subdomains implied.
+# The big variant (~230 k) overlaps HaGeZi PRO heavily; use domainswild2_big.txt to switch.
+name = "oisd-small"
+kind = "domains"
+fetcher = "domain_list"
+url = "https://raw.githubusercontent.com/sjhgvr/oisd/main/domainswild2_small.txt"
+license = "GPL-3.0 (sjhgvr/oisd)"
+category = "ads"
+format = "domains"
+min_entries = 5000
+
+[[source]]
+# StevenBlack unified hosts (adware + malware), hosts-file syntax.
+name = "stevenblack"
+kind = "domains"
+fetcher = "domain_list"
+url = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+license = "MIT (StevenBlack/hosts)"
+category = "ads"
+format = "hosts"
+min_entries = 5000
+
+# ------------------------------------------------------------------------------------------------
+# Native trackers / telemetry -> dns/trackers.txt
+
+[[source]]
+name = "hagezi-native-apple"
+kind = "domains"
+fetcher = "domain_list"
+url = "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/native.apple-onlydomains.txt"
+license = "GPL-3.0 (hagezi/dns-blocklists)"
+category = "trackers"
+format = "domains"
+min_entries = 20
+
+[[source]]
+name = "hagezi-native-winoffice"
+kind = "domains"
+fetcher = "domain_list"
+url = "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/native.winoffice-onlydomains.txt"
+license = "GPL-3.0 (hagezi/dns-blocklists)"
+category = "trackers"
+format = "domains"
+min_entries = 20
+
+[[source]]
+name = "hagezi-native-amazon"
+kind = "domains"
+fetcher = "domain_list"
+url = "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/native.amazon-onlydomains.txt"
+license = "GPL-3.0 (hagezi/dns-blocklists)"
+category = "trackers"
+format = "domains"
+min_entries = 20
+
+[[source]]
+name = "hagezi-native-tiktok"
+kind = "domains"
+fetcher = "domain_list"
+url = "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/native.tiktok-onlydomains.txt"
+license = "GPL-3.0 (hagezi/dns-blocklists)"
+category = "trackers"
+format = "domains"
+min_entries = 20
+
+# ------------------------------------------------------------------------------------------------
+# YARA -> yara/<source>__<file>.yar (each file compiled alone with yara-x, then FP-gated)
+
+[[source]]
+# Elastic protections-artifacts, macOS rules only (49 files / 96 rules on 2026-10-23, all compile with
+# yara-x 1.22). Note: Elastic uses a numeric `severity` (0-100) metadata.
+name = "elastic"
+kind = "yara"
+fetcher = "yara_tarball"
+url = "https://codeload.github.com/elastic/protections-artifacts/tar.gz/refs/heads/main"
+license = "Elastic License 2.0"
+include = ["yara/rules/macos_*.yar"]
+
+[[source]]
+# Florian Roth's signature-base, macOS-specific files only (all compile with yara-x 1.22, no
+# external variables). Matches must keep the rule author attribution (DRL 1.1).
+name = "signature-base"
+kind = "yara"
+fetcher = "yara_raw"
+url = "https://raw.githubusercontent.com/Neo23x0/signature-base/master/yara"
+license = "Detection Rule License (DRL) 1.1"
+files = [
+  "apt_fancybear_osxagent.yar",
+  "apt_lazarus_applejeus.yar",
+  "apt_snaketurla_osx.yar",
+  "expl_macos_switcharoo_dec22.yar",
+  "gen_malware_MacOS_plist_suspicious.yar",
+  "gen_osx_backdoor_bella.yar",
+  "gen_osx_evilosx.yar",
+  "gen_osx_pyagent_persistence.yar",
+  "mal_lockbit_lnx_macos_apr23.yar",
+]
+
+[[source]]
+name = "parabellum"
+kind = "yara"
+fetcher = "yara_local"
+url = "https://github.com/WLDEUS/Parabellum/tree/main/rules"
+license = "MIT"
+path = "rules"
+
+# ------------------------------------------------------------------------------------------------
+# Curated local data
+
+[[source]]
+name = "trusted-team-ids"
+kind = "allowlist"
+fetcher = "local_file"
+url = "https://github.com/WLDEUS/Parabellum/blob/main/pipeline/data/trusted_team_ids.txt"
+license = "MIT"
+path = "pipeline/data/trusted_team_ids.txt"
+dest = "allow/team_ids.txt"
+
+[[source]]
+name = "dns-allowlist"
+kind = "allowlist"
+fetcher = "local_file"
+url = "https://github.com/WLDEUS/Parabellum/blob/main/pipeline/data/dns_allowlist.txt"
+license = "MIT"
+path = "pipeline/data/dns_allowlist.txt"
+dest = "dns/allowlist.txt"
+
+[[source]]
+name = "osquery-hunting"
+kind = "osquery"
+fetcher = "local_file"
+url = "https://github.com/WLDEUS/Parabellum/blob/main/pipeline/data/hunting.json"
+license = "MIT"
+path = "pipeline/data/hunting.json"
+dest = "osquery/hunting.json"
+
+[[source]]
+# Weekly LightGBM model (ml-train.yml), downloaded from the `ml-latest` release into --ml-dir.
+name = "ml-macho"
+kind = "ml"
+fetcher = "ml_local"
+url = "https://github.com/WLDEUS/Parabellum/releases/tag/ml-latest"
+license = "MIT"

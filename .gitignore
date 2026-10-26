@@ -22,3 +22,38 @@ rustc-ice-*.txt
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+
+# --- Parabellum ---------------------------------------------------------------------------------
+# Build outputs (scripts/build-app.sh, scripts/build-pkg.sh) and the unprivileged dev root (make dev-daemon)
+/dist
+dist/db
+*.pkg
+/.dev-root
+
+# SwiftPM / Xcode (app/)
+app/.build
+app/.swiftpm
+xcuserdata/
+DerivedData/
+
+# Python (pipeline/, ml/)
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Pipeline and ML outputs (rebuilt by CI)
+/pipeline/out
+/ml/out
+
+# Secrets: minisign secret key, local tokens. Only keys/parabellum-db.pub is committed.
+*.key
+.secrets/
+.env
+
+# macOS
+.DS_Store
+
+# ...but never hide test fixtures (sample .pkg for pb-engine, throwaway test keys for pb-updater)
+!**/fixtures/**/*.pkg
+!**/fixtures/**/*.key

@@ -1,0 +1,18 @@
+{
+  "chrome_store_url": "https://chromewebstore.google.com/detail/ddkjiahejlhfcafbddmgiahcphecmpfh",
+  "chrome_ublock": "enabled",
+  "dns": {
+    "blocked_domains": 402113,
+    "enabled": true,
+    "list_version": "2026.10.25.1",
+    "listen": "127.0.0.1:53",
+    "managed_services": [
+      "Wi-Fi",
+      "USB 10/100/1000 LAN"
+    ],
+    "queries_blocked_24h": 5321,
+    "running": true
+  },
+  "safari_store_url": "https://apps.apple.com/app/ublock-origin-lite/id6745342698",
+  "safari_ublock": "not_installed"
+}

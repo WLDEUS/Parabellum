@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>ControllerPowerState</key>
+	<integer>1</integer>
+	<key>PairedDevices</key>
+	<array>
+		<string>a4-83-e7-11-22-33</string>
+		<string>f4-34-f0-aa-bb-cc</string>
+		<string>junk</string>
+	</array>
+	<key>DeviceCache</key>
+	<dict>
+		<key>a4-83-e7-11-22-33</key>
+		<dict>
+			<key>Name</key>
+			<string>Magic Keyboard</string>
+			<key>VendorID</key>
+			<integer>76</integer>
+			<key>ProductID</key>
+			<integer>615</integer>
+			<key>ClassOfDevice</key>
+			<integer>9536</integer>
+		</dict>
+		<key>f4-34-f0-aa-bb-cc</key>
+		<dict>
+			<key>displayName</key>
+			<string>AirPods Pro</string>
+			<key>VendorID</key>
+			<integer>76</integer>
+			<key>ProductID</key>
+			<integer>8206</integer>
+		</dict>
+	</dict>
+</dict>
+</plist>

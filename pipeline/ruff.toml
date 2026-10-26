@@ -1,0 +1,20 @@
+# Shared by pipeline/ and ml/ (ml/ruff.toml extends this file).
+target-version = "py312"
+line-length = 120
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "RUF", "SIM", "PTH"]
+ignore = [
+  "S603",   # subprocess without shell: we always pass argument vectors to known binaries
+  "S607",   # partial executable path: minisign / 7z / pb-features are resolved explicitly
+  "S310",   # urllib.urlopen: the HTTP client enforces https:// itself
+  "S314",   # xml.etree: TOC of pinned pkgs; expat >= 2.4 has entity-expansion protection
+  "S202",   # tarfile.extractfile: members are filtered by our own safe extraction code
+  "PTH123", # open() is fine next to os.open/os.fdopen
+  "RUF001", "RUF002", "RUF003",  # typographic characters in docstrings/comments
+  "SIM105",
+  "S104",   # "0.0.0.0" appears as a hosts-file sink address, not a bind address
+]
+
+[lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "S108", "PTH", "E501"]
