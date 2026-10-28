@@ -75,7 +75,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var status: StatusInfo?
 
     // Alerts
-    @Published private(set) var alerts: [Alert] = []
+    @Published private(set) var alerts: [SecurityAlert] = []
     @Published var includeResolvedAlerts = false
     @Published var selectedAlertId: Int64?
 
@@ -316,7 +316,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func handleAlert(_ alert: Alert) {
+    private func handleAlert(_ alert: SecurityAlert) {
         if alert.status == .open || includeResolvedAlerts {
             upsert(alert, into: &alerts)
         } else {
@@ -475,7 +475,7 @@ final class AppModel: ObservableObject {
         await perform("alerts", quiet: true) {
             let list = try await self.call(
                 .listAlerts(limit: 200, includeResolved: self.includeResolvedAlerts),
-                as: [Alert].self
+                as: [SecurityAlert].self
             )
             self.alerts = list
             for alert in list {
@@ -615,7 +615,7 @@ final class AppModel: ObservableObject {
 
     func resolve(alertId: Int64, action: AlertAction) async {
         let updated = await perform("resolve-\(alertId)") {
-            try await self.call(.resolveAlert(alertId: alertId, action: action), as: Alert.self)
+            try await self.call(.resolveAlert(alertId: alertId, action: action), as: SecurityAlert.self)
         }
         if let updated {
             if updated.status == .open || includeResolvedAlerts {

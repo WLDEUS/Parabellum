@@ -2,7 +2,7 @@ import Foundation
 
 /// Events pushed by the daemon after `subscribe` (`{"event":"…","data":…}`), mirroring `DaemonEvent`.
 public enum DaemonEvent: Sendable, Equatable {
-    case alert(Alert)
+    case alert(SecurityAlert)
     /// Sent at most every 500 ms per running job.
     case scanProgress(ScanJobSummary)
     case scanFinished(ScanJobSummary)
@@ -40,7 +40,7 @@ extension DaemonEvent: Decodable {
         let name = try c.decode(String.self, forKey: .event)
         switch name {
         case "alert":
-            self = .alert(try c.decode(Alert.self, forKey: .data))
+            self = .alert(try c.decode(SecurityAlert.self, forKey: .data))
         case "scan_progress":
             self = .scanProgress(try c.decode(ScanJobSummary.self, forKey: .data))
         case "scan_finished":

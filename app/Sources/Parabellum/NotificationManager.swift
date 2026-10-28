@@ -90,7 +90,7 @@ final class NotificationManager {
         }
     }
 
-    func post(_ alert: Alert) async {
+    func post(_ alert: SecurityAlert) async {
         guard let center else { return }
         let status = await authorizationStatus()
         guard status == .authorized || status == .provisional else { return }
@@ -113,7 +113,7 @@ final class NotificationManager {
     }
 
     /// One category per combination of actions (categories are fixed sets of buttons).
-    private func registerCategory(for alert: Alert, in center: UNUserNotificationCenter) -> String {
+    private func registerCategory(for alert: SecurityAlert, in center: UNUserNotificationCenter) -> String {
         let actions = alert.knownActions.filter { Self.notificationActions.contains($0) }.prefix(3)
         let identifier = "pb.alert." + (actions.isEmpty ? "view" : actions.map { $0.rawValue }.joined(separator: "+"))
         if categories[identifier] == nil {

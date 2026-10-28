@@ -18,9 +18,9 @@ public enum Request: Sendable, Equatable {
     case listJobs(limit: Int = 100)
     /// → `ScanJobDetail`
     case getJob(jobId: String)
-    /// → `[Alert]`
+    /// → `[SecurityAlert]`
     case listAlerts(limit: Int = 100, includeResolved: Bool = false)
-    /// → `Alert` (updated)
+    /// → `SecurityAlert` (updated)
     case resolveAlert(alertId: Int64, action: AlertAction)
     /// → `[QuarantineEntry]`
     case listQuarantine

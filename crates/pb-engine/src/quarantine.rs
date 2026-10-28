@@ -1055,8 +1055,14 @@ mod tests {
         )
         .unwrap();
         fs::write(app.join("Contents/Info.plist"), b"<plist/>").unwrap();
-        fs::set_permissions(app.join("Contents"), fs::Permissions::from_mode(0o555)).unwrap();
+        // Create the symlink before making `Contents` read-only (non-root CI runners can't add entries after).
         std::os::unix::fs::symlink("MacOS/Evil", app.join("Contents/link")).unwrap();
+        // A read-only sub-directory is only removable by root (the daemon's real situation); unprivileged
+        // CI runners skip that part.
+        // SAFETY: geteuid has no preconditions.
+        if unsafe { libc::geteuid() } == 0 {
+            fs::set_permissions(app.join("Contents"), fs::Permissions::from_mode(0o555)).unwrap();
+        }
         fs::set_permissions(&app, fs::Permissions::from_mode(0o750)).unwrap();
 
         let e =
@@ -1077,9 +1083,15 @@ mod tests {
                 & 0o777,
             0o755
         );
+        // SAFETY: geteuid has no preconditions.
+        let contents_mode = if unsafe { libc::geteuid() } == 0 {
+            0o555
+        } else {
+            0o755
+        };
         assert_eq!(
             fs::metadata(app.join("Contents")).unwrap().mode() & 0o777,
-            0o555
+            contents_mode
         );
         assert_eq!(fs::metadata(&app).unwrap().mode() & 0o777, 0o750);
         assert_eq!(
