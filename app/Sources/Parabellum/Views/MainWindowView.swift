@@ -10,11 +10,12 @@ struct MainWindowView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $model.section) {
+                // Plain tagged rows (no NavigationLink): the tag type must be exactly the selection type
+                // (`SidebarSection?`), otherwise macOS rows are not selectable.
                 ForEach(SidebarSection.allCases) { section in
-                    NavigationLink(value: section) {
-                        Label(section.title, systemImage: section.symbol)
-                    }
-                    .badge(model.badgeCount(for: section))
+                    Label(section.title, systemImage: section.symbol)
+                        .badge(model.badgeCount(for: section))
+                        .tag(Optional(section))
                 }
             }
             .navigationSplitViewColumnWidth(min: 190, ideal: 215)

@@ -300,7 +300,11 @@ final class AppModel: ObservableObject {
                 let version = result.newDbVersion.map { " — base \($0)" } ?? ""
                 banner = Banner(message: "Mise à jour terminée\(version).", isError: false)
             } else {
-                let detail = result.messages.last ?? "voir le journal du service"
+                // Every step reports a line ("ClamAV à jour", "Base : erreur…"): show them all, the failing
+                // step is rarely the last one.
+                let detail = result.messages.isEmpty
+                    ? "voir le journal du service"
+                    : result.messages.joined(separator: " · ")
                 banner = Banner(message: "Échec de la mise à jour : \(detail)", isError: true)
             }
             Task { await refreshStatus() }
