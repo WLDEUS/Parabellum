@@ -7,7 +7,13 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 MAKEFLAGS += --no-print-directory
 
-ROOT_DIR := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
+# The checkout path may contain spaces (".../Repos Perso/Parabellum"): make's path functions ($(dir),
+# $(abspath)…) split words on spaces, so use the directory make runs in. Run `make` from the repo root
+# (or `make -C <repo>`); every recipe quotes "$(ROOT_DIR)".
+ROOT_DIR := $(CURDIR)
+ifneq ($(shell test -f "$(ROOT_DIR)/Cargo.toml" && test -d "$(ROOT_DIR)/scripts" && echo ok),ok)
+$(error lancez make depuis la racine du dépôt Parabellum (ou make -C <chemin du dépôt>))
+endif
 UNAME_S := $(shell uname -s)
 TARGET := aarch64-apple-darwin
 CARGO ?= cargo
