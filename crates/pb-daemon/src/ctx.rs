@@ -64,6 +64,8 @@ pub struct Ctx {
     pub update_running: AtomicBool,
     /// Files restored by the user without allowing them: `path -> (sha256, ts)`; real-time skips them.
     pub restored: Mutex<HashMap<String, (String, i64)>>,
+    /// Hashes restored by the user in the last minute (the destination may differ from the original path).
+    pub restored_hashes: Mutex<HashMap<String, std::time::Instant>>,
     pub realtime_slots: Arc<Semaphore>,
 }
 
@@ -95,6 +97,7 @@ impl Ctx {
             status_dirty: Notify::new(),
             update_running: AtomicBool::new(false),
             restored: Mutex::new(HashMap::new()),
+            restored_hashes: Mutex::new(HashMap::new()),
             realtime_slots: Arc::new(Semaphore::new(REALTIME_SLOTS)),
         }
     }
@@ -204,8 +207,24 @@ impl Ctx {
         }
     }
 
-    /// Was this exact file (path + hash) restored by the user in the last 24 h?
+    /// Remember a hash being restored (valid 60 s, any path).
+    pub fn remember_restored_hash(&self, sha256: &str) {
+        let mut g = self.restored_hashes.lock().unwrap_or_else(|e| e.into_inner());
+        g.retain(|_, at| at.elapsed() < std::time::Duration::from_secs(60));
+        g.insert(sha256.to_ascii_lowercase(), std::time::Instant::now());
+    }
+
+    /// Was this file restored by the user: same path + hash in the last 24 h, or same hash in the last minute?
     pub fn was_restored(&self, path: &str, sha256: &str) -> bool {
+        let recent = self
+            .restored_hashes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&sha256.to_ascii_lowercase())
+            .is_some_and(|at| at.elapsed() < std::time::Duration::from_secs(60));
+        if recent {
+            return true;
+        }
         let now = pb_core::now_ts();
         let g = self.restored.lock().unwrap_or_else(|e| e.into_inner());
         matches!(g.get(path), Some((s, ts)) if s.eq_ignore_ascii_case(sha256) && now - *ts < 86_400)
@@ -264,6 +283,8 @@ mod tests {
         assert!(c.was_restored("/a", "abc"));
         assert!(!c.was_restored("/a", "def"));
         assert!(!c.was_restored("/b", "abc"));
+        c.remember_restored_hash("FFF");
+        assert!(c.was_restored("/anywhere.restored-1", "fff"));
     }
 
     #[test]

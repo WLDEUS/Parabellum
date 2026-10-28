@@ -426,16 +426,11 @@ pub async fn quarantine_path(
     Ok(entry)
 }
 
-/// Refuse system locations, our own tree and symlinks.
+/// Cheap pre-checks (the engine's `QuarantinePolicy` is the real gate: allowed roots, denied prefixes,
+/// no symlink in the path, content hash).
 pub fn check_quarantinable(ctx: &Ctx, path: &Path) -> Result<(), IpcError> {
     if !path.is_absolute() {
         return Err(IpcError::new(ErrorCode::BadRequest, "chemin absolu requis"));
-    }
-    if crate::system::is_protected_system_path(path) {
-        return Err(IpcError::new(
-            ErrorCode::PermissionDenied,
-            "fichier système protégé : jamais mis en quarantaine",
-        ));
     }
     if path.starts_with(&ctx.paths.root) {
         return Err(IpcError::new(
@@ -520,8 +515,8 @@ pub async fn restore_entry(
             .await?;
         sync_allowlist(ctx).await;
     } else {
-        // Before the file reappears, so the real-time pipeline does not grab it again.
-        ctx.remember_restored(&entry.original_path, &sha);
+        // Before the file reappears (possibly as `name.restored-N`), so real-time does not grab it again.
+        ctx.remember_restored_hash(&sha);
     }
     let q = ctx.backends.quarantine.clone();
     let id = entry_id.to_string();
@@ -529,6 +524,9 @@ pub async fn restore_entry(
         .await
         .map_err(|e| IpcError::new(ErrorCode::Internal, e.to_string()))?
         .map_err(IpcError::from)?;
+    if !allow {
+        ctx.remember_restored(&restored.to_string_lossy(), &sha);
+    }
     tracing::info!(id = entry_id, path = %restored.display(), allow, "file restored");
     resolve_alerts_for_entry(ctx, entry_id).await;
     ctx.status_dirty.notify_one();
@@ -769,6 +767,5 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(primary_detection(&r).unwrap().name, "c1");
-        assert_eq!(container_path("/a/b"), "/a/b");
     }
 }
