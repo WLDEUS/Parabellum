@@ -21,6 +21,14 @@
 //! ml/model_meta.json                  {"features_version":N,"threshold":f,"version":"YYYY.MM.DD","metrics":{...}}, optional
 //!                                     (`version` optional: defaults to a short SHA-256 of the model file)
 //! osquery/hunting.json                osquery pack (`{"queries":{name:{query,interval,description}}}`), optional
+//! zbt/zero-breach-toolkit.py          Zero Breach Toolkit single-file scanner (Apache-2.0), optional. The pipeline
+//!                                     only ships it after `gpg --verify` of the release's `SHA256SUMS.txt.asc` with
+//!                                     the pinned publisher key [`ZBT_SIGNER_FINGERPRINT`] and a SHA-256 match; the
+//!                                     daemon runs it with `/usr/bin/python3 -I` as the console user, never as root
+//! zbt/indicators/*                    its indicator cache (`manifest.json` + published sets fetched by
+//!                                     `--update` at the release-pinned commits), flat directory, optional
+//! zbt/meta.json                       {"version":"0.1.9","sha256":"<script hex>","indicators_updated_at":<unix>,
+//!                                     "signer_fingerprint":"C24E…A53C"}
 //! ```
 //! `.minisig` (minisign, Ed25519) signs the `.tar.gz`; the client verifies it with the public key
 //! compiled into the binary *before* unpacking, then checks every `files` digest.
@@ -33,6 +41,24 @@ pub const DB_FORMAT: u32 = 1;
 pub const BUNDLE_FILE: &str = "parabellum-db.tar.gz";
 pub const SIGNATURE_FILE: &str = "parabellum-db.tar.gz.minisig";
 pub const MANIFEST_FILE: &str = "manifest.json";
+/// Zero Breach Toolkit files inside the bundle (see the layout above).
+pub const ZBT_SCRIPT: &str = "zbt/zero-breach-toolkit.py";
+pub const ZBT_META: &str = "zbt/meta.json";
+pub const ZBT_INDICATORS_DIR: &str = "zbt/indicators";
+/// Full fingerprint of the Ed25519 key that signs Zero Breach Toolkit releases (docs/VERIFYING.md upstream).
+pub const ZBT_SIGNER_FINGERPRINT: &str = "C24EC92B12D6670A2516065F9B4D575499AFA53C";
+
+/// `zbt/meta.json`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ZbtMeta {
+    pub version: String,
+    /// Lowercase hex SHA-256 of `zbt/zero-breach-toolkit.py`.
+    pub sha256: String,
+    /// Unix time of the last successful `--update` of the indicators (0 = unknown).
+    pub indicators_updated_at: i64,
+    pub signer_fingerprint: String,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DbManifest {
@@ -51,7 +77,7 @@ pub struct DbManifest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DbSource {
     pub name: String,
-    /// "hashes", "yara", "domains", "clamav", "ml", "allowlist"
+    /// "hashes", "yara", "domains", "clamav", "ml", "allowlist", "spyware"
     pub kind: String,
     pub url: String,
     pub license: String,

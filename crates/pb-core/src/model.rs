@@ -140,6 +140,8 @@ pub enum ScanOrigin {
     Realtime,
     Scheduled,
     RetroHunt,
+    /// Mercenary-spyware trace check (Zero Breach Toolkit, run as the console user).
+    Spyware,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -427,7 +429,7 @@ pub enum ComponentState {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ComponentStatus {
     /// Machine name: `clamav`, `osquery`, `dnscrypt-proxy`, `lulu`, `blockblock`, `oversight`,
-    /// `parabellum`, `threat-db`, `ml-model`, `ublock-chrome`, `ublock-safari`.
+    /// `parabellum`, `threat-db`, `ml-model`, `ublock-chrome`, `ublock-safari`, `zero-breach-toolkit`.
     pub name: String,
     pub display_name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -445,6 +447,24 @@ pub struct ComponentStatus {
     /// Where the user can act (store page, System Settings deep link, release page).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub action_url: Option<String>,
+}
+
+/// One macOS security setting checked by the daemon (`posture` command).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PostureCheck {
+    /// Stable machine id: `sip`, `gatekeeper`, `filevault`, `firewall`, `security_updates`,
+    /// `macos_updates`, `xprotect`, `guest_account`, `remote_login`, `screen_sharing`.
+    pub id: String,
+    pub title: String,
+    /// The setting is in its safe state (false also when the check could not run: see `severity` info).
+    pub ok: bool,
+    /// Severity of the alert raised while `ok` is false (`info` = could not be checked).
+    pub severity: Severity,
+    /// What was observed (French).
+    pub detail: String,
+    /// How to fix it (French, "Réglages Système > …"); empty when `ok`.
+    #[serde(default)]
+    pub fix: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]

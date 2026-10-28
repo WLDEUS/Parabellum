@@ -65,6 +65,11 @@ public enum Request: Sendable, Equatable {
     case weeklyReport(weekOffset: Int = 0)
     /// → `JobStarted`
     case retroHunt(days: Int = 30)
+    /// Mercenary-spyware check (Zero Breach Toolkit); progress as `scan_progress` with origin `spyware`.
+    /// → `JobStarted`
+    case spywareScan
+    /// macOS security settings; `refresh` re-runs the checks. → `[PostureCheck]`
+    case posture(refresh: Bool = false)
     /// Start receiving events on this connection. → `null`
     case subscribe
 
@@ -100,6 +105,8 @@ public enum Request: Sendable, Equatable {
         case .setProtection: return "set_protection"
         case .weeklyReport: return "weekly_report"
         case .retroHunt: return "retro_hunt"
+        case .spywareScan: return "spyware_scan"
+        case .posture: return "posture"
         case .subscribe: return "subscribe"
         }
     }
@@ -108,7 +115,8 @@ public enum Request: Sendable, Equatable {
     public var isMutating: Bool {
         switch self {
         case .ping, .status, .listJobs, .getJob, .listAlerts, .listQuarantine, .listPersistence,
-             .listDevices, .listComponents, .getDns, .adblockStatus, .getConfig, .weeklyReport, .subscribe:
+             .listDevices, .listComponents, .getDns, .adblockStatus, .getConfig, .weeklyReport, .posture,
+             .subscribe:
             return false
         default:
             return true
@@ -152,7 +160,8 @@ public enum Request: Sendable, Equatable {
             o["auth"] = .string(auth)
         }
         switch self {
-        case .ping, .status, .listQuarantine, .listComponents, .getDns, .adblockStatus, .getConfig, .subscribe:
+        case .ping, .status, .listQuarantine, .listComponents, .getDns, .adblockStatus, .getConfig, .spywareScan,
+             .subscribe:
             break
         case let .scan(paths, recursive, useClamav):
             o["paths"] = .array(paths.map { JSONValue.string($0) })
@@ -221,6 +230,8 @@ public enum Request: Sendable, Equatable {
             o["week_offset"] = .int(Int64(weekOffset))
         case let .retroHunt(days):
             o["days"] = .int(Int64(days))
+        case let .posture(refresh):
+            o["refresh"] = .bool(refresh)
         }
         return .object(o)
     }

@@ -24,6 +24,9 @@ struct DashboardView: View {
                         monitorsCard(status.realtime)
                         daemonCard(status)
                     }
+                    if !model.posture.isEmpty {
+                        postureCard
+                    }
                     quickActions
                 }
                 .padding(20)
@@ -43,6 +46,49 @@ struct DashboardView: View {
         .task {
             await model.refreshStatus()
             await model.refreshNotificationStatus()
+            await model.loadPosture()
+        }
+    }
+
+    private var postureCard: some View {
+        Card(title: "Sécurité de macOS", symbol: "checkmark.shield") {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(model.posture) { check in
+                    postureRow(check)
+                }
+                Button {
+                    Task { await model.loadPosture(refresh: true) }
+                } label: {
+                    Label(model.isBusy("posture") ? "Vérification…" : "Vérifier à nouveau", systemImage: "arrow.clockwise")
+                }
+                .disabled(model.isBusy("posture"))
+                .controlSize(.small)
+                .padding(.top, 4)
+            }
+        }
+    }
+
+    private func postureRow(_ check: PostureCheck) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline) {
+                Image(systemName: check.ok ? "checkmark.circle.fill" : (check.isUnknown ? "questionmark.circle" : "exclamationmark.triangle.fill"))
+                    .foregroundStyle(check.ok ? Color.green : (check.isUnknown ? Color.secondary : check.severity.color))
+                Text(check.title)
+                Spacer()
+                if !check.ok && !check.isUnknown {
+                    SeverityBadge(severity: check.severity)
+                }
+            }
+            Text(check.detail)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if !check.ok && !check.fix.isEmpty {
+                Text(check.fix)
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
         }
     }
 
@@ -283,6 +329,14 @@ struct DashboardView: View {
                     Label("Rétro-chasse (30 j)", systemImage: "clock.arrow.circlepath")
                 }
                 .help("Ré-analyse les fichiers vus ces 30 derniers jours avec la base actuelle")
+                Button {
+                    model.section = .scan
+                    Task { await model.spywareScan() }
+                } label: {
+                    Label("Analyse anti-spyware", systemImage: "eye.trianglebadge.exclamationmark")
+                }
+                .disabled(model.isBusy("spyware"))
+                .help("Recherche des traces de logiciels espions (Pegasus, Predator, Graphite…) avec Zero Breach Toolkit, en lecture seule")
                 Button {
                     Task { await model.updateNow(.all) }
                 } label: {

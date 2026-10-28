@@ -116,7 +116,7 @@ pub async fn run(ctx: Arc<Ctx>) {
 }
 
 /// Wait (bounded) while on low battery. Returns false on shutdown.
-async fn wait_for_power(ctx: &Arc<Ctx>, max: Duration) -> bool {
+pub async fn wait_for_power(ctx: &Arc<Ctx>, max: Duration) -> bool {
     let mut shutdown = ctx.shutdown_rx();
     let deadline = tokio::time::Instant::now() + max;
     while ctx.should_defer_heavy_work() && tokio::time::Instant::now() < deadline {
@@ -321,6 +321,7 @@ async fn after_db_change(ctx: &Arc<Ctx>, before: &DbStatus, messages: &mut Vec<S
     } else if hashes_changed {
         hash_retro_check(ctx, 30).await;
     }
+    crate::spyware::after_db_update(ctx).await;
 }
 
 /// Alert when the DB has not been updated successfully for more than 3 days (deduplicated per day).

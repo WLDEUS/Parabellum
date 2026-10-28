@@ -66,6 +66,7 @@ extension ScanOrigin {
         case .realtime: return "Temps réel"
         case .scheduled: return "Planifiée"
         case .retroHunt: return "Rétro-chasse"
+        case .spyware: return "Anti-spyware"
         case .unknown: return "Autre"
         }
     }

@@ -154,6 +154,18 @@ pub enum Command {
         #[arg(long, default_value_t = 30)]
         days: u32,
     },
+    /// Rechercher des traces de logiciels espions (Pegasus, Predator, Graphite…) avec Zero Breach Toolkit.
+    SpywareScan {
+        /// Rendre la main tout de suite (suivi : parabellum job <id>).
+        #[arg(long)]
+        no_wait: bool,
+    },
+    /// Réglages de sécurité de macOS (SIP, Gatekeeper, FileVault, coupe-feu…).
+    Posture {
+        /// Refaire les vérifications maintenant.
+        #[arg(long)]
+        refresh: bool,
+    },
     /// Afficher les événements du daemon en continu (Ctrl-C pour quitter).
     Watch,
     /// Vérifier que le daemon répond.
@@ -404,6 +416,14 @@ mod tests {
                 target: UpdateArg::Db,
                 no_wait: true
             }
+        ));
+        assert!(matches!(
+            parse(&["spyware-scan", "--no-wait"]).unwrap().command,
+            Command::SpywareScan { no_wait: true }
+        ));
+        assert!(matches!(
+            parse(&["posture"]).unwrap().command,
+            Command::Posture { refresh: false }
         ));
         assert!(matches!(
             parse(&["dns", "off"]).unwrap().command,

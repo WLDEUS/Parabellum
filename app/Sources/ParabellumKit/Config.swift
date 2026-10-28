@@ -19,11 +19,12 @@ public struct Config: Codable, Sendable, Hashable {
     public var energy = EnergyConfig()
     public var privacy = PrivacyConfig()
     public var notifications = NotificationsConfig()
+    public var security = SecurityConfig()
 
     public init() {}
 
     enum CodingKeys: String, CodingKey {
-        case scan, realtime, ml, dns, devices, persistence, updates, energy, privacy, notifications
+        case scan, realtime, ml, dns, devices, persistence, updates, energy, privacy, notifications, security
     }
 
     public init(from decoder: Decoder) throws {
@@ -39,6 +40,7 @@ public struct Config: Codable, Sendable, Hashable {
         energy = try c.decodeOr(.energy, energy)
         privacy = try c.decodeOr(.privacy, privacy)
         notifications = try c.decodeOr(.notifications, notifications)
+        security = try c.decodeOr(.security, security)
     }
 
     /// Same rules as `Config::validate` in Rust (messages in French). Empty = valid.
@@ -61,6 +63,12 @@ public struct Config: Codable, Sendable, Hashable {
         }
         if energy.pauseOnBatteryBelow < 0 || energy.pauseOnBatteryBelow > 100 {
             errors.append("Le seuil de batterie doit être compris entre 0 et 100 %.")
+        }
+        if security.spywareScanWeekday < 1 || security.spywareScanWeekday > 7 {
+            errors.append("Le jour de l'analyse anti-spyware doit être compris entre 1 (lundi) et 7 (dimanche).")
+        }
+        if security.spywareScanHour < 0 || security.spywareScanHour > 23 {
+            errors.append("L'heure de l'analyse anti-spyware doit être comprise entre 0 et 23.")
         }
         if persistence.fullScanIntervalMinutes < 0 {
             errors.append("L'intervalle d'énumération de la persistance ne peut pas être négatif.")
@@ -322,6 +330,35 @@ public struct UpdatesConfig: Codable, Sendable, Hashable {
         try c.encode(autoUpdateComponents, forKey: .autoUpdateComponents)
         try c.encode(autoUpdateApp, forKey: .autoUpdateApp)
         try c.encode(freshclam, forKey: .freshclam)
+    }
+}
+
+public struct SecurityConfig: Codable, Sendable, Hashable {
+    /// Weekly mercenary-spyware check (Zero Breach Toolkit), also after an indicator update (at most daily).
+    public var spywareScanWeekly: Bool = true
+    /// 1 = Monday … 7 = Sunday.
+    public var spywareScanWeekday: Int = 3
+    /// Local hour 0-23.
+    public var spywareScanHour: Int = 13
+    /// Daily macOS security settings check (SIP, Gatekeeper, FileVault, firewall…).
+    public var postureChecks: Bool = true
+
+    public init() {}
+
+    enum CodingKeys: String, CodingKey {
+        case spywareScanWeekly = "spyware_scan_weekly"
+        case spywareScanWeekday = "spyware_scan_weekday"
+        case spywareScanHour = "spyware_scan_hour"
+        case postureChecks = "posture_checks"
+    }
+
+    public init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        spywareScanWeekly = try c.decodeOr(.spywareScanWeekly, spywareScanWeekly)
+        spywareScanWeekday = try c.decodeOr(.spywareScanWeekday, spywareScanWeekday)
+        spywareScanHour = try c.decodeOr(.spywareScanHour, spywareScanHour)
+        postureChecks = try c.decodeOr(.postureChecks, postureChecks)
     }
 }
 

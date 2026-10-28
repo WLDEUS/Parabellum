@@ -5,7 +5,8 @@ Each source is fetched independently. When a fetch fails, its data is carried ov
   state — from the previous bundle's category file;
 * YARA sources from the previous bundle (``yara/<source>__*.yar``);
 * hash sources need no carry-over: the rolling index lives in the state;
-* the ML model from the previous bundle's ``ml/``.
+* the ML model from the previous bundle's ``ml/``;
+* Zero Breach Toolkit from the previous bundle's ``zbt/`` (see :mod:`pipeline.zbt`).
 The source is then reported with ``fresh: false`` and its last successful ``fetched_at``.
 """
 
@@ -19,6 +20,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import zbt
 from .abusech import (
     MB_API,
     MalwareBazaar,
@@ -120,6 +122,8 @@ class Context:
     ml_dir: Path | None = None
     #: Set by the builder: number of hashes currently in the rolling index (for bootstrap decisions).
     index_size: int = 0
+    #: Previous bundle directory (signature-checked), when any.
+    prev_dir: Path | None = None
 
 
 @dataclass
@@ -258,6 +262,21 @@ def f_ml_local(spec: SourceSpec, ctx: Context) -> Fetched:
     )
 
 
+#: Injectable for tests (real GnuPG / real subprocess in CI).
+ZBT_VERIFIER: Callable[[], zbt.Verifier] = zbt.GpgVerifier
+ZBT_RUNNER: zbt.Runner = zbt.run_update
+
+
+def f_zbt_release(spec: SourceSpec, ctx: Context) -> Fetched:
+    """Zero Breach Toolkit: latest GPG-verified release + indicator cache (see pipeline/zbt.py)."""
+    key_file = ctx.repo_root / str(spec.opt("key_file", "pipeline/data/zbt-signing-key.asc"))
+    previous = ctx.prev_dir / "zbt" / "indicators" if ctx.prev_dir else None
+    files, count = zbt.fetch_release(
+        spec.url or zbt.DEFAULT_API, ctx.http, ctx.now, ZBT_VERIFIER(), ZBT_RUNNER, key_file, previous
+    )
+    return Fetched(files=files, count=count)
+
+
 FETCHERS: dict[str, Callable[[SourceSpec, Context], Fetched]] = {
     "mb_export": f_mb_export,
     "mb_api_macos": f_mb_api_macos,
@@ -269,6 +288,7 @@ FETCHERS: dict[str, Callable[[SourceSpec, Context], Fetched]] = {
     "yara_local": f_yara_local,
     "local_file": f_local_file,
     "ml_local": f_ml_local,
+    "zbt_release": f_zbt_release,
 }
 
 
@@ -303,6 +323,10 @@ def carry_over(spec: SourceSpec, state_dir: Path | None, prev_dir: Path | None) 
         out.count = 1 if len(out.files) == 2 else 0
         if out.count == 0:
             out.files = {}
+    elif spec.fetcher == "zbt_release" and prev_dir is not None:
+        out.files = zbt.carry_over(prev_dir)
+        prefix = zbt.BUNDLE_INDICATORS + "/"
+        out.count = sum(1 for k in out.files if k.startswith(prefix) and not k.endswith("/manifest.json"))
     return out
 
 
@@ -337,7 +361,7 @@ def fetch_all(
             got = carry_over(spec, state_dir, prev_dir)
             fresh = False
             fetched_at = int(last_success.get(spec.name, {}).get("fetched_at", 0))
-            if got.count == 0 and not got.files and spec.kind in ("ml",):
+            if got.count == 0 and not got.files and spec.kind in ("ml", "spyware"):
                 payloads[spec.name] = got
                 continue  # no model at all: do not list an empty ML source
         payloads[spec.name] = got

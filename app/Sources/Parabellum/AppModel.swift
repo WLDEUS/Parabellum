@@ -94,6 +94,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var installingComponents: Set<String> = []
     @Published private(set) var adblock: AdblockStatus?
     @Published private(set) var weeklyReport: WeeklyReport?
+    /// macOS security settings (`posture`), shown on the dashboard.
+    @Published private(set) var posture: [PostureCheck] = []
     @Published var reportWeekOffset = 0
 
     // Config (+ raw JSON to preserve unknown keys on save)
@@ -743,6 +745,27 @@ final class AppModel: ObservableObject {
             activeScanJobId = started.jobId
             selectedJobId = started.jobId
             banner = Banner(message: "Rétro-chasse lancée sur les fichiers des \(days) derniers jours.", isError: false)
+        }
+    }
+
+    /// Mercenary-spyware check (Zero Breach Toolkit, up to 30 min, followed like a scan).
+    func spywareScan() async {
+        let started = await perform("spyware") {
+            try await self.call(.spywareScan, as: JobStarted.self)
+        }
+        if let started {
+            activeScanJobId = started.jobId
+            selectedJobId = started.jobId
+            banner = Banner(
+                message: "Analyse anti-spyware lancée (Zero Breach Toolkit, jusqu'à 30 minutes). Les résultats arrivent dans les alertes.",
+                isError: false
+            )
+        }
+    }
+
+    func loadPosture(refresh: Bool = false) async {
+        await perform("posture", quiet: !refresh) {
+            self.posture = try await self.call(.posture(refresh: refresh), as: [PostureCheck].self)
         }
     }
 

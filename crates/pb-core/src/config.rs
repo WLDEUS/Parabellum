@@ -30,6 +30,7 @@ pub struct Config {
     pub energy: EnergyConfig,
     pub privacy: PrivacyConfig,
     pub notifications: NotificationsConfig,
+    pub security: SecurityConfig,
 }
 
 impl Config {
@@ -98,6 +99,16 @@ impl Config {
                     "update URL must use https: {url}"
                 )));
             }
+        }
+        if !(1..=7).contains(&self.security.spyware_scan_weekday) {
+            return Err(ConfigError::Invalid(
+                "security.spyware_scan_weekday must be 1 (Monday)..7 (Sunday)".into(),
+            ));
+        }
+        if self.security.spyware_scan_hour > 23 {
+            return Err(ConfigError::Invalid(
+                "security.spyware_scan_hour must be 0..23".into(),
+            ));
         }
         if self.energy.pause_on_battery_below > 100 {
             return Err(ConfigError::Invalid(
@@ -371,6 +382,31 @@ impl Default for NotificationsConfig {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SecurityConfig {
+    /// Weekly mercenary-spyware check (Zero Breach Toolkit shipped in the threat DB), also run after a DB
+    /// update that changes its indicators (at most daily). Deferred on low battery.
+    pub spyware_scan_weekly: bool,
+    /// Day of the weekly check: 1 = Monday … 7 = Sunday.
+    pub spyware_scan_weekday: u8,
+    /// Hour (local time, 0-23) of the weekly check.
+    pub spyware_scan_hour: u8,
+    /// Daily check of the macOS security settings (SIP, Gatekeeper, FileVault, firewall…), with alerts.
+    pub posture_checks: bool,
+}
+
+impl Default for SecurityConfig {
+    fn default() -> Self {
+        Self {
+            spyware_scan_weekly: true,
+            spyware_scan_weekday: 3,
+            spyware_scan_hour: 13,
+            posture_checks: true,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -396,6 +432,10 @@ mod tests {
         assert!(Config::from_toml("[dns]\nlisten = \"0.0.0.0:53\"\n").is_err());
         assert!(Config::from_toml("[dns]\nlisten = \"[::1]:53\"\n").is_ok());
         assert!(Config::from_toml("[updates]\ndb_base_url = \"http://evil\"\n").is_err());
+        assert!(Config::from_toml("[security]\nspyware_scan_weekday = 0\n").is_err());
+        assert!(Config::from_toml("[security]\nspyware_scan_hour = 24\n").is_err());
+        let c = Config::from_toml("[security]\nspyware_scan_weekly = false\n").unwrap();
+        assert!(!c.security.spyware_scan_weekly && c.security.posture_checks);
     }
 
     #[test]

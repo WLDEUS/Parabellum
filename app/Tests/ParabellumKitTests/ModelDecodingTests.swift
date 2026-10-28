@@ -23,6 +23,17 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(status.lastScanDate, Date(timeIntervalSince1970: 1_793_000_060))
     }
 
+    func testPosture() throws {
+        let list = try Fixtures.decode([PostureCheck].self, from: "posture.json")
+        XCTAssertEqual(list.count, 2)
+        XCTAssertEqual(list[0].id, "sip")
+        XCTAssertTrue(list[0].ok)
+        XCTAssertEqual(list[0].severity, .high)
+        XCTAssertFalse(list[1].ok)
+        XCTAssertFalse(list[1].isUnknown)
+        XCTAssertTrue(list[1].fix.hasPrefix("Réglages Système"))
+    }
+
     func testScanReport() throws {
         let report = try Fixtures.decode(ScanReport.self, from: "scan_report.json")
         XCTAssertEqual(report.kind, .macho)
@@ -201,6 +212,10 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(DeviceKind.networkInterface.rawValue, "network_interface")
         XCTAssertEqual(DeviceKind.wifiNetwork.rawValue, "wifi_network")
         XCTAssertEqual(ScanOrigin.retroHunt.rawValue, "retro_hunt")
+        XCTAssertEqual(ScanOrigin.spyware.rawValue, "spyware")
+        XCTAssertFalse(Request.spywareScan.requiresAdmin)
+        XCTAssertTrue(Request.spywareScan.isMutating)
+        XCTAssertFalse(Request.posture().isMutating)
         XCTAssertEqual(ComponentState.needsUserAction.rawValue, "needs_user_action")
         XCTAssertEqual(PersistenceKind.authorizationPlugin.rawValue, "authorization_plugin")
         XCTAssertTrue(Severity.critical > Severity.high)

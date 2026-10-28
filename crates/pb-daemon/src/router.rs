@@ -191,7 +191,16 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
                 job_id: uuid::Uuid::new_v4().to_string(),
             })
         }
-        Request::ListComponents => json(&ctx.backends.updater.list_components(&ctx.config()).await),
+        Request::ListComponents => {
+            let mut list = ctx.backends.updater.list_components(&ctx.config()).await;
+            let db = ctx.paths.db_current();
+            if let Ok(zbt) =
+                tokio::task::spawn_blocking(move || crate::spyware::component_status(&db)).await
+            {
+                list.push(zbt);
+            }
+            json(&list)
+        }
         Request::InstallComponent { name } => {
             validate_component_name(&name)?;
             let ctx2 = ctx.clone();
@@ -265,6 +274,10 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
         Request::RetroHunt { days } => json(&JobStarted {
             job_id: scheduler::start_retro_hunt(ctx, days).await?,
         }),
+        Request::SpywareScan => json(&JobStarted {
+            job_id: crate::spyware::start(ctx).await?,
+        }),
+        Request::Posture { refresh } => json(&crate::posture::get(ctx, refresh).await?),
         Request::Subscribe => Ok(Value::Null),
     }
 }

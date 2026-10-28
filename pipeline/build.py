@@ -162,6 +162,7 @@ def build(args: argparse.Namespace, http: Fetcher | None = None) -> int:
         key=key,
         ml_dir=args.ml_dir,
         index_size=len(index.index),
+        prev_dir=prev_dir,
     )
     network_fetchers = {
         "mb_export",
@@ -171,6 +172,7 @@ def build(args: argparse.Namespace, http: Fetcher | None = None) -> int:
         "domain_list",
         "yara_tarball",
         "yara_raw",
+        "zbt_release",
     }
     payloads, infos, errors = fetch_all(
         ctx, state_dir, prev_dir, last_success, only=lambda s: not (args.offline and s.fetcher in network_fetchers)

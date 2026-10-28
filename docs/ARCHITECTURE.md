@@ -62,6 +62,13 @@
 - **ML jamais seul juge** : le score ML rend un fichier « suspect », jamais « malveillant », et ne met rien en quarantaine.
 - **Quarantaine réversible** : fichier neutralisé (XOR) + métadonnées, restauration exacte (chemin, droits, propriétaire).
   Aucune suppression sans action explicite.
+- **Anti-spyware (Zero Breach Toolkit)** : le scanner Python (lecture seule, hors ligne) et ses indicateurs arrivent
+  dans la base signée (`zbt/`), après vérification GPG en CI de la clé de l'éditeur (empreinte épinglée). Le daemon
+  le lance chaque semaine (et après un changement d'indicateurs, au plus une fois par jour) avec
+  `/usr/bin/python3 -I`, **sous l'identité de l'utilisateur connecté, jamais en root**, en QoS arrière-plan, 30 min max.
+- **Posture macOS** : SIP, Gatekeeper, FileVault, coupe-feu, mises à jour de sécurité, XProtect, compte invité, SSH,
+  partage d'écran vérifiés chaque jour (outils système, chemins absolus, délais) ; alerte dédupliquée par réglage
+  à corriger, résolue automatiquement une fois corrigé (`parabellum posture`, carte « Sécurité de macOS »).
 - **DNS en mode fail-open** : si dnscrypt-proxy tombe, le daemon restaure les DNS d'origine pour ne jamais couper Internet.
 
 Voir aussi : `crates/pb-core/src/ipc.rs` (protocole), `crates/pb-core/src/db.rs` (format de la base),
