@@ -4,6 +4,8 @@ name: Nightly threat DB
 # publishes it to the `db-latest` release + a dated `db-<version>` release. If any check fails (sanity
 # guard, signature mismatch…) nothing is uploaded: clients keep yesterday's bundle.
 # Secrets: ABUSECH_AUTH_KEY (abuse.ch), MINISIGN_SECRET_KEY (unencrypted minisign secret key).
+# Zero Breach Toolkit (pipeline/zbt.py): latest release via the GitHub API (GH_TOKEN), shipped only after
+# gpg verifies SHA256SUMS.txt.asc with the pinned publisher key; its `--update` (network) runs here, in CI.
 
 on:
   schedule:
@@ -57,7 +59,7 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y --no-install-recommends minisign 7zip
+          sudo apt-get install -y --no-install-recommends minisign 7zip gnupg dirmngr
           python -m pip install -r pipeline/requirements.txt
       - name: Restore clean corpus cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

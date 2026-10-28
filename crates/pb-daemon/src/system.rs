@@ -52,6 +52,16 @@ pub fn console_user() -> Option<ConsoleUser> {
 
 /// `(login name, home directory)` of a uid.
 pub fn user_by_uid(uid: u32) -> Option<(String, PathBuf)> {
+    passwd_entry(uid).map(|(name, home, _)| (name, home))
+}
+
+/// Primary group id of a uid.
+pub fn user_gid(uid: u32) -> Option<u32> {
+    passwd_entry(uid).map(|(_, _, gid)| gid)
+}
+
+/// `(login name, home directory, primary gid)` from the password database.
+fn passwd_entry(uid: u32) -> Option<(String, PathBuf, u32)> {
     use std::ffi::CStr;
     let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
     let mut buf = vec![0 as libc::c_char; 16 * 1024];
@@ -76,7 +86,7 @@ pub fn user_by_uid(uid: u32) -> Option<(String, PathBuf)> {
     let home = unsafe { CStr::from_ptr(pwd.pw_dir) }
         .to_string_lossy()
         .into_owned();
-    Some((name, PathBuf::from(home)))
+    Some((name, PathBuf::from(home), pwd.pw_gid))
 }
 
 /// Credentials of the process at the other end of a Unix socket (captured when it connected).

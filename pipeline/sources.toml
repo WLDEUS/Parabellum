@@ -293,3 +293,16 @@ kind = "ml"
 fetcher = "ml_local"
 url = "https://github.com/WLDEUS/Parabellum/releases/tag/ml-latest"
 license = "MIT"
+
+[[source]]
+# Zero Breach Toolkit (mercenary-spyware traces: Pegasus, Predator, Graphite, Candiru…), latest GitHub
+# release. Shipped only after `gpg --verify` of SHA256SUMS.txt.asc by the pinned publisher key
+# C24E C92B 12D6 670A 2516 065F 9B4D 5754 99AF A53C and a SHA-256 match (pipeline/zbt.py); its
+# `--update` indicator cache is bundled under zbt/indicators/. Run on the Mac by parabellumd as the
+# console user, never as root.
+name = "zero-breach-toolkit"
+kind = "spyware"
+fetcher = "zbt_release"
+url = "https://api.github.com/repos/interplains/Zero-Breach-Toolkit/releases/latest"
+license = "Apache-2.0 (code), CC0 / publishers' terms (indicators)"
+key_file = "pipeline/data/zbt-signing-key.asc"

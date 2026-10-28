@@ -9,13 +9,22 @@ struct MainWindowView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(selection: $model.section) {
-                ForEach(SidebarSection.allCases) { section in
-                    NavigationLink(value: section) {
-                        Label(section.title, systemImage: section.symbol)
+            // Explicit buttons instead of `List(selection:)`: list selection is unreliable in this
+            // menu-bar (accessory) app, rows were not clickable on the user's Mac.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(SidebarSection.allCases) { section in
+                        SidebarRow(
+                            section: section,
+                            selected: (model.section ?? .dashboard) == section,
+                            badge: model.badgeCount(for: section)
+                        ) {
+                            model.section = section
+                        }
                     }
-                    .badge(model.badgeCount(for: section))
                 }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 10)
             }
             .navigationSplitViewColumnWidth(min: 190, ideal: 215)
         } detail: {
@@ -121,5 +130,42 @@ struct UnreachableView: View {
         }
         .padding(compact ? 0 : 40)
         .frame(maxWidth: compact ? .infinity : 620)
+    }
+}
+
+/// One clickable sidebar entry (icon, title, optional badge, selection highlight).
+private struct SidebarRow: View {
+    let section: SidebarSection
+    let selected: Bool
+    let badge: Int
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: section.symbol)
+                    .frame(width: 18)
+                Text(section.title)
+                Spacer(minLength: 4)
+                if badge > 0 {
+                    Text("\(badge)")
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(Color.secondary.opacity(0.25)))
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .foregroundStyle(selected ? Color.white : Color.primary)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(selected ? Color.accentColor : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(section.title)
     }
 }

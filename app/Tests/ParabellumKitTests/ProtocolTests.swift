@@ -36,6 +36,8 @@ final class ProtocolTests: XCTestCase {
             .setProtection(pausedMinutes: 30),
             .weeklyReport(weekOffset: 1),
             .retroHunt(days: 30),
+            .spywareScan,
+            .posture(refresh: true),
             .subscribe,
         ]
     }
@@ -169,6 +171,8 @@ final class ProtocolTests: XCTestCase {
 
         let empty = try JSONDecoder().decode(Config.self, from: Data("{}".utf8))
         XCTAssertEqual(empty, Config())
+        XCTAssertTrue(empty.security.spywareScanWeekly)
+        XCTAssertEqual(empty.security.spywareScanWeekday, 3)
     }
 
     func testSetConfigPreservesUnknownKeys() throws {

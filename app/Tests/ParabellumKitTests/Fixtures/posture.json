@@ -1,0 +1,18 @@
+[
+  {
+    "detail": "SIP activée",
+    "fix": "",
+    "id": "sip",
+    "ok": true,
+    "severity": "high",
+    "title": "Protection de l'intégrité du système (SIP)"
+  },
+  {
+    "detail": "Coupe-feu désactivé",
+    "fix": "Réglages Système > Réseau > Coupe-feu : activer",
+    "id": "firewall",
+    "ok": false,
+    "severity": "medium",
+    "title": "Coupe-feu de l'application"
+  }
+]

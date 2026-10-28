@@ -228,6 +228,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     w("alerts", serde_json::to_value(vec![alert()])?)?;
     w(
+        "posture",
+        serde_json::to_value(vec![
+            PostureCheck {
+                id: "sip".into(),
+                title: "Protection de l'intégrité du système (SIP)".into(),
+                ok: true,
+                severity: Severity::High,
+                detail: "SIP activée".into(),
+                fix: String::new(),
+            },
+            PostureCheck {
+                id: "firewall".into(),
+                title: "Coupe-feu de l'application".into(),
+                ok: false,
+                severity: Severity::Medium,
+                detail: "Coupe-feu désactivé".into(),
+                fix: "Réglages Système > Réseau > Coupe-feu : activer".into(),
+            },
+        ])?,
+    )?;
+    w(
         "quarantine",
         serde_json::to_value(vec![QuarantineEntry {
             id: "1b4e28ba-2fa1-11d2-883f-0016d3cca427".into(),
@@ -418,6 +439,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Request::SetProtection { paused_minutes: 30 },
         Request::WeeklyReport { week_offset: 1 },
         Request::RetroHunt { days: 30 },
+        Request::SpywareScan,
+        Request::Posture { refresh: true },
         Request::Subscribe,
     ];
     // Which commands need administrator approval (`auth` or root), same order/ids as requests.jsonl.

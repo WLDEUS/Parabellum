@@ -26,6 +26,7 @@ struct SettingsView: View {
                     persistenceSection
                     updatesSection
                     energySection
+                    securitySection
                     privacySection
                     notificationsSection
                 }
@@ -236,6 +237,29 @@ struct SettingsView: View {
             Toggle("Analyses en priorité basse (cœurs efficience)", isOn: $draft.energy.backgroundQos)
         } header: {
             Text("Énergie")
+        }
+    }
+
+    private static let weekdays = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+
+    private var securitySection: some View {
+        Section {
+            Toggle("Analyse anti-spyware hebdomadaire (Zero Breach Toolkit)", isOn: $draft.security.spywareScanWeekly)
+            Picker("Jour", selection: $draft.security.spywareScanWeekday) {
+                ForEach(1...7, id: \.self) { day in
+                    Text(Self.weekdays[day - 1]).tag(day)
+                }
+            }
+            .disabled(!draft.security.spywareScanWeekly)
+            Stepper(value: $draft.security.spywareScanHour, in: 0...23) {
+                LabeledContent("Heure", value: "\(draft.security.spywareScanHour) h")
+            }
+            .disabled(!draft.security.spywareScanWeekly)
+            Toggle("Vérifier chaque jour les réglages de sécurité de macOS", isOn: $draft.security.postureChecks)
+        } header: {
+            Text("Sécurité")
+        } footer: {
+            Text("L'analyse anti-spyware tourne en lecture seule, sans réseau, avec tes droits (jamais en root). Elle est aussi relancée quand ses indicateurs changent (au plus une fois par jour).")
         }
     }
 

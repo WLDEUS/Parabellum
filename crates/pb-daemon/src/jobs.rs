@@ -328,6 +328,48 @@ pub async fn run_job(ctx: &Arc<Ctx>, job: Arc<Job>) {
     persist(ctx, &job).await;
     ctx.bus.publish(DaemonEvent::ScanProgress(job.summary()));
 
+    let failed = if job.origin() == ScanOrigin::Spyware {
+        run_spyware(ctx, &job).await
+    } else {
+        run_engine(ctx, &job).await
+    };
+    job.finished_at.store(pb_core::now_ts(), Ordering::Relaxed);
+    job.set_state(if failed {
+        JobState::Failed
+    } else if job.is_cancelled() {
+        JobState::Cancelled
+    } else {
+        JobState::Finished
+    });
+    persist(ctx, &job).await;
+    let summary = job.summary();
+    ctx.bump_stat(StatField::FilesScanned, summary.files_scanned)
+        .await;
+    tracing::info!(
+        job = %job.id, state = ?summary.state, files = summary.files_scanned,
+        threats = summary.threats, errors = summary.errors, "scan job done"
+    );
+    ctx.bus.publish(DaemonEvent::ScanFinished(summary));
+    ctx.status_dirty.notify_one();
+}
+
+/// Spyware check (Zero Breach Toolkit): no per-file progress; `files_scanned` = checks that ran.
+async fn run_spyware(ctx: &Arc<Ctx>, job: &Arc<Job>) -> bool {
+    *job.current.lock().unwrap_or_else(|e| e.into_inner()) =
+        Some("Zero Breach Toolkit (analyse en cours, jusqu'à 30 min)".into());
+    ctx.bus.publish(DaemonEvent::ScanProgress(job.summary()));
+    let c = crate::spyware::scan(ctx, &job.cancel).await;
+    job.files.store(c.checks, Ordering::Relaxed);
+    job.threats.store(c.threats, Ordering::Relaxed);
+    job.errors.store(c.errors, Ordering::Relaxed);
+    if c.cancelled {
+        job.cancel();
+    }
+    c.failed
+}
+
+/// Engine scan of the job's roots. Returns true when the scan task failed.
+async fn run_engine(ctx: &Arc<Ctx>, job: &Arc<Job>) -> bool {
     let (tx, mut rx) = mpsc::channel::<ScanReport>(256);
     let engine = ctx.engine();
     let cfg = ctx.config();
@@ -365,7 +407,7 @@ pub async fn run_job(ctx: &Arc<Ctx>, job: Arc<Job>) {
     loop {
         tokio::select! {
             r = rx.recv() => match r {
-                Some(report) => handle_finding(ctx, &job, report, &rc).await,
+                Some(report) => handle_finding(ctx, job, report, &rc).await,
                 None => break,
             },
             _ = ticker.tick() => {
@@ -377,31 +419,13 @@ pub async fn run_job(ctx: &Arc<Ctx>, job: Arc<Job>) {
             }
         }
     }
-    let failed = match handle.await {
+    match handle.await {
         Ok(()) => false,
         Err(e) => {
             tracing::error!(job = %job.id, error = %e, "scan task failed");
             true
         }
-    };
-    job.finished_at.store(pb_core::now_ts(), Ordering::Relaxed);
-    job.set_state(if failed {
-        JobState::Failed
-    } else if job.is_cancelled() {
-        JobState::Cancelled
-    } else {
-        JobState::Finished
-    });
-    persist(ctx, &job).await;
-    let summary = job.summary();
-    ctx.bump_stat(StatField::FilesScanned, summary.files_scanned)
-        .await;
-    tracing::info!(
-        job = %job.id, state = ?summary.state, files = summary.files_scanned,
-        threats = summary.threats, errors = summary.errors, "scan job done"
-    );
-    ctx.bus.publish(DaemonEvent::ScanFinished(summary));
-    ctx.status_dirty.notify_one();
+    }
 }
 
 /// Report of a file inside a container (`<container>!/<inner>`): informative only; the engine rolls its

@@ -147,6 +147,7 @@ pub fn origin(o: ScanOrigin) -> &'static str {
         ScanOrigin::Realtime => "temps réel",
         ScanOrigin::Scheduled => "planifiée",
         ScanOrigin::RetroHunt => "rétro-chasse",
+        ScanOrigin::Spyware => "anti-spyware",
     }
 }
 
@@ -406,6 +407,39 @@ pub fn alerts(list: &[Alert]) -> String {
         &rows,
     );
     o.push_str("\nDétail : parabellum alerts --json ; agir : parabellum resolve <n°> <action>\n");
+    o
+}
+
+/// macOS security settings.
+pub fn posture(list: &[PostureCheck]) -> String {
+    if list.is_empty() {
+        return "Aucune vérification disponible (macOS uniquement).\n".into();
+    }
+    let rows: Vec<Vec<String>> = list
+        .iter()
+        .map(|c| {
+            vec![
+                if c.ok {
+                    "OK".into()
+                } else if c.severity == Severity::Info {
+                    "?".into()
+                } else {
+                    "À CORRIGER".into()
+                },
+                severity(c.severity).into(),
+                c.title.clone(),
+                c.detail.clone(),
+            ]
+        })
+        .collect();
+    let mut o = table(&["ÉTAT", "GRAVITÉ", "RÉGLAGE", "CONSTAT"], &rows);
+    let fixes: Vec<&PostureCheck> = list.iter().filter(|c| !c.ok && !c.fix.is_empty()).collect();
+    if !fixes.is_empty() {
+        o.push_str("\nCorrections :\n");
+        for c in fixes {
+            o.push_str(&format!("- {} : {}\n", c.title, c.fix));
+        }
+    }
     o
 }
 
@@ -753,6 +787,32 @@ mod tests {
         assert_eq!(duration(45), "45 s");
         assert_eq!(duration(3 * 3600 + 12 * 60), "3 h 12 min");
         assert_eq!(duration(2 * 86_400 + 3600), "2 j 1 h");
+    }
+
+    #[test]
+    fn posture_table() {
+        let list = vec![
+            PostureCheck {
+                id: "sip".into(),
+                title: "SIP".into(),
+                ok: true,
+                severity: Severity::High,
+                detail: "SIP activée".into(),
+                fix: String::new(),
+            },
+            PostureCheck {
+                id: "firewall".into(),
+                title: "Coupe-feu".into(),
+                ok: false,
+                severity: Severity::Medium,
+                detail: "désactivé".into(),
+                fix: "Réglages Système > Réseau > Coupe-feu".into(),
+            },
+        ];
+        let o = posture(&list);
+        assert!(o.contains("À CORRIGER") && o.contains("Corrections") && o.contains("Coupe-feu"));
+        assert!(posture(&[]).contains("macOS"));
+        assert_eq!(origin(ScanOrigin::Spyware), "anti-spyware");
     }
 
     #[test]

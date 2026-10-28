@@ -157,6 +157,16 @@ pub enum Request {
         #[serde(default = "default_retro_days")]
         days: u32,
     },
+    /// Check this Mac for traces of mercenary spyware (Zero Breach Toolkit from the threat DB, run as the
+    /// console user, read-only). Progress / end are pushed as `scan_progress` / `scan_finished` with
+    /// origin `spyware`; matches become alerts. -> [`JobStarted`]
+    SpywareScan,
+    /// macOS security settings (SIP, Gatekeeper, FileVault, firewall…). `refresh` re-runs the checks
+    /// (at most every 30 s) instead of returning the last results. -> `Vec<PostureCheck>`
+    Posture {
+        #[serde(default)]
+        refresh: bool,
+    },
     /// Start receiving [`EventEnvelope`]s on this connection. -> `null`
     Subscribe,
 }
@@ -219,6 +229,7 @@ impl Request {
                 | Request::AdblockStatus
                 | Request::GetConfig
                 | Request::WeeklyReport { .. }
+                | Request::Posture { .. }
                 | Request::Subscribe
         )
     }
@@ -442,6 +453,18 @@ mod tests {
         let s = serde_json::to_string(&e).unwrap();
         assert_eq!(s, r#"{"id":1,"auth":"QUJD","cmd":"get_config"}"#);
         assert_eq!(serde_json::from_str::<RequestEnvelope>(&s).unwrap(), e);
+    }
+
+    #[test]
+    fn spyware_and_posture_requests() {
+        let r: RequestEnvelope = serde_json::from_str(r#"{"id":1,"cmd":"spyware_scan"}"#).unwrap();
+        assert_eq!(r.request, Request::SpywareScan);
+        assert!(!Request::SpywareScan.requires_admin());
+        assert!(Request::SpywareScan.is_mutating());
+        let r: RequestEnvelope = serde_json::from_str(r#"{"id":2,"cmd":"posture"}"#).unwrap();
+        assert_eq!(r.request, Request::Posture { refresh: false });
+        assert!(!r.request.is_mutating());
+        assert!(!r.request.requires_admin());
     }
 
     #[test]

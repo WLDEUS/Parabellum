@@ -50,11 +50,14 @@ year="$(date -u '+%Y')"
 
 mkdir -p "$out_dir"
 out_dir="$(cd "$out_dir" && pwd -P)"
-app="$out_dir/Parabellum.app"
-
+final_app="$out_dir/Parabellum.app"
+# Assemble and sign outside the checkout: folders synced by iCloud / File Provider (Desktop, Documents)
+# keep re-adding extended attributes, which makes codesign fail ("resource fork, Finder information,
+# or similar detritus not allowed"). The signed bundle is copied back without them.
 work="$(mktemp -d "${TMPDIR:-/tmp}/parabellum-app.XXXXXX")"
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
+app="$work/Parabellum.app"
 
 swift_args=(-c release --arch arm64)
 
@@ -145,4 +148,7 @@ pb_codesign "$app"
 /usr/bin/codesign --display --verbose=2 "$app" 2>&1 | grep -E '^(Identifier|Authority|Signature|TeamIdentifier)' >&2 || true
 pb_print_requirement "$app"
 
-pb_ok "$app"
+rm -rf "$final_app"
+mkdir -p "$out_dir"
+/usr/bin/ditto --norsrc --noextattr --noqtn "$app" "$final_app"
+pb_ok "$final_app"

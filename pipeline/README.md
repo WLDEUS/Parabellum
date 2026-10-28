@@ -65,6 +65,7 @@ dated releases older than 14 days.
 | signature-base (DRL 1.1) | 9 macOS files fetched and compiled, zero hit on the clean corpus |
 | Homebrew bottles | Anonymous ghcr.io pulls use `Authorization: Bearer QQ==` (Homebrew `brew.sh`); bottle URL/SHA-256 from `formulae.brew.sh/api/formula/<name>.json`. ghcr.io unreachable from the container: untested live |
 | Trusted Team IDs | Read from the code signatures of official artefacts (see `data/trusted_team_ids.txt`) |
+| Zero Breach Toolkit (2026-10-28) | Source read (`cli.py`, `feeds.py`, `report.py`, `contract.py`, `docs/VERIFYING.md`): releases carry `zero-breach-toolkit.py`, `SHA256SUMS.txt` and detached `.asc` signatures made with the Ed25519 key `C24E C92B 12D6 670A 2516 065F 9B4D 5754 99AF A53C` (`tools/make_release.py` also attaches `archivegenocide-signing-key.asc`). `pipeline/zbt.py` discovers asset names at runtime, imports the key from keys.openpgp.org, the release's `*key*.asc` or `data/zbt-signing-key.asc` (not committed yet: the key could not be downloaded from the build container), and refuses anything not signed by that exact primary key or whose SHA-256 differs. **Not verified live**: the GitHub API, the asset names of a real release, keyserver availability (blocked in the container) |
 
 ## Detection measurement and the GitHub Acceptable Use caveat
 

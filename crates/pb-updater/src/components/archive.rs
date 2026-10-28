@@ -13,14 +13,16 @@ const MAX_ENTRIES: usize = 5_000;
 const MACHO_ARM64_HEADER: [u8; 8] = [0xcf, 0xfa, 0xed, 0xfe, 0x0c, 0x00, 0x00, 0x01];
 
 fn is_binary_entry(name: &str) -> bool {
-    // Expected layout: `macos-arm64/dnscrypt-proxy` (one directory level). Everything else
-    // (LICENSE, example-*.toml / *.txt, localhost.pem) is ignored.
+    // Layouts seen: `dnscrypt-proxy` at the archive root (2.1.x macOS zips) or `macos-arm64/dnscrypt-proxy`
+    // (one directory level). AppleDouble files (`._dnscrypt-proxy`), LICENSE, example-*.toml / *.txt and
+    // localhost.pem are ignored.
     let parts: Vec<&str> = name
         .trim_start_matches("./")
         .split('/')
         .filter(|p| !p.is_empty())
         .collect();
-    matches!(parts.as_slice(), [dir, "dnscrypt-proxy"] if *dir != ".." && *dir != ".")
+    matches!(parts.as_slice(), ["dnscrypt-proxy"])
+        || matches!(parts.as_slice(), [dir, "dnscrypt-proxy"] if *dir != ".." && *dir != "." && *dir != "__MACOSX")
 }
 
 /// Extract the `dnscrypt-proxy` binary from a `.zip` or `.tar.gz` release archive to `dest`
@@ -224,7 +226,10 @@ pub(crate) mod tests {
     fn targz_and_entry_names() {
         assert!(is_binary_entry("macos-arm64/dnscrypt-proxy"));
         assert!(is_binary_entry("./macos-arm64/dnscrypt-proxy"));
-        assert!(!is_binary_entry("dnscrypt-proxy"));
+        // 2.1.20 macOS zip: binary at the root, next to an AppleDouble `._dnscrypt-proxy`.
+        assert!(is_binary_entry("dnscrypt-proxy"));
+        assert!(!is_binary_entry("._dnscrypt-proxy"));
+        assert!(!is_binary_entry("__MACOSX/dnscrypt-proxy"));
         assert!(!is_binary_entry("../dnscrypt-proxy"));
         assert!(!is_binary_entry("a/b/dnscrypt-proxy"));
         let d = tempfile::tempdir().unwrap();

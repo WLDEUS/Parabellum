@@ -397,6 +397,20 @@ fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
                 )
             })?;
         }
+        Command::SpywareScan { no_wait } => {
+            return run_job(
+                cli,
+                io,
+                &mut c,
+                Request::SpywareScan,
+                *no_wait,
+                "Analyse anti-spyware",
+            )
+        }
+        Command::Posture { refresh } => {
+            let l: Vec<PostureCheck> = c.call(Request::Posture { refresh: *refresh })?;
+            emit(cli, io, &l, |l| format::posture(l))?;
+        }
         Command::Watch => {
             c.subscribe()?;
             c.set_timeout(None)?;
@@ -448,11 +462,23 @@ fn scan(cli: &Cli, io: &mut Output<'_>, c: &mut Client, a: &ScanArgs) -> Result<
         recursive: !a.no_recursive,
         use_clamav,
     };
-    if a.no_wait {
+    run_job(cli, io, c, req, a.no_wait, "Analyse")
+}
+
+/// Start a job and, unless `no_wait`, follow it until it finishes, then print its detail.
+fn run_job(
+    cli: &Cli,
+    io: &mut Output<'_>,
+    c: &mut Client,
+    req: Request,
+    no_wait: bool,
+    what: &str,
+) -> Result<i32, CliError> {
+    if no_wait {
         let j: JobStarted = c.call(req)?;
         emit(cli, io, &j, |j| {
             format!(
-                "Analyse lancée : {} (suivi : parabellum job {})\n",
+                "{what} lancée : {} (suivi : parabellum job {})\n",
                 j.job_id, j.job_id
             )
         })?;
@@ -461,7 +487,7 @@ fn scan(cli: &Cli, io: &mut Output<'_>, c: &mut Client, a: &ScanArgs) -> Result<
     c.subscribe()?;
     let j: JobStarted = c.call(req)?;
     if !cli.json {
-        writeln!(io.out, "Analyse {} lancée…", j.job_id)?;
+        writeln!(io.out, "{what} {} lancée…", j.job_id)?;
         io.out.flush()?;
     }
     c.set_timeout(None)?;

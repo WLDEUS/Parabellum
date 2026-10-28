@@ -70,6 +70,12 @@
       "~/Applications"
     ]
   },
+  "security": {
+    "posture_checks": true,
+    "spyware_scan_hour": 13,
+    "spyware_scan_weekday": 3,
+    "spyware_scan_weekly": true
+  },
   "updates": {
     "app_releases_api": "https://api.github.com/repos/WLDEUS/Parabellum/releases",
     "auto_update_app": false,

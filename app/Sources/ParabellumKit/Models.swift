@@ -153,6 +153,7 @@ public struct ScanReport: Codable, Sendable, Hashable, Identifiable {
 public enum ScanOrigin: String, TolerantEnum {
     case manual, downloads, volume, realtime, scheduled
     case retroHunt = "retro_hunt"
+    case spyware
     case unknown
     public static let fallback: ScanOrigin = .unknown
     public init(from decoder: Decoder) throws { self = try Self.decodeTolerantly(from: decoder) }
@@ -489,6 +490,37 @@ public enum ComponentState: String, TolerantEnum {
     case unknown
     public static let fallback: ComponentState = .unknown
     public init(from decoder: Decoder) throws { self = try Self.decodeTolerantly(from: decoder) }
+}
+
+/// One macOS security setting (`posture` command).
+public struct PostureCheck: Codable, Sendable, Hashable, Identifiable {
+    /// `sip`, `gatekeeper`, `filevault`, `firewall`, `security_updates`, `macos_updates`, `xprotect`,
+    /// `guest_account`, `remote_login`, `screen_sharing`.
+    public let id: String
+    public let title: String
+    /// Safe state. False with severity `info` = could not be checked.
+    public let ok: Bool
+    public let severity: Severity
+    public let detail: String
+    /// How to fix it (French), empty when ok.
+    public let fix: String
+
+    /// Could not be checked (tool missing, timeout).
+    public var isUnknown: Bool { !ok && severity == .info }
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, ok, severity, detail, fix
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        title = try c.decode(String.self, forKey: .title)
+        ok = try c.decode(Bool.self, forKey: .ok)
+        severity = try c.decode(Severity.self, forKey: .severity)
+        detail = try c.decode(String.self, forKey: .detail)
+        fix = try c.decodeIfPresent(String.self, forKey: .fix) ?? ""
+    }
 }
 
 public struct ComponentStatus: Codable, Sendable, Hashable, Identifiable {
