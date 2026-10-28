@@ -1,0 +1,227 @@
+Building for production...
+[0/5] Write sources
+[2/5] Write swift-version--79AA4F9932D1E87A.txt
+[4/6] Compiling ParabellumKit Config.swift
+[5/7] Compiling Parabellum AdminAuthorizer.swift
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel.swift:78:42: error: 'Alert' is ambiguous for type lookup in this context
+ 76 | 
+ 77 |     // Alerts
+ 78 |     @Published private(set) var alerts: [Alert] = []
+    |                                          `- error: 'Alert' is ambiguous for type lookup in this context
+ 79 |     @Published var includeResolvedAlerts = false
+ 80 |     @Published var selectedAlertId: Int64?
+
+/Users/runner/work/Parabellum/Parabellum/app/Sources/ParabellumKit/Models.swift:276:15: note: found this candidate
+274 | }
+275 | 
+276 | public struct Alert: Codable, Sendable, Hashable, Identifiable {
+    |               `- note: found this candidate
+277 |     /// SQLite row id.
+278 |     public let id: Int64
+
+SwiftUI.Alert:6:15: note: found this candidate
+ 4 | @available(watchOS, introduced: 6.0, deprecated: 100000.0, message: "Use View.alert(_:isPresented:presenting:actions:) instead.")
+ 5 | @available(visionOS, introduced: 1.0, deprecated: 100000.0, message: "Use View.alert(_:isPresented:presenting:actions:) instead.")
+ 6 | public struct Alert {
+   |               `- note: found this candidate
+ 7 |     public init(title: Text, message: Text? = nil, dismissButton: Alert.Button? = nil)
+ 8 |     public init(title: Text, message: Text? = nil, primaryButton: Alert.Button, secondaryButton: Alert.Button)
+
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel.swift:319:39: error: 'Alert' is ambiguous for type lookup in this context
+317 |     }
+318 | 
+319 |     private func handleAlert(_ alert: Alert) {
+    |                                       `- error: 'Alert' is ambiguous for type lookup in this context
+320 |         if alert.status == .open || includeResolvedAlerts {
+321 |             upsert(alert, into: &alerts)
+
+/Users/runner/work/Parabellum/Parabellum/app/Sources/ParabellumKit/Models.swift:276:15: note: found this candidate
+274 | }
+275 | 
+276 | public struct Alert: Codable, Sendable, Hashable, Identifiable {
+    |               `- note: found this candidate
+277 |     /// SQLite row id.
+278 |     public let id: Int64
+
+SwiftUI.Alert:6:15: note: found this candidate
+ 4 | @available(watchOS, introduced: 6.0, deprecated: 100000.0, message: "Use View.alert(_:isPresented:presenting:actions:) instead.")
+ 5 | @available(visionOS, introduced: 1.0, deprecated: 100000.0, message: "Use View.alert(_:isPresented:presenting:actions:) instead.")
+ 6 | public struct Alert {
+   |               `- note: found this candidate
+ 7 |     public init(title: Text, message: Text? = nil, dismissButton: Alert.Button? = nil)
+ 8 |     public init(title: Text, message: Text? = nil, primaryButton: Alert.Button, secondaryButton: Alert.Button)
+
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel.swift:245:61: error: cannot infer contextual base in reference to member 'open'
+243 | 
+244 |     var openAlertsCount: Int {
+245 |         status?.openAlerts ?? alerts.filter { $0.status == .open }.count
+    |                                                             `- error: cannot infer contextual base in reference to member 'open'
+246 |     }
+247 | 
+
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel.swift:320:29: error: cannot infer contextual base in reference to member 'open'
+318 | 
+319 |     private func handleAlert(_ alert: Alert) {
+320 |         if alert.status == .open || includeResolvedAlerts {
+    |                             `- error: cannot infer contextual base in reference to member 'open'
+321 |             upsert(alert, into: &alerts)
+322 |         } else {
+
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel.swift:325:32: error: cannot infer contextual base in reference to member 'open'
+323 |             alerts.removeAll { $0.id == alert.id }
+324 |         }
+325 |         guard alert.status == .open, !notifiedAlertIds.contains(alert.id) else { return }
+    |                                `- error: cannot infer contextual base in reference to member 'open'
+326 |         notifiedAlertIds.insert(alert.id)
+327 |         let preferences = config?.notifications ?? NotificationsConfig()
+
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel.swift:476:39: error: generic parameter 'T' could not be inferred
+396 |     /// ~5 min); an `auth_required` answer (expired authorization, newer daemon) is retried once with a
+397 |     /// fresh one. User cancellation throws `AdminAuthorizationError.cancelled` and nothing is sent.
+398 |     private func call<T: Decodable>(_ request: Request, as type: T.Type, forceAuth: Bool = false) async throws -> T {
+    |                  `- note: in call to function 'call(_:as:forceAuth:)'
+399 |         try await withAdminAuth(request, forceAuth: forceAuth) { auth in
+400 |             try await self.client.call(request, as: T.self, auth: auth)
+    :
+474 |     func loadAlerts() async {
+475 |         await perform("alerts", quiet: true) {
+476 |             let list = try await self.call(
+    |                                       `- error: generic parameter 'T' could not be inferred
+477 |                 .listAlerts(limit: 200, includeResolved: self.includeResolvedAlerts),
+478 |                 as: [Alert].self
+
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/Views/AlertsView.swift:9:34: error: 'Alert' is ambiguous for type lookup in this context
+  7 |     @State private var minimumSeverity: Severity = .info
+  8 | 
+  9 |     private var filteredAlerts: [Alert] {
+    |                                  `- error: 'Alert' is ambiguous for type lookup in this context
+ 10 |         model.alerts.filter { alert in
+ 11 |             (kindFilter == nil || alert.kind == kindFilter) && alert.severity >= minimumSeverity
+
+/Users/runner/work/Parabellum/Parabellum/app/Sources/ParabellumKit/Models.swift:276:15: note: found this candidate
+274 | }
+275 | 
+276 | public struct Alert: Codable, Sendable, Hashable, Identifiable {
+    |               `- note: found this candidate
+277 |     /// SQLite row id.
+278 |     public let id: Int64
+
+SwiftUI.Alert:6:15: note: found this candidate
+ 4 | @available(watchOS, introduced: 6.0, deprecated: 100000.0, message: "Use View.alert(_:isPresented:presenting:actions:) instead.")
+ 5 | @available(visionOS, introduced: 1.0, deprecated: 100000.0, message: "Use View.alert(_:isPresented:presenting:actions:) instead.")
+ 6 | public struct Alert {
+   |               `- note: found this candidate
+ 7 |     public init(title: Text, message: Text? = nil, dismissButton: Alert.Button? = nil)
+ 8 |     public init(title: Text, message: Text? = nil, primaryButton: Alert.Button, secondaryButton: Alert.Button)
+
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/Views/AlertsView.swift:15:32: error: 'Alert' is ambiguous for type lookup in this context
+ 13 |     }
+ 14 | 
+ 15 |     private var selectedAlert: Alert? {
+    |                                `- error: 'Alert' is ambiguous for type lookup in this context
+ 16 |         guard let id = model.selectedAlertId else { return nil }
+ 17 |         return model.alerts.first { $0.id == id }
+
+/Users/runner/work/Parabellum/Parabellum/app/Sources/ParabellumKit/Models.swift:276:15: note: found this candidate
+274 | }
+275 | 
+276 | public struct Alert: Codable, Sendable, Hashable, Identifiable {
+    |               `- note: found this candidate
+277 |     /// SQLite row id.
+278 |     public let id: Int64
+
+SwiftUI.Alert:6:15: note: found this candidate
+ 4 | @available(watchOS, introduced: 6.0, deprecated: 100000.0, message: "Use View.alert(_:isPresented:presenting:actions:) instead.")
+ 5 | @available(visionOS, introduced: 1.0, deprecated: 100000.0, message: "Use View.alert(_:isPresented:presenting:actions:) instead.")
+ 6 | public struct Alert {
+   |               `- note: found this candidate
+ 7 |     public init(title: Text, message: Text? = nil, dismissButton: Alert.Button? = nil)
+ 8 |     public init(title: Text, message: Text? = nil, primaryButton: Alert.Button, secondaryButton: Alert.Button)
+
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/Views/AlertsView.swift:99:16: error: 'Alert' is ambiguous for type lookup in this context
+ 97 | 
+ 98 | private struct AlertRow: View {
+ 99 |     let alert: Alert
+    |                `- error: 'Alert' is ambiguous for type lookup in this context
+100 | 
+101 |     var body: some View {
+
+/Users/runner/work/Parabellum/Parabellum/app/Sources/ParabellumKit/Models.swift:276:15: note: found this candidate
+274 | }
+275 | 
+276 | public struct Alert: Codable, Sendable, Hashable, Identifiable {
+    |               `- note: found this candidate
+277 |     /// SQLite row id.
+278 |     public let id: Int64
+
+SwiftUI.Alert:6:15: note: found this candidate
+ 4 | @available(watchOS, introduced: 6.0, deprecated: 100000.0, message: "Use View.alert(_:isPresented:presenting:actions:) instead.")
+ 5 | @available(visionOS, introduced: 1.0, deprecated: 100000.0, message: "Use View.alert(_:isPresented:presenting:actions:) instead.")
+ 6 | public struct Alert {
+   |               `- note: found this candidate
+ 7 |     public init(title: Text, message: Text? = nil, dismissButton: Alert.Button? = nil)
+ 8 |     public init(title: Text, message: Text? = nil, primaryButton: Alert.Button, secondaryButton: Alert.Button)
+
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/Views/AlertsView.swift:131:16: error: 'Alert' is ambiguous for type lookup in this context
+129 | private struct AlertDetailView: View {
+130 |     @EnvironmentObject private var model: AppModel
+131 |     let alert: Alert
+    |                `- error: 'Alert' is ambiguous for type lookup in this context
+132 |     @State private var pendingAction: AlertAction?
+133 | 
+
+/Users/runner/work/Parabellum/Parabellum/app/Sources/ParabellumKit/Models.swift:276:15: note: found this candidate
+274 | }
+275 | 
+276 | public struct Alert: Codable, Sendable, Hashable, Identifiable {
+    |               `- note: found this candidate
+277 |     /// SQLite row id.
+278 |     public let id: Int64
+
+SwiftUI.Alert:6:15: note: found this candidate
+ 4 | @available(watchOS, introduced: 6.0, deprecated: 100000.0, message: "Use View.alert(_:isPresented:presenting:actions:) instead.")
+ 5 | @available(visionOS, introduced: 1.0, deprecated: 100000.0, message: "Use View.alert(_:isPresented:presenting:actions:) instead.")
+ 6 | public struct Alert {
+   |               `- note: found this candidate
+ 7 |     public init(title: Text, message: Text? = nil, dismissButton: Alert.Button? = nil)
+ 8 |     public init(title: Text, message: Text? = nil, primaryButton: Alert.Button, secondaryButton: Alert.Button)
+
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/Views/AlertsView.swift:103:37: error: value of type '(Binding<Bool>, () -> Alert) -> some View' has no member 'kind'
+101 |     var body: some View {
+102 |         HStack(alignment: .top, spacing: 10) {
+103 |             Image(systemName: alert.kind.symbol)
+    |                                     `- error: value of type '(Binding<Bool>, () -> Alert) -> some View' has no member 'kind'
+104 |                 .foregroundStyle(alert.severity.color)
+105 |                 .frame(width: 20)
+
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/Views/AlertsView.swift:104:40: error: value of type '(Binding<Bool>, () -> Alert) -> some View' has no member 'severity'
+102 |         HStack(alignment: .top, spacing: 10) {
+103 |             Image(systemName: alert.kind.symbol)
+104 |                 .foregroundStyle(alert.severity.color)
+    |                                        `- error: value of type '(Binding<Bool>, () -> Alert) -> some View' has no member 'severity'
+105 |                 .frame(width: 20)
+106 |             VStack(alignment: .leading, spacing: 3) {
+
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/Views/AlertsView.swift:134:25: error: the compiler is unable to type-check this expression in reasonable time; try breaking up the expression into distinct sub-expressions
+132 |     @State private var pendingAction: AlertAction?
+133 | 
+134 |     var body: some View {
+    |                         `- error: the compiler is unable to type-check this expression in reasonable time; try breaking up the expression into distinct sub-expressions
+135 |         ScrollView {
+136 |             VStack(alignment: .leading, spacing: 14) {
+
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/Views/AlertsView.swift:221:33: error: value of type '(Binding<Bool>, () -> Alert) -> some View' has no member 'path'
+219 |     private var links: some View {
+220 |         HStack(spacing: 12) {
+221 |             if let path = alert.path {
+    |                                 `- error: value of type '(Binding<Bool>, () -> Alert) -> some View' has no member 'path'
+222 |                 Button("Afficher dans le Finder") {
+223 |                     model.revealInFinder(path)
+
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/Views/AlertsView.swift:247:24: error: value of type '(Binding<Bool>, () -> Alert) -> some View' has no member 'id'
+245 |     private func run(_ action: AlertAction) {
+246 |         pendingAction = nil
+247 |         let id = alert.id
+    |                        `- error: value of type '(Binding<Bool>, () -> Alert) -> some View' has no member 'id'
+248 |         Task { await model.resolve(alertId: id, action: action) }
+249 |     }
