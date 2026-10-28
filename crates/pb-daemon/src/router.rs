@@ -205,6 +205,30 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
             validate_component_name(&name)?;
             let ctx2 = ctx.clone();
             tokio::spawn(async move {
+                // Zero Breach Toolkit ships inside the signed threat-DB bundle: "installing" it means
+                // fetching the latest bundle, then reporting its status (the app waits for this event).
+                if name == crate::spyware::COMPONENT_NAME {
+                    if let Err(e) =
+                        crate::scheduler::run_updates(&ctx2, pb_core::model::UpdateTarget::Db).await
+                    {
+                        tracing::info!(error = %e.message, "zero-breach-toolkit: DB update skipped");
+                    }
+                    let db = ctx2.paths.db_current();
+                    if let Ok(mut st) =
+                        tokio::task::spawn_blocking(move || crate::spyware::component_status(&db))
+                            .await
+                    {
+                        if st.state == ComponentState::NotInstalled {
+                            st.message = Some(
+                                "absent de la base actuelle : il arrive avec la prochaine base de menaces"
+                                    .into(),
+                            );
+                        }
+                        ctx2.bus.publish(DaemonEvent::Component(st));
+                    }
+                    ctx2.status_dirty.notify_one();
+                    return;
+                }
                 let cfg = ctx2.config();
                 match ctx2.backends.updater.install_component(&name, &cfg).await {
                     Ok(st) => ctx2.bus.publish(DaemonEvent::Component(st)),
