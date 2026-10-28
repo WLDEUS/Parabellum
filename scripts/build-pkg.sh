@@ -94,7 +94,7 @@ chmod 0755 "$root" "$root/Library" "$root/Library/Application Support" \
 chmod 0775 "$root/Applications"
 
 pb_info "Payload : Parabellum.app"
-/usr/bin/ditto "$dist/Parabellum.app" "$root/Applications/Parabellum.app"
+/usr/bin/ditto --norsrc --noextattr --noqtn "$dist/Parabellum.app" "$root/Applications/Parabellum.app"
 /usr/bin/codesign --verify --deep --strict "$root/Applications/Parabellum.app"
 
 pb_info "Payload : binaires (hardened runtime)"
