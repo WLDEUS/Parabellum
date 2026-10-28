@@ -16,6 +16,8 @@ fn main() -> ExitCode {
             out: &mut out,
             err: &mut err,
             progress,
+            // SAFETY: geteuid has no preconditions.
+            is_root: unsafe { libc::geteuid() } == 0,
         },
     );
     ExitCode::from(code.clamp(0, 255) as u8)

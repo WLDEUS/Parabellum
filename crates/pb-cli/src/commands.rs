@@ -31,18 +31,99 @@ pub enum CliError {
     Io(#[from] std::io::Error),
 }
 
+/// Shown when a protection-weakening command is run without root.
+pub const SUDO_MESSAGE: &str =
+    "Cette commande réduit la protection : relancez-la avec sudo (sudo parabellum …)";
+
 /// Where output goes.
 pub struct Output<'a> {
     pub out: &'a mut dyn Write,
     pub err: &'a mut dyn Write,
     /// Show live progress on `err` (it is a terminal).
     pub progress: bool,
+    /// Running as root (`sudo`): needed for commands that weaken protection.
+    pub is_root: bool,
+}
+
+/// Representative request of a command, for the `requires_admin` policy of pb-core.
+fn admin_probe(cmd: &Command) -> Option<Request> {
+    let none = String::new;
+    Some(match cmd {
+        Command::Resolve { alert_id, action } => Request::ResolveAlert {
+            alert_id: *alert_id,
+            action: parse_wire_enum(action)?,
+        },
+        Command::Quarantine {
+            action: Some(QuarantineCmd::Add { .. }),
+        } => Request::QuarantinePath { path: none() },
+        Command::Quarantine {
+            action: Some(QuarantineCmd::Restore { allow, .. }),
+        } => Request::Restore {
+            entry_id: none(),
+            allow: *allow,
+        },
+        Command::Quarantine {
+            action: Some(QuarantineCmd::Delete { .. }),
+        } => Request::DeleteQuarantined { entry_id: none() },
+        Command::Fp { .. } => Request::ReportFalsePositive {
+            sha256: none(),
+            path: None,
+            note: None,
+        },
+        Command::Persistence {
+            action: Some(_), ..
+        } => Request::SetPersistenceStatus {
+            item_id: none(),
+            status: PersistenceStatus::Approved,
+        },
+        Command::Devices {
+            action: Some(c), ..
+        } => Request::SetDeviceTrust {
+            device_id: none(),
+            trust: match c {
+                DevicesCmd::Trust { .. } => DeviceTrust::Trusted,
+                DevicesCmd::Block { .. } => DeviceTrust::Blocked,
+                DevicesCmd::Forget { .. } => DeviceTrust::Unknown,
+            },
+        },
+        Command::Dns { state: DnsArg::Off } => Request::SetDns { enabled: false },
+        Command::Config {
+            action: ConfigCmd::Set { .. },
+        } => Request::SetConfig {
+            config: Config::default(),
+        },
+        Command::Pause { minutes } => Request::SetProtection {
+            paused_minutes: *minutes,
+        },
+        Command::Components {
+            action: Some(ComponentsCmd::Auto { state, .. }),
+        } => Request::SetComponentAutoUpdate {
+            name: none(),
+            auto_update: *state == OnOff::On,
+        },
+        _ => return None,
+    })
+}
+
+/// The command needs administrator approval (`sudo`).
+pub fn needs_admin(cmd: &Command) -> bool {
+    admin_probe(cmd)
+        .map(|r| r.requires_admin())
+        .unwrap_or(false)
 }
 
 /// Run a parsed command line; returns the process exit code.
 pub fn run(cli: &Cli, io: &mut Output<'_>) -> i32 {
+    if needs_admin(&cli.command) && !io.is_root {
+        let _ = writeln!(io.err, "parabellum : {SUDO_MESSAGE}");
+        return EXIT_ERROR;
+    }
     match execute(cli, io) {
         Ok(code) => code,
+        Err(CliError::Client(ClientError::Daemon(e))) if e.code == ErrorCode::AuthRequired => {
+            let _ = writeln!(io.err, "parabellum : {SUDO_MESSAGE}");
+            EXIT_ERROR
+        }
         Err(e) => {
             let _ = writeln!(io.err, "parabellum : {e}");
             EXIT_ERROR
@@ -504,12 +585,63 @@ mod tests {
                 out: &mut out,
                 err: &mut err,
                 progress: false,
+                is_root: true,
             },
         );
         assert_eq!(code, EXIT_ERROR);
         assert!(String::from_utf8(err)
             .unwrap()
             .contains("impossible de joindre parabellumd"));
+    }
+
+    #[test]
+    fn admin_commands_need_sudo() {
+        use clap::Parser;
+        let p = |a: &[&str]| {
+            Cli::try_parse_from(std::iter::once("parabellum").chain(a.iter().copied())).unwrap()
+        };
+        for args in [
+            &["dns", "off"][..],
+            &["fp", "ab"],
+            &["pause", "10"],
+            &["config", "set", "x.toml"],
+            &["quarantine", "restore", "id"],
+            &["quarantine", "add", "/x"],
+            &["devices", "trust", "d"],
+            &["devices", "forget", "d"],
+            &["persistence", "approve", "i"],
+            &["resolve", "1", "allow"],
+            &["components", "auto", "clamav", "off"],
+        ] {
+            assert!(needs_admin(&p(args).command), "{args:?}");
+        }
+        for args in [
+            &["dns", "on"][..],
+            &["status"],
+            &["devices", "block", "d"],
+            &["resolve", "1", "quarantine"],
+            &["scan", "/x"],
+            &["components", "auto", "clamav", "on"],
+            &["resume"],
+        ] {
+            assert!(!needs_admin(&p(args).command), "{args:?}");
+        }
+        // Refused before connecting.
+        let cli = p(&["--socket", "/nonexistent/x.sock", "dns", "off"]);
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        let code = run(
+            &cli,
+            &mut Output {
+                out: &mut out,
+                err: &mut err,
+                progress: false,
+                is_root: false,
+            },
+        );
+        assert_eq!(code, EXIT_ERROR);
+        assert!(String::from_utf8(err)
+            .unwrap()
+            .contains("relancez-la avec sudo"));
     }
 
     #[test]

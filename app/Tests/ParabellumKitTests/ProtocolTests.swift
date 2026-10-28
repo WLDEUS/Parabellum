@@ -249,7 +249,7 @@ final class ProtocolTests: XCTestCase {
         }
 
         if case .event(.alert(let alert)) = messages[3] {
-            XCTAssertEqual(alert, try Fixtures.decode([Alert].self, from: "alerts.json").first)
+            XCTAssertEqual(alert, try Fixtures.decode([SecurityAlert].self, from: "alerts.json").first)
         } else {
             XCTFail("alert")
         }

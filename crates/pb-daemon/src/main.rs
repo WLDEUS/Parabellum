@@ -110,6 +110,7 @@ fn main() -> ExitCode {
             backends,
             start_monitors: true,
             start_scheduler: true,
+            access: None,
         };
         let d = match daemon::start(opts).await {
             Ok(d) => d,

@@ -1,6 +1,6 @@
 name: CI
 
-# Linux jobs on every push/PR; the (costly) macOS arm64 job only on main, tags and manual runs.
+# Linux and macOS arm64 jobs on every push to main, tag and PR (public repository: hosted runners are free).
 # Every build/test step tees its output to ci-logs/*.log. On failure, compiler/test errors are turned
 # into check-run annotations (readable through the API without access to the logs) and, for the macOS
 # job, the log tails are pushed to the orphan branch `ci-logs` under runs/<run_id>/.
@@ -10,7 +10,7 @@ on:
     branches: [main]
     tags: ["v*"]
   pull_request:
-    types: [opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
@@ -134,8 +134,7 @@ jobs:
 
   macos:
     name: macOS arm64 build + pkg
-    # On PRs only when the PR carries the `build-macos` label (macOS minutes are costly on a private repo).
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'build-macos')
+    # Public repository: GitHub-hosted macOS minutes are free, so this runs on every push to main, tag and PR.
     runs-on: macos-15 # arm64 (Apple silicon) image
     timeout-minutes: 90
     permissions:

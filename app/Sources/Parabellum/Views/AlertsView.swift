@@ -6,13 +6,13 @@ struct AlertsView: View {
     @State private var kindFilter: AlertKind?
     @State private var minimumSeverity: Severity = .info
 
-    private var filteredAlerts: [Alert] {
+    private var filteredAlerts: [SecurityAlert] {
         model.alerts.filter { alert in
             (kindFilter == nil || alert.kind == kindFilter) && alert.severity >= minimumSeverity
         }
     }
 
-    private var selectedAlert: Alert? {
+    private var selectedAlert: SecurityAlert? {
         guard let id = model.selectedAlertId else { return nil }
         return model.alerts.first { $0.id == id }
     }
@@ -96,7 +96,7 @@ struct AlertsView: View {
 }
 
 private struct AlertRow: View {
-    let alert: Alert
+    let alert: SecurityAlert
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -128,73 +128,20 @@ private struct AlertRow: View {
 
 private struct AlertDetailView: View {
     @EnvironmentObject private var model: AppModel
-    let alert: Alert
+    let alert: SecurityAlert
     @State private var pendingAction: AlertAction?
 
+    // The body is split into small computed views: one big ViewBuilder expression makes the Swift
+    // type-checker time out ("unable to type-check this expression in reasonable time").
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: alert.kind.symbol)
-                        .font(.system(size: 30))
-                        .foregroundStyle(alert.severity.color)
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(alert.title)
-                            .font(.title2.weight(.semibold))
-                            .textSelection(.enabled)
-                        HStack(spacing: 6) {
-                            SeverityBadge(severity: alert.severity)
-                            Pill(text: alert.kind.label, color: .secondary)
-                            Pill(text: alert.status.label, color: alert.status == .open ? .orange : .green)
-                        }
-                    }
-                }
-
+                header
                 Text(alert.message)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    InfoRow(label: "Date", value: PBFormat.dateTime(alert.date))
-                    if let path = alert.path {
-                        InfoRow(label: "Fichier", value: path, monospaced: true)
-                    }
-                    if let sha = alert.sha256 {
-                        InfoRow(label: "SHA-256", value: sha, monospaced: true)
-                    }
-                    if let deviceId = alert.deviceId {
-                        InfoRow(label: "Périphérique", value: deviceId, monospaced: true)
-                    }
-                    if let persistenceId = alert.persistenceId {
-                        InfoRow(label: "Persistance", value: persistenceId, monospaced: true)
-                    }
-                    if let quarantineId = alert.quarantineId {
-                        InfoRow(label: "Quarantaine", value: quarantineId, monospaced: true)
-                    }
-                }
-
-                if !alert.knownActions.isEmpty && alert.status != .resolved {
-                    Divider()
-                    Text("Actions").font(.headline)
-                    HStack(spacing: 8) {
-                        ForEach(alert.knownActions, id: \.self) { action in
-                            Button {
-                                if action.isDestructive {
-                                    pendingAction = action
-                                } else {
-                                    run(action)
-                                }
-                            } label: {
-                                if Request.resolveAlert(alertId: alert.id, action: action).requiresAdmin {
-                                    Label(action.label, systemImage: "lock.fill")
-                                } else {
-                                    Text(action.label)
-                                }
-                            }
-                            .disabled(model.isBusy("resolve-\(alert.id)"))
-                        }
-                    }
-                }
+                details
+                actionsSection
                 links
             }
             .padding(20)
@@ -213,6 +160,80 @@ private struct AlertDetailView: View {
             }
             Button("Annuler", role: .cancel) {}
         }
+    }
+
+    private var header: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: alert.kind.symbol)
+                .font(.system(size: 30))
+                .foregroundStyle(alert.severity.color)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(alert.title)
+                    .font(.title2.weight(.semibold))
+                    .textSelection(.enabled)
+                HStack(spacing: 6) {
+                    SeverityBadge(severity: alert.severity)
+                    Pill(text: alert.kind.label, color: .secondary)
+                    Pill(text: alert.status.label, color: statusColor)
+                }
+            }
+        }
+    }
+
+    private var statusColor: Color {
+        alert.status == .open ? .orange : .green
+    }
+
+    private var details: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            InfoRow(label: "Date", value: PBFormat.dateTime(alert.date))
+            if let path = alert.path {
+                InfoRow(label: "Fichier", value: path, monospaced: true)
+            }
+            if let sha = alert.sha256 {
+                InfoRow(label: "SHA-256", value: sha, monospaced: true)
+            }
+            if let deviceId = alert.deviceId {
+                InfoRow(label: "Périphérique", value: deviceId, monospaced: true)
+            }
+            if let persistenceId = alert.persistenceId {
+                InfoRow(label: "Persistance", value: persistenceId, monospaced: true)
+            }
+            if let quarantineId = alert.quarantineId {
+                InfoRow(label: "Quarantaine", value: quarantineId, monospaced: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var actionsSection: some View {
+        if !alert.knownActions.isEmpty && alert.status != .resolved {
+            Divider()
+            Text("Actions").font(.headline)
+            HStack(spacing: 8) {
+                ForEach(alert.knownActions, id: \.self) { action in
+                    actionButton(action)
+                }
+            }
+        }
+    }
+
+    private func actionButton(_ action: AlertAction) -> some View {
+        let needsAdmin = Request.resolveAlert(alertId: alert.id, action: action).requiresAdmin
+        return Button {
+            if action.isDestructive {
+                pendingAction = action
+            } else {
+                run(action)
+            }
+        } label: {
+            if needsAdmin {
+                Label(action.label, systemImage: "lock.fill")
+            } else {
+                Text(action.label)
+            }
+        }
+        .disabled(model.isBusy("resolve-\(alert.id)"))
     }
 
     @ViewBuilder

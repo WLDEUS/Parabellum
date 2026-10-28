@@ -151,6 +151,10 @@ pub trait QuarantineStore: Send + Sync + 'static {
     /// Put the file back; returns the restored path.
     fn restore(&self, id: &str) -> Result<PathBuf, BackendError>;
     fn delete(&self, id: &str) -> Result<(), BackendError>;
+    /// Policy check of a target (allowed roots, denied prefixes); returns its normalised path.
+    fn check_path(&self, path: &Path) -> Result<PathBuf, BackendError> {
+        Ok(path.to_path_buf())
+    }
 }
 
 /// What the monitors need to start.
@@ -231,6 +235,10 @@ pub trait Updater: Send + Sync + 'static {
     ) -> (ExtensionState, ExtensionState);
     /// Update bookkeeping (`last_check`, `last_success`, `last_error`, `previous_version`) + manifest facts.
     fn db_update_status(&self, cfg: &Config) -> DbStatus;
+    /// Start-up housekeeping (e.g. clean up after a self-update). Returns a message when relevant.
+    fn startup_housekeeping(&self) -> Option<String> {
+        None
+    }
 }
 
 /// pb-dns: dnscrypt-proxy + system DNS switching (fail-open).
@@ -238,7 +246,8 @@ pub trait Updater: Send + Sync + 'static {
 pub trait Dns: Send + Sync + 'static {
     /// Undo a half-applied state left by a crash (restores system DNS if the proxy is dead).
     async fn recover_on_startup(&self);
-    /// Start the proxy with the merged lists and point the system DNS at it.
+    /// Validate the settings and write lists + proxy config. Never touches the system DNS: the supervisor
+    /// applies it once its own proxy answers (the caller publishes `dns.enabled = true`).
     async fn enable(&self, cfg: &Config) -> Result<DnsStatus, BackendError>;
     /// Restore the original system DNS and stop the proxy (user toggle).
     async fn disable(&self) -> Result<DnsStatus, BackendError>;

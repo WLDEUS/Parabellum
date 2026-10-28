@@ -17,7 +17,7 @@ use tokio::task::JoinHandle;
 /// Backends used by `parabellumd`.
 pub fn production(paths: &Paths) -> Backends {
     let quarantine: Arc<dyn QuarantineStore> =
-        match pb_engine::Quarantine::open(&paths.quarantine_dir()) {
+        match pb_engine::Quarantine::open(&paths.quarantine_dir(), quarantine_policy(paths)) {
             Ok(q) => Arc::new(QuarantineAdapter { q }),
             Err(e) => {
                 tracing::error!(error = %e, "quarantine unavailable");
@@ -37,6 +37,24 @@ pub fn production(paths: &Paths) -> Backends {
 // ---------------------------------------------------------------------------------------------
 // pb-engine
 // ---------------------------------------------------------------------------------------------
+
+/// Where root may quarantine from / restore to. macOS: the engine's default allowlist (user homes,
+/// /Applications, /Users/Shared, /private/tmp, /Volumes…, minus Parabellum's own and system files).
+/// Elsewhere (development / CI): user homes and the temp directory.
+pub fn quarantine_policy(paths: &Paths) -> pb_engine::quarantine::QuarantinePolicy {
+    let homes = pb_monitor::user_homes(pb_monitor::console_user().as_ref());
+    if cfg!(target_os = "macos") {
+        pb_engine::quarantine::QuarantinePolicy::macos_default(&homes, paths)
+    } else {
+        let mut allowed_roots = homes;
+        allowed_roots.push(std::env::temp_dir());
+        allowed_roots.push(PathBuf::from("/tmp"));
+        pb_engine::quarantine::QuarantinePolicy {
+            allowed_roots,
+            denied_prefixes: vec![paths.root.clone(), paths.log_dir.clone()],
+        }
+    }
+}
 
 /// Builds [`EngineAdapter`]s with `pb_engine::Engine::load`.
 #[derive(Debug, Default)]
@@ -182,6 +200,22 @@ fn qerr(e: pb_engine::QuarantineError) -> BackendError {
             BackendError::Invalid(format!("identifiant de quarantaine invalide : {id}"))
         }
         Q::Unsupported(m) => BackendError::Invalid(format!("mise en quarantaine impossible : {m}")),
+        Q::OutsideAllowedRoots(p) => BackendError::Invalid(format!(
+            "{} : emplacement que Parabellum ne modifie pas",
+            p.display()
+        )),
+        Q::Denied(p) => BackendError::Invalid(format!("{} : emplacement protégé", p.display())),
+        Q::HashMismatch { .. } => {
+            BackendError::Invalid("le fichier a changé depuis l'analyse : refusé".into())
+        }
+        Q::ParentChanged(p) => BackendError::Invalid(format!(
+            "{} : dossier modifié entre-temps, refusé",
+            p.display()
+        )),
+        Q::SymlinkInPath(p) => BackendError::Invalid(format!(
+            "{} : lien symbolique dans le chemin, refusé",
+            p.display()
+        )),
         other => BackendError::Failed(other.to_string()),
     }
 }
@@ -190,11 +224,13 @@ impl QuarantineStore for QuarantineAdapter {
     fn quarantine(
         &self,
         path: &Path,
-        _sha256: Option<&str>,
+        sha256: Option<&str>,
         detections: &[Detection],
         reason: &str,
     ) -> Result<QuarantineEntry, BackendError> {
-        self.q.quarantine(path, detections, reason).map_err(qerr)
+        self.q
+            .quarantine(path, detections, reason, sha256)
+            .map_err(qerr)
     }
     fn list(&self) -> Result<Vec<QuarantineEntry>, BackendError> {
         self.q.list().map_err(qerr)
@@ -207,6 +243,9 @@ impl QuarantineStore for QuarantineAdapter {
     }
     fn delete(&self, id: &str) -> Result<(), BackendError> {
         self.q.delete(id).map_err(qerr)
+    }
+    fn check_path(&self, path: &Path) -> Result<PathBuf, BackendError> {
+        self.q.policy().check(path).map_err(qerr)
     }
 }
 
@@ -523,6 +562,11 @@ impl Updater for UpdaterAdapter {
 
     fn db_update_status(&self, cfg: &Config) -> DbStatus {
         self.db(&cfg.updates).status()
+    }
+
+    fn startup_housekeeping(&self) -> Option<String> {
+        pb_updater::finish_self_update(&self.paths)
+            .map(|v| format!("Mise à jour de Parabellum terminée ({v})"))
     }
 }
 

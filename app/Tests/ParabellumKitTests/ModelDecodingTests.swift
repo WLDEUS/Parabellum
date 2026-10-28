@@ -64,7 +64,7 @@ final class ModelDecodingTests: XCTestCase {
     }
 
     func testAlerts() throws {
-        let alerts = try Fixtures.decode([Alert].self, from: "alerts.json")
+        let alerts = try Fixtures.decode([SecurityAlert].self, from: "alerts.json")
         XCTAssertEqual(alerts.count, 1)
         let alert = alerts[0]
         XCTAssertEqual(alert.id, 12)
@@ -175,7 +175,7 @@ final class ModelDecodingTests: XCTestCase {
         {"id":1,"ts":2,"kind":"quantum","severity":"apocalyptic","title":"t","message":"m",
          "status":"snoozed","actions":["acknowledge","teleport"]}
         """#
-        let alert = try JSONDecoder().decode(Alert.self, from: Data(json.utf8))
+        let alert = try JSONDecoder().decode(SecurityAlert.self, from: Data(json.utf8))
         XCTAssertEqual(alert.kind, .unknown)
         XCTAssertEqual(alert.severity, .unknown)
         XCTAssertEqual(alert.status, .unknown)

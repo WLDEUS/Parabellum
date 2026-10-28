@@ -128,9 +128,15 @@ pub fn peer_credentials(fd: std::os::fd::RawFd) -> std::io::Result<PeerCred> {
                 &mut tlen,
             )
         };
-        let audit_token = (rc == 0 && tlen as usize == std::mem::size_of::<[u32; 8]>()).then_some(token);
+        let audit_token =
+            (rc == 0 && tlen as usize == std::mem::size_of::<[u32; 8]>()).then_some(token);
         let pid = audit_token.map(|t| t[5] as i32).filter(|p| *p > 0).or(pid);
-        Ok(PeerCred { uid, gid, pid, audit_token })
+        Ok(PeerCred {
+            uid,
+            gid,
+            pid,
+            audit_token,
+        })
     }
     #[cfg(target_os = "linux")]
     {
@@ -194,7 +200,11 @@ pub fn peer_executable(cred: &PeerCred) -> Option<PathBuf> {
         let mut buf = vec![0u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
         // SAFETY: token and buffer are valid; the buffer size is within [PROC_PIDPATHINFO_SIZE, MAXSIZE].
         let n = unsafe {
-            audit_ffi::proc_pidpath_audittoken(&mut t, buf.as_mut_ptr() as *mut libc::c_void, buf.len() as u32)
+            audit_ffi::proc_pidpath_audittoken(
+                &mut t,
+                buf.as_mut_ptr() as *mut libc::c_void,
+                buf.len() as u32,
+            )
         };
         if n <= 0 {
             return None;
@@ -589,28 +599,6 @@ pub fn local_date(ts: i64) -> String {
     }
 }
 
-/// Paths the daemon must never quarantine / modify (system volume, Apple binaries).
-pub fn is_protected_system_path(path: &Path) -> bool {
-    const PROTECTED: &[&str] = &[
-        "/System",
-        "/usr/bin",
-        "/usr/sbin",
-        "/usr/lib",
-        "/usr/libexec",
-        "/usr/share",
-        "/usr/standalone",
-        "/bin",
-        "/sbin",
-        "/private/var/db",
-        "/Library/Apple",
-        "/dev",
-    ];
-    if path == Path::new("/") || path == Path::new("/usr") {
-        return true;
-    }
-    PROTECTED.iter().any(|p| path.starts_with(p))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -643,18 +631,6 @@ mod tests {
         );
         assert_eq!(parse_pmset_batt("garbage"), None);
         assert_eq!(parse_pmset_batt(""), None);
-    }
-
-    #[test]
-    fn protected_paths() {
-        assert!(is_protected_system_path(Path::new("/System/Library/x")));
-        assert!(is_protected_system_path(Path::new("/usr/bin/ssh")));
-        assert!(is_protected_system_path(Path::new("/usr")));
-        assert!(!is_protected_system_path(Path::new("/usr/local/bin/x")));
-        assert!(!is_protected_system_path(Path::new(
-            "/Users/q/Downloads/a.dmg"
-        )));
-        assert!(!is_protected_system_path(Path::new("/Systemx")));
     }
 
     #[test]

@@ -91,11 +91,6 @@ pub fn engine_label(e: DetectionEngine) -> &'static str {
     }
 }
 
-/// `<container>!/<inner>` → `<container>` (the file we can actually quarantine).
-pub fn container_path(path: &str) -> &str {
-    path.split_once("!/").map(|(c, _)| c).unwrap_or(path)
-}
-
 fn new_alert(
     kind: AlertKind,
     severity: Severity,
@@ -199,19 +194,24 @@ async fn raise_file_alert(ctx: &Arc<Ctx>, alert: Alert, key: Option<String>) -> 
 
 /// Apply the daemon's policy to a scan report. Returns the effective verdict (after local lists).
 ///
+/// `target` is the on-disk item handed to the engine (or the container whose report this is): the only
+/// path ever quarantined — report paths are never parsed.
+///
 /// Boxed (not `async fn`) because the VirusTotal follow-up re-enters it from a spawned task.
 pub fn process_report<'a>(
     ctx: &'a Arc<Ctx>,
     report: ScanReport,
     rc: &'a ReportContext,
+    target: &'a Path,
 ) -> Pin<Box<dyn Future<Output = Verdict> + Send + 'a>> {
-    Box::pin(process_report_inner(ctx, report, rc))
+    Box::pin(process_report_inner(ctx, report, rc, target))
 }
 
 async fn process_report_inner(
     ctx: &Arc<Ctx>,
     mut report: ScanReport,
     rc: &ReportContext,
+    target: &Path,
 ) -> Verdict {
     let sha = report.sha256.as_deref().map(str::to_ascii_lowercase);
     if let Some(sha) = sha.clone() {
@@ -238,11 +238,11 @@ async fn process_report_inner(
     if report.verdict == Verdict::Clean {
         return Verdict::Clean;
     }
-    let container = container_path(&report.path).to_string();
+    let target_str = target.to_string_lossy().into_owned();
     let live = matches!(rc.origin, ScanOrigin::Realtime | ScanOrigin::Downloads);
     if live {
         if let Some(sha) = report.sha256.as_deref() {
-            if ctx.was_restored(&container, sha) || ctx.was_restored(&report.path, sha) {
+            if ctx.was_restored(&target_str, sha) {
                 tracing::info!(path = %report.path, "restored by the user, no action");
                 return report.verdict;
             }
@@ -274,7 +274,7 @@ async fn process_report_inner(
             if cfg.realtime.auto_quarantine && signature && !paused {
                 match quarantine_path(
                     ctx,
-                    Path::new(&container),
+                    target,
                     report.sha256.as_deref(),
                     &report.detections,
                     "auto",
@@ -341,7 +341,7 @@ async fn process_report_inner(
             ],
         ),
     };
-    alert.path = Some(report.path.clone());
+    alert.path = Some(target_str);
     alert.sha256 = report.sha256.as_deref().map(str::to_ascii_lowercase);
     let raised = raise_file_alert(ctx, alert, Some(name)).await;
 
@@ -352,7 +352,10 @@ async fn process_report_inner(
             let ctx2 = ctx.clone();
             let rc2 = rc.clone();
             let alert_id = raised.map(|a| a.id);
-            tokio::spawn(async move { vt_followup(ctx2, report, rc2, key, alert_id).await });
+            let target = target.to_path_buf();
+            tokio::spawn(
+                async move { vt_followup(ctx2, report, rc2, key, alert_id, target).await },
+            );
         }
     }
     verdict
@@ -365,6 +368,7 @@ async fn vt_followup(
     rc: ReportContext,
     key: String,
     alert_id: Option<i64>,
+    target: PathBuf,
 ) {
     let Some(sha) = report.sha256.clone() else {
         return;
@@ -389,7 +393,7 @@ async fn vt_followup(
                 }
             }
             // Re-process: the blocklist hit upgrades the verdict to malicious.
-            process_report(&ctx, report, &rc).await;
+            process_report(&ctx, report, &rc, &target).await;
         }
         Ok(n) => tracing::debug!(%sha, engines = ?n, "VirusTotal: below threshold"),
         Err(e) => tracing::warn!(%sha, error = %e, "VirusTotal lookup failed"),
@@ -423,16 +427,11 @@ pub async fn quarantine_path(
     Ok(entry)
 }
 
-/// Refuse system locations, our own tree and symlinks.
+/// Cheap pre-checks (the engine's `QuarantinePolicy` is the real gate: allowed roots, denied prefixes,
+/// no symlink in the path, content hash).
 pub fn check_quarantinable(ctx: &Ctx, path: &Path) -> Result<(), IpcError> {
     if !path.is_absolute() {
         return Err(IpcError::new(ErrorCode::BadRequest, "chemin absolu requis"));
-    }
-    if crate::system::is_protected_system_path(path) {
-        return Err(IpcError::new(
-            ErrorCode::PermissionDenied,
-            "fichier système protégé : jamais mis en quarantaine",
-        ));
     }
     if path.starts_with(&ctx.paths.root) {
         return Err(IpcError::new(
@@ -517,8 +516,8 @@ pub async fn restore_entry(
             .await?;
         sync_allowlist(ctx).await;
     } else {
-        // Before the file reappears, so the real-time pipeline does not grab it again.
-        ctx.remember_restored(&entry.original_path, &sha);
+        // Before the file reappears (possibly as `name.restored-N`), so real-time does not grab it again.
+        ctx.remember_restored_hash(&sha);
     }
     let q = ctx.backends.quarantine.clone();
     let id = entry_id.to_string();
@@ -526,6 +525,9 @@ pub async fn restore_entry(
         .await
         .map_err(|e| IpcError::new(ErrorCode::Internal, e.to_string()))?
         .map_err(IpcError::from)?;
+    if !allow {
+        ctx.remember_restored(&restored.to_string_lossy(), &sha);
+    }
     tracing::info!(id = entry_id, path = %restored.display(), allow, "file restored");
     resolve_alerts_for_entry(ctx, entry_id).await;
     ctx.status_dirty.notify_one();
@@ -609,14 +611,9 @@ pub async fn resolve_alert(
         }
         AlertAction::Quarantine => {
             let path = alert.path.clone().ok_or_else(|| missing("chemin"))?;
-            let entry = quarantine_path(
-                ctx,
-                Path::new(container_path(&path)),
-                alert.sha256.as_deref(),
-                &[],
-                "user",
-            )
-            .await?;
+            let entry =
+                quarantine_path(ctx, Path::new(&path), alert.sha256.as_deref(), &[], "user")
+                    .await?;
             alert.quarantine_id = Some(entry.id);
             alert.status = AlertStatus::Resolved;
             alert.actions = vec![AlertAction::Restore];
@@ -766,7 +763,5 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(primary_detection(&r).unwrap().name, "c1");
-        assert_eq!(container_path("/a/b.dmg!/x.app/y"), "/a/b.dmg");
-        assert_eq!(container_path("/a/b"), "/a/b");
     }
 }

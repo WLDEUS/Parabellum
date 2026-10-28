@@ -273,7 +273,7 @@ public enum AlertAction: String, TolerantEnum {
     public init(from decoder: Decoder) throws { self = try Self.decodeTolerantly(from: decoder) }
 }
 
-public struct Alert: Codable, Sendable, Hashable, Identifiable {
+public struct SecurityAlert: Codable, Sendable, Hashable, Identifiable {
     /// SQLite row id.
     public let id: Int64
     public let ts: Int64

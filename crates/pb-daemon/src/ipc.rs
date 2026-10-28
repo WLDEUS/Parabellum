@@ -198,7 +198,10 @@ pub struct AccessPolicy {
 
 impl AccessPolicy {
     pub fn for_mode(dev_mode: bool) -> Self {
-        Self { dev_bypass: dev_mode, root_is_admin: true }
+        Self {
+            dev_bypass: dev_mode,
+            root_is_admin: true,
+        }
     }
 }
 
@@ -206,22 +209,36 @@ impl AccessPolicy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Access {
     /// `admin`: root or administrator-approved (secrets may be returned).
-    Allowed { admin: bool },
+    Allowed {
+        admin: bool,
+    },
     AuthRequired,
     PermissionDenied,
 }
 
 /// Access rules. `requires_admin` ⇒ root, or (installed client of the console user **and** valid `auth`),
 /// or the dev bypass; other mutating commands ⇒ root or installed client of the console user.
-pub fn decide(req: &Request, is_root: bool, can_mutate: bool, auth_ok: bool, dev_bypass: bool) -> Access {
+pub fn decide(
+    req: &Request,
+    is_root: bool,
+    can_mutate: bool,
+    auth_ok: bool,
+    dev_bypass: bool,
+) -> Access {
     let admin = is_root || (can_mutate && auth_ok);
     if req.requires_admin() {
-        return if admin || (dev_bypass && can_mutate) { Access::Allowed { admin: true } } else { Access::AuthRequired };
+        return if admin || (dev_bypass && can_mutate) {
+            Access::Allowed { admin: true }
+        } else {
+            Access::AuthRequired
+        };
     }
     if req.is_mutating() && !(can_mutate || is_root) {
         return Access::PermissionDenied;
     }
-    Access::Allowed { admin: admin || (dev_bypass && can_mutate) }
+    Access::Allowed {
+        admin: admin || (dev_bypass && can_mutate),
+    }
 }
 
 fn peer_cred(stream: &UnixStream) -> Option<system::PeerCred> {
@@ -238,9 +255,21 @@ fn peer_cred(stream: &UnixStream) -> Option<system::PeerCred> {
 fn current_peer(ctx: &Ctx, cred: &system::PeerCred) -> Peer {
     let exe: Option<PathBuf> = system::peer_executable(cred);
     let console = system::console_user().map(|u| u.uid);
-    let can_mutate = authorize(cred.uid, exe.as_deref(), console, system::euid(), ctx.dev_mode);
+    let can_mutate = authorize(
+        cred.uid,
+        exe.as_deref(),
+        console,
+        system::euid(),
+        ctx.dev_mode,
+    );
     let is_root = cred.uid == 0 && ctx.access.root_is_admin;
-    Peer { uid: cred.uid, pid: cred.pid, exe, can_mutate, admin: is_root }
+    Peer {
+        uid: cred.uid,
+        pid: cred.pid,
+        exe,
+        can_mutate,
+        admin: is_root,
+    }
 }
 
 /// Check access for one request (verifies `auth` with Authorization Services only when it matters).
@@ -250,11 +279,19 @@ async fn check_access(ctx: &Ctx, peer: &mut Peer, env: &RequestEnvelope) -> Resu
     let auth_ok = match (&env.auth, wants_admin && !is_root) {
         (Some(a), true) => {
             let a = a.clone();
-            tokio::task::spawn_blocking(move || crate::auth::verify_admin_auth(&a)).await.unwrap_or(false)
+            tokio::task::spawn_blocking(move || crate::auth::verify_admin_auth(&a))
+                .await
+                .unwrap_or(false)
         }
         _ => false,
     };
-    match decide(&env.request, is_root, peer.can_mutate, auth_ok, ctx.access.dev_bypass) {
+    match decide(
+        &env.request,
+        is_root,
+        peer.can_mutate,
+        auth_ok,
+        ctx.access.dev_bypass,
+    ) {
         Access::Allowed { admin } => {
             if env.request.requires_admin() && !is_root && !auth_ok {
                 tracing::warn!(uid = peer.uid, "dev mode: administrator approval bypassed");
@@ -264,7 +301,10 @@ async fn check_access(ctx: &Ctx, peer: &mut Peer, env: &RequestEnvelope) -> Resu
         }
         Access::AuthRequired => {
             tracing::warn!(uid = peer.uid, exe = ?peer.exe, with_auth = env.auth.is_some(), "admin command refused");
-            Err(IpcError::new(ErrorCode::AuthRequired, crate::auth::AUTH_REQUIRED_MESSAGE))
+            Err(IpcError::new(
+                ErrorCode::AuthRequired,
+                crate::auth::AUTH_REQUIRED_MESSAGE,
+            ))
         }
         Access::PermissionDenied => {
             tracing::warn!(uid = peer.uid, exe = ?peer.exe, "mutating command refused");
@@ -414,24 +454,74 @@ mod tests {
 
     #[test]
     fn access_decisions() {
-        let fp = Request::ReportFalsePositive { sha256: "a".repeat(64), path: None, note: None };
-        let scan = Request::Scan { paths: vec!["/x".into()], recursive: true, use_clamav: None };
+        let fp = Request::ReportFalsePositive {
+            sha256: "a".repeat(64),
+            path: None,
+            note: None,
+        };
+        let scan = Request::Scan {
+            paths: vec!["/x".into()],
+            recursive: true,
+            use_clamav: None,
+        };
         // requires_admin: root, or installed client + valid auth, or dev bypass.
-        assert_eq!(decide(&fp, true, false, false, false), Access::Allowed { admin: true });
-        assert_eq!(decide(&fp, false, true, true, false), Access::Allowed { admin: true });
+        assert_eq!(
+            decide(&fp, true, false, false, false),
+            Access::Allowed { admin: true }
+        );
+        assert_eq!(
+            decide(&fp, false, true, true, false),
+            Access::Allowed { admin: true }
+        );
         assert_eq!(decide(&fp, false, true, false, false), Access::AuthRequired);
         assert_eq!(decide(&fp, false, false, true, false), Access::AuthRequired);
-        assert_eq!(decide(&fp, false, true, false, true), Access::Allowed { admin: true });
+        assert_eq!(
+            decide(&fp, false, true, false, true),
+            Access::Allowed { admin: true }
+        );
         assert_eq!(decide(&fp, false, false, false, true), Access::AuthRequired);
         // plain mutating
-        assert_eq!(decide(&scan, false, true, false, false), Access::Allowed { admin: false });
-        assert_eq!(decide(&scan, false, false, false, false), Access::PermissionDenied);
-        assert_eq!(decide(&scan, true, false, false, false), Access::Allowed { admin: true });
+        assert_eq!(
+            decide(&scan, false, true, false, false),
+            Access::Allowed { admin: false }
+        );
+        assert_eq!(
+            decide(&scan, false, false, false, false),
+            Access::PermissionDenied
+        );
+        assert_eq!(
+            decide(&scan, true, false, false, false),
+            Access::Allowed { admin: true }
+        );
         // read-only: anyone; secrets only for admins
-        assert_eq!(decide(&Request::GetConfig, false, false, false, false), Access::Allowed { admin: false });
-        assert_eq!(decide(&Request::GetConfig, false, true, true, false), Access::Allowed { admin: true });
-        assert_eq!(decide(&Request::SetDns { enabled: true }, false, true, false, false), Access::Allowed { admin: false });
-        assert_eq!(decide(&Request::SetDns { enabled: false }, false, true, false, false), Access::AuthRequired);
+        assert_eq!(
+            decide(&Request::GetConfig, false, false, false, false),
+            Access::Allowed { admin: false }
+        );
+        assert_eq!(
+            decide(&Request::GetConfig, false, true, true, false),
+            Access::Allowed { admin: true }
+        );
+        assert_eq!(
+            decide(
+                &Request::SetDns { enabled: true },
+                false,
+                true,
+                false,
+                false
+            ),
+            Access::Allowed { admin: false }
+        );
+        assert_eq!(
+            decide(
+                &Request::SetDns { enabled: false },
+                false,
+                true,
+                false,
+                false
+            ),
+            Access::AuthRequired
+        );
     }
 
     #[test]

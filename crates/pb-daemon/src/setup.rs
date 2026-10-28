@@ -17,7 +17,8 @@ pub fn prepare_dirs(paths: &Paths, as_root: bool) -> std::io::Result<()> {
         if !ours {
             continue;
         }
-        let private = dir == paths.quarantine_dir() || dir == paths.state_dir() || dir == paths.tmp_dir();
+        let private =
+            dir == paths.quarantine_dir() || dir == paths.state_dir() || dir == paths.tmp_dir();
         let mode = if private { 0o700 } else { 0o755 };
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(mode))?;
         if as_root {
@@ -147,7 +148,11 @@ pub fn init_logging(paths: &Paths) -> LogGuard {
     // Under launchd stderr goes to a file nobody rotates: only mirror logs there on a terminal.
     let tty = std::io::IsTerminal::is_terminal(&std::io::stderr());
     let stderr_layer = |enabled: bool| {
-        enabled.then(|| tracing_subscriber::fmt::layer().with_writer(std::io::stderr).with_target(false))
+        enabled.then(|| {
+            tracing_subscriber::fmt::layer()
+                .with_writer(std::io::stderr)
+                .with_target(false)
+        })
     };
     match appender {
         Ok(appender) => {
