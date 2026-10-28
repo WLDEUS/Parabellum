@@ -160,6 +160,9 @@ def extract_zip(src: Path, dest: Path, budget: _Budget) -> None:
             mode = (info.external_attr >> 16) & 0o170000
             if mode and not stat.S_ISREG(mode):  # symlinks stored by macOS zips
                 continue
+            if info.flag_bits & 0x1:  # encrypted member (e.g. test certificates in vendor archives)
+                log.info("%s: encrypted member skipped: %s", src.name, info.filename)
+                continue
             with zf.open(info) as f:
                 _write(dest, rel, f, info.file_size, budget)
 
@@ -561,6 +564,8 @@ def ensure_corpus(
             lzma.LZMAError,
             ET.ParseError,
             ValueError,
+            RuntimeError,  # zipfile: encrypted / unsupported members
+            NotImplementedError,  # zipfile: unsupported compression methods
             subprocess.TimeoutExpired,
         ) as e:
             log.warning("corpus entry %s skipped: %s", a.name, e)
