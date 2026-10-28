@@ -496,7 +496,7 @@ pub async fn hash_retro_check(ctx: &Arc<Ctx>, days: u32) {
         if let Ok(report) =
             tokio::task::spawn_blocking(move || engine.scan_file(&p2, &cfg, &opts)).await
         {
-            actions::process_report(ctx, report, &rc).await;
+            actions::process_report(ctx, report, &rc, &p).await;
         }
     }
 }

@@ -406,8 +406,9 @@ pub async fn run_job(ctx: &Arc<Ctx>, job: Arc<Job>) {
 
 /// Report of a file inside a container (`<container>!/<inner>`): informative only; the engine rolls its
 /// verdict up into the container report, which is the one acted upon.
+/// A real file whose name contains `!/` exists on disk and is therefore never mistaken for a member.
 pub fn is_member(r: &ScanReport) -> bool {
-    r.path.contains("!/")
+    r.path.contains("!/") && std::fs::symlink_metadata(&r.path).is_err()
 }
 
 async fn handle_finding(ctx: &Arc<Ctx>, job: &Arc<Job>, report: ScanReport, rc: &ReportContext) {
@@ -415,7 +416,9 @@ async fn handle_finding(ctx: &Arc<Ctx>, job: &Arc<Job>, report: ScanReport, rc: 
         store_finding(ctx, job, report).await;
         return;
     }
-    let effective = actions::process_report(ctx, report.clone(), rc).await;
+    // On-disk item: the report path is exactly what the engine walked.
+    let target = PathBuf::from(&report.path);
+    let effective = actions::process_report(ctx, report.clone(), rc, &target).await;
     let mut stored = report;
     if effective != Verdict::Clean {
         job.threats.fetch_add(1, Ordering::Relaxed);

@@ -91,7 +91,6 @@ pub fn engine_label(e: DetectionEngine) -> &'static str {
     }
 }
 
-
 fn new_alert(
     kind: AlertKind,
     severity: Severity,
@@ -354,7 +353,9 @@ async fn process_report_inner(
             let rc2 = rc.clone();
             let alert_id = raised.map(|a| a.id);
             let target = target.to_path_buf();
-            tokio::spawn(async move { vt_followup(ctx2, report, rc2, key, alert_id, target).await });
+            tokio::spawn(
+                async move { vt_followup(ctx2, report, rc2, key, alert_id, target).await },
+            );
         }
     }
     verdict
@@ -610,14 +611,9 @@ pub async fn resolve_alert(
         }
         AlertAction::Quarantine => {
             let path = alert.path.clone().ok_or_else(|| missing("chemin"))?;
-            let entry = quarantine_path(
-                ctx,
-                Path::new(&path),
-                alert.sha256.as_deref(),
-                &[],
-                "user",
-            )
-            .await?;
+            let entry =
+                quarantine_path(ctx, Path::new(&path), alert.sha256.as_deref(), &[], "user")
+                    .await?;
             alert.quarantine_id = Some(entry.id);
             alert.status = AlertStatus::Resolved;
             alert.actions = vec![AlertAction::Restore];

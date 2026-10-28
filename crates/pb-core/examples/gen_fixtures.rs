@@ -424,7 +424,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let admin: Vec<String> = reqs
         .iter()
         .enumerate()
-        .map(|(i, r)| format!("{{\"id\":{},\"requires_admin\":{}}}", i + 1, r.requires_admin()))
+        .map(|(i, r)| {
+            format!(
+                "{{\"id\":{},\"requires_admin\":{}}}",
+                i + 1,
+                r.requires_admin()
+            )
+        })
         .collect();
     std::fs::write(dir.join("requires_admin.jsonl"), admin.join("\n") + "\n")?;
     let lines: Vec<String> = reqs

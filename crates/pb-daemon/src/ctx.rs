@@ -209,7 +209,10 @@ impl Ctx {
 
     /// Remember a hash being restored (valid 60 s, any path).
     pub fn remember_restored_hash(&self, sha256: &str) {
-        let mut g = self.restored_hashes.lock().unwrap_or_else(|e| e.into_inner());
+        let mut g = self
+            .restored_hashes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         g.retain(|_, at| at.elapsed() < std::time::Duration::from_secs(60));
         g.insert(sha256.to_ascii_lowercase(), std::time::Instant::now());
     }

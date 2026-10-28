@@ -106,8 +106,12 @@ impl Client {
     pub fn call_raw(&mut self, request: Request) -> Result<serde_json::Value, ClientError> {
         let id = self.next_id;
         self.next_id += 1;
-        let line = encode_line(&RequestEnvelope { id, auth: None, request })
-            .map_err(|e| ClientError::Protocol(e.to_string()))?;
+        let line = encode_line(&RequestEnvelope {
+            id,
+            auth: None,
+            request,
+        })
+        .map_err(|e| ClientError::Protocol(e.to_string()))?;
         self.writer.write_all(&line)?;
         loop {
             match self.read_message()? {

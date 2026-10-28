@@ -2,8 +2,8 @@
 
 use crate::backends::{Backends, MonitorContext};
 use crate::ctx::Ctx;
-use crate::store::Store;
 use crate::ipc::AccessPolicy;
+use crate::store::Store;
 use crate::{actions, baseline, ipc, jobs, realtime, router, scheduler, setup, status};
 use pb_core::events::MonitorEvent;
 use pb_core::model::*;
@@ -79,7 +79,10 @@ pub async fn start(opts: DaemonOptions) -> anyhow::Result<Daemon> {
     let ctx = Arc::new(c);
     if as_root {
         match tokio::task::spawn_blocking(crate::auth::register_admin_right).await {
-            Ok(Ok(true)) => tracing::info!(right = pb_core::ipc::ADMIN_RIGHT, "authorization right registered"),
+            Ok(Ok(true)) => tracing::info!(
+                right = pb_core::ipc::ADMIN_RIGHT,
+                "authorization right registered"
+            ),
             Ok(Ok(false)) => {}
             Ok(Err(e)) => tracing::error!(error = %e, "cannot register the authorization right"),
             Err(e) => tracing::error!(error = %e, "authorization right task failed"),
@@ -102,12 +105,21 @@ pub async fn start(opts: DaemonOptions) -> anyhow::Result<Daemon> {
         );
         actions::raise_alert(&ctx, a, None).await;
     }
+    let upd = ctx.backends.updater.clone();
+    if let Ok(Some(msg)) = tokio::task::spawn_blocking(move || upd.startup_housekeeping()).await {
+        tracing::info!(%msg, "self-update finished");
+    }
     if !scheduler::reload_engine(&ctx).await {
         tracing::warn!("running without a scanning engine (no threat DB yet?)");
     }
-    if last_version.as_deref().is_some_and(|v| v != pb_core::VERSION) {
+    if last_version
+        .as_deref()
+        .is_some_and(|v| v != pb_core::VERSION)
+    {
         let m = ctx.backends.monitors.clone();
-        let fda = tokio::task::spawn_blocking(move || m.has_full_disk_access()).await.unwrap_or(false);
+        let fda = tokio::task::spawn_blocking(move || m.has_full_disk_access())
+            .await
+            .unwrap_or(false);
         if !fda {
             let a = actions::alert(
                 AlertKind::System,
@@ -194,18 +206,18 @@ pub async fn start(opts: DaemonOptions) -> anyhow::Result<Daemon> {
     })
 }
 
-/// Undo a crashed run, then re-apply DNS blocking if enabled.
+/// Prepare DNS blocking files if enabled. Never applies the system DNS itself: the supervisor does, once its
+/// own proxy answers (and recovers from a crashed run).
 async fn dns_startup(ctx: Arc<Ctx>) {
     ctx.backends.dns.recover_on_startup().await;
     let cfg = ctx.config();
     if cfg.dns.enabled {
         match ctx.backends.dns.enable(&cfg).await {
             Ok(st) => tracing::info!(
-                running = st.running,
                 domains = st.blocked_domains,
-                "DNS blocking applied"
+                "DNS blocking prepared (supervisor applies it)"
             ),
-            Err(e) => tracing::warn!(error = %e, "DNS blocking not applied"),
+            Err(e) => tracing::warn!(error = %e, "DNS blocking not prepared"),
         }
         ctx.status_dirty.notify_one();
     }

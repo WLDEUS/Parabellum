@@ -200,13 +200,22 @@ fn qerr(e: pb_engine::QuarantineError) -> BackendError {
             BackendError::Invalid(format!("identifiant de quarantaine invalide : {id}"))
         }
         Q::Unsupported(m) => BackendError::Invalid(format!("mise en quarantaine impossible : {m}")),
-        Q::OutsideAllowedRoots(p) => {
-            BackendError::Invalid(format!("{} : emplacement que Parabellum ne modifie pas", p.display()))
-        }
+        Q::OutsideAllowedRoots(p) => BackendError::Invalid(format!(
+            "{} : emplacement que Parabellum ne modifie pas",
+            p.display()
+        )),
         Q::Denied(p) => BackendError::Invalid(format!("{} : emplacement protégé", p.display())),
-        Q::HashMismatch { .. } => BackendError::Invalid("le fichier a changé depuis l'analyse : refusé".into()),
-        Q::ParentChanged(p) => BackendError::Invalid(format!("{} : dossier modifié entre-temps, refusé", p.display())),
-        Q::SymlinkInPath(p) => BackendError::Invalid(format!("{} : lien symbolique dans le chemin, refusé", p.display())),
+        Q::HashMismatch { .. } => {
+            BackendError::Invalid("le fichier a changé depuis l'analyse : refusé".into())
+        }
+        Q::ParentChanged(p) => BackendError::Invalid(format!(
+            "{} : dossier modifié entre-temps, refusé",
+            p.display()
+        )),
+        Q::SymlinkInPath(p) => BackendError::Invalid(format!(
+            "{} : lien symbolique dans le chemin, refusé",
+            p.display()
+        )),
         other => BackendError::Failed(other.to_string()),
     }
 }
@@ -219,7 +228,9 @@ impl QuarantineStore for QuarantineAdapter {
         detections: &[Detection],
         reason: &str,
     ) -> Result<QuarantineEntry, BackendError> {
-        self.q.quarantine(path, detections, reason, sha256).map_err(qerr)
+        self.q
+            .quarantine(path, detections, reason, sha256)
+            .map_err(qerr)
     }
     fn list(&self) -> Result<Vec<QuarantineEntry>, BackendError> {
         self.q.list().map_err(qerr)
@@ -232,6 +243,9 @@ impl QuarantineStore for QuarantineAdapter {
     }
     fn delete(&self, id: &str) -> Result<(), BackendError> {
         self.q.delete(id).map_err(qerr)
+    }
+    fn check_path(&self, path: &Path) -> Result<PathBuf, BackendError> {
+        self.q.policy().check(path).map_err(qerr)
     }
 }
 
@@ -548,6 +562,11 @@ impl Updater for UpdaterAdapter {
 
     fn db_update_status(&self, cfg: &Config) -> DbStatus {
         self.db(&cfg.updates).status()
+    }
+
+    fn startup_housekeeping(&self) -> Option<String> {
+        pb_updater::finish_self_update(&self.paths)
+            .map(|v| format!("Mise à jour de Parabellum terminée ({v})"))
     }
 }
 

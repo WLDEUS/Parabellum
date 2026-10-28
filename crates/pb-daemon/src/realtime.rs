@@ -307,7 +307,8 @@ pub async fn scan_file_realtime(ctx: &Arc<Ctx>, shared: &Arc<RealtimeShared>, pa
     if let Some(err) = &report.error {
         tracing::debug!(path = %path.display(), error = %err, "real-time scan error");
     }
-    let verdict = actions::process_report(ctx, report.clone(), &ReportContext::realtime()).await;
+    let verdict =
+        actions::process_report(ctx, report.clone(), &ReportContext::realtime(), &path).await;
     record_history(ctx, &report, &md, verdict).await;
     if cfg.scan.clamav_realtime
         && verdict == Verdict::Clean
@@ -440,7 +441,7 @@ pub async fn scan_exec(ctx: &Arc<Ctx>, shared: &Arc<RealtimeShared>, target: EsP
             killed,
         }),
     };
-    let verdict = actions::process_report(ctx, report.clone(), &rc).await;
+    let verdict = actions::process_report(ctx, report.clone(), &rc, &path).await;
     if report.sha256.is_some() {
         shared.exec_remember(key, verdict, generation);
     }

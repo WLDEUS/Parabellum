@@ -211,7 +211,7 @@ async fn enrich(ctx: &Arc<Ctx>, item: &mut PersistenceItem) {
         item.program_sha256 = report.sha256.clone();
     }
     if report.sha256.is_some() {
-        let verdict = actions::process_report(ctx, report, &ReportContext::realtime()).await;
+        let verdict = actions::process_report(ctx, report, &ReportContext::realtime(), &path).await;
         item.verdict = Some(verdict);
     }
 }
@@ -290,7 +290,51 @@ pub fn bootout_target(
     }
 }
 
+/// Where a launch item lives: a user's own domain, or the system domain (root-owned `/Library/Launch*`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Domain {
+    User { uid: u32, home: PathBuf },
+    System,
+}
+
+/// Locations a user can write to besides their home (programs of user items may live there).
+pub fn user_writable_roots() -> Vec<PathBuf> {
+    let mut v: Vec<PathBuf> = ["/Users/Shared", "/private/tmp", "/private/var/folders"]
+        .iter()
+        .map(PathBuf::from)
+        .collect();
+    if !cfg!(target_os = "macos") {
+        v.push(std::env::temp_dir());
+    }
+    v
+}
+
+/// Domain of a (canonical) plist path given its owner.
+pub fn domain_of(plist: &Path, owner_uid: u32, owner_home: Option<&Path>) -> Option<Domain> {
+    if owner_uid != 0 {
+        let home = owner_home?;
+        return plist.starts_with(home).then(|| Domain::User {
+            uid: owner_uid,
+            home: home.to_path_buf(),
+        });
+    }
+    (plist.starts_with("/Library/LaunchAgents") || plist.starts_with("/Library/LaunchDaemons"))
+        .then_some(Domain::System)
+}
+
+/// A user item may only take down a program that user owns, inside their home or a user-writable root.
+pub fn user_program_allowed(program: &Path, program_owner: u32, uid: u32, home: &Path) -> bool {
+    program_owner == uid
+        && (program.starts_with(home)
+            || user_writable_roots().iter().any(|r| program.starts_with(r)))
+}
+
+fn deny(msg: impl Into<String>) -> IpcError {
+    IpcError::new(ErrorCode::PermissionDenied, msg)
+}
+
 async fn remove_item(ctx: &Arc<Ctx>, item: &mut PersistenceItem) -> Result<(), IpcError> {
+    use std::os::unix::fs::MetadataExt;
     let launchd = matches!(
         item.kind,
         PersistenceKind::LaunchAgent | PersistenceKind::LaunchDaemon
@@ -309,13 +353,30 @@ async fn remove_item(ctx: &Arc<Ctx>, item: &mut PersistenceItem) -> Result<(), I
             ),
         ));
     }
-    let plist = PathBuf::from(&item.path);
-    if crate::system::is_protected_system_path(&plist) {
-        return Err(IpcError::new(
-            ErrorCode::PermissionDenied,
-            "élément système protégé",
-        ));
-    }
+    let q = ctx.backends.quarantine.clone();
+    // The plist goes through the same policy as every quarantine (allowed roots, no symlink in the path).
+    let plist = q
+        .check_path(Path::new(&item.path))
+        .map_err(IpcError::from)?;
+    let plist_md = std::fs::symlink_metadata(&plist).ok();
+    let owner = plist_md.as_ref().map(|m| m.uid());
+    let owner_home = owner
+        .filter(|u| *u != 0)
+        .and_then(crate::system::user_by_uid)
+        .map(|(_, h)| h);
+    let domain = match owner {
+        Some(o) => domain_of(&plist, o, owner_home.as_deref()).ok_or_else(|| {
+            deny("emplacement de l'élément incohérent avec son propriétaire : refusé")
+        })?,
+        // Plist already gone (login / background items): judge the program alone, as a user item of the console user.
+        None => match crate::system::console_user() {
+            Some(u) => Domain::User {
+                uid: u.uid,
+                home: u.home,
+            },
+            None => return Err(deny("aucun utilisateur connecté : refusé")),
+        },
+    };
     let detection = Detection {
         engine: DetectionEngine::Heuristic,
         name: format!(
@@ -328,15 +389,13 @@ async fn remove_item(ctx: &Arc<Ctx>, item: &mut PersistenceItem) -> Result<(), I
     };
     let mut quarantined_any = false;
     if launchd {
-        use std::os::unix::fs::MetadataExt;
-        let owner = std::fs::symlink_metadata(&plist).ok().map(|m| m.uid());
         let console = crate::system::console_user().map(|u| u.uid);
         if let Some(target) = bootout_target(item, owner, console) {
             if let Err(e) = crate::system::launchctl_bootout(&target).await {
                 tracing::warn!(error = %e, "bootout failed (item may not be loaded)");
             }
         }
-        if is_regular_file(&plist) {
+        if plist_md.map(|m| m.is_file()).unwrap_or(false) {
             actions::quarantine_path(
                 ctx,
                 &plist,
@@ -349,32 +408,25 @@ async fn remove_item(ctx: &Arc<Ctx>, item: &mut PersistenceItem) -> Result<(), I
         }
     }
     if let Some(program) = item.program.clone().filter(|p| p.starts_with('/')) {
-        let p = PathBuf::from(&program);
-        let apple = item.signing.as_ref().map(|s| s.apple).unwrap_or(false) || {
-            let engine = ctx.engine();
-            let p2 = p.clone();
-            tokio::task::spawn_blocking(move || engine.signing_info(&p2))
+        match program_to_quarantine(ctx, item, &domain, Path::new(&program)).await {
+            Ok(Some((path, sha))) => {
+                match actions::quarantine_path(
+                    ctx,
+                    &path,
+                    Some(&sha),
+                    std::slice::from_ref(&detection),
+                    "persistence",
+                )
                 .await
-                .ok()
-                .flatten()
-                .map(|s| s.apple)
-                .unwrap_or(false)
-        };
-        if apple || crate::system::is_protected_system_path(&p) {
-            tracing::info!(program, "program is a system/Apple binary, left in place");
-        } else if is_regular_file(&p) {
-            match actions::quarantine_path(
-                ctx,
-                &p,
-                item.program_sha256.as_deref(),
-                std::slice::from_ref(&detection),
-                "persistence",
-            )
-            .await
-            {
-                Ok(_) => quarantined_any = true,
-                Err(e) => tracing::warn!(program, error = %e.message, "cannot quarantine program"),
+                {
+                    Ok(_) => quarantined_any = true,
+                    Err(e) => {
+                        tracing::warn!(program, error = %e.message, "cannot quarantine program")
+                    }
+                }
             }
+            Ok(None) => {}
+            Err(why) => tracing::warn!(program, why, "program left in place"),
         }
     }
     if !launchd && !quarantined_any {
@@ -391,10 +443,51 @@ async fn remove_item(ctx: &Arc<Ctx>, item: &mut PersistenceItem) -> Result<(), I
     Ok(())
 }
 
-fn is_regular_file(p: &Path) -> bool {
-    std::fs::symlink_metadata(p)
-        .map(|m| m.is_file())
-        .unwrap_or(false)
+/// Decide whether the program of a removed item may be quarantined. `Ok(Some((canonical path, sha256)))`.
+async fn program_to_quarantine(
+    ctx: &Arc<Ctx>,
+    item: &PersistenceItem,
+    domain: &Domain,
+    program: &Path,
+) -> Result<Option<(PathBuf, String)>, &'static str> {
+    use std::os::unix::fs::MetadataExt;
+    let Ok(canonical) = std::fs::canonicalize(program) else {
+        return Ok(None);
+    };
+    let canonical = ctx
+        .backends
+        .quarantine
+        .check_path(&canonical)
+        .map_err(|_| "hors des emplacements autorisés")?;
+    let md = std::fs::metadata(&canonical).map_err(|_| "illisible")?;
+    if !md.is_file() {
+        return Err("pas un fichier");
+    }
+    if let Domain::User { uid, home } = domain {
+        if !user_program_allowed(&canonical, md.uid(), *uid, home) {
+            return Err("programme hors du domaine de l'utilisateur");
+        }
+    }
+    let engine = ctx.engine();
+    let c2 = canonical.clone();
+    let (signing, sha) = tokio::task::spawn_blocking(move || {
+        (engine.signing_info(&c2), pb_engine::sha256_file(&c2).ok())
+    })
+    .await
+    .map_err(|_| "tâche interrompue")?;
+    if signing.map(|s| s.apple).unwrap_or(false)
+        || item.signing.as_ref().map(|s| s.apple).unwrap_or(false)
+    {
+        return Err("binaire Apple");
+    }
+    let sha = sha.ok_or("empreinte impossible")?;
+    match (&item.program_sha256, domain) {
+        (Some(expected), _) if !expected.eq_ignore_ascii_case(&sha) => {
+            Err("programme modifié depuis l'analyse")
+        }
+        (None, Domain::User { .. }) => Err("empreinte d'origine inconnue"),
+        _ => Ok(Some((canonical, sha))),
+    }
 }
 
 #[cfg(test)]
@@ -461,6 +554,68 @@ mod tests {
             None,
         );
         assert_eq!(bootout_target(&nolabel, None, None), None);
+    }
+
+    #[test]
+    fn domains_and_user_programs() {
+        let home = Path::new("/Users/q");
+        assert_eq!(
+            domain_of(
+                Path::new("/Users/q/Library/LaunchAgents/a.plist"),
+                501,
+                Some(home)
+            ),
+            Some(Domain::User {
+                uid: 501,
+                home: home.to_path_buf()
+            })
+        );
+        assert_eq!(
+            domain_of(
+                Path::new("/Users/x/Library/LaunchAgents/a.plist"),
+                501,
+                Some(home)
+            ),
+            None
+        );
+        assert_eq!(
+            domain_of(Path::new("/Library/LaunchDaemons/a.plist"), 0, None),
+            Some(Domain::System)
+        );
+        assert_eq!(
+            domain_of(Path::new("/Users/q/Library/LaunchAgents/a.plist"), 0, None),
+            None
+        );
+        assert!(user_program_allowed(
+            Path::new("/Users/q/.local/bin/x"),
+            501,
+            501,
+            home
+        ));
+        assert!(user_program_allowed(
+            Path::new("/Users/Shared/x"),
+            501,
+            501,
+            home
+        ));
+        assert!(!user_program_allowed(
+            Path::new("/Users/q/.local/bin/x"),
+            0,
+            501,
+            home
+        ));
+        assert!(!user_program_allowed(
+            Path::new("/Applications/LuLu.app/Contents/MacOS/LuLu"),
+            501,
+            501,
+            home
+        ));
+        assert!(!user_program_allowed(
+            Path::new("/private/etc/sudoers"),
+            501,
+            501,
+            home
+        ));
     }
 
     #[test]

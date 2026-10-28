@@ -10,6 +10,7 @@ use pb_core::model::*;
 use pb_core::paths::Paths;
 use pb_daemon::backends::{NullDns, NullMonitors};
 use pb_daemon::daemon::{start, Daemon, DaemonOptions};
+use pb_daemon::ipc::AccessPolicy;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::sync::Arc;
@@ -18,6 +19,10 @@ use std::time::Duration;
 const EICAR: &[u8] = b"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*";
 
 async fn daemon(root: &Path, skip_baselines: bool) -> Daemon {
+    daemon_with(root, skip_baselines, None).await
+}
+
+async fn daemon_with(root: &Path, skip_baselines: bool, access: Option<AccessPolicy>) -> Daemon {
     let paths = Paths::with_root(root);
     pb_daemon::setup::prepare_dirs(&paths, false).unwrap();
     if skip_baselines {
@@ -36,6 +41,7 @@ async fn daemon(root: &Path, skip_baselines: bool) -> Daemon {
         backends,
         start_monitors: false,
         start_scheduler: false,
+        access,
     })
     .await
     .expect("daemon starts")
@@ -58,6 +64,7 @@ async fn cli(sock: &Path, args: &[&str]) -> (i32, String, String) {
                 out: &mut out,
                 err: &mut err,
                 progress: false,
+                is_root: true,
             },
         );
         (
@@ -581,5 +588,59 @@ async fn archive_member_detection_quarantines_the_container_once() {
         "{:?}",
         detail.findings
     );
+    d.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn admin_commands_need_approval() {
+    let root = tempfile::tempdir().unwrap();
+    let access = AccessPolicy {
+        dev_bypass: false,
+        root_is_admin: false,
+    };
+    let d = daemon_with(root.path(), false, Some(access)).await;
+    let sock = d.ctx().paths.socket.clone();
+    let mut cfg = Config::default();
+    cfg.privacy.virustotal_api_key = Some("s3cret".into());
+    pb_daemon::setup::save_config(&d.ctx().paths, &cfg).unwrap();
+    d.ctx().publish_config(cfg);
+
+    for args in [
+        &["dns", "off"][..],
+        &["fp", &"ab".repeat(32)],
+        &["pause", "10"],
+        &["devices", "trust", "x"],
+    ] {
+        let (code, _, err) = cli(&sock, args).await;
+        assert_eq!(code, 2, "{args:?}");
+        assert!(err.contains("relancez-la avec sudo"), "{args:?}: {err}");
+    }
+    // Raw protocol: auth_required, also with a bogus external form.
+    let mut c = Client::connect(&sock, Some(Duration::from_secs(5))).unwrap();
+    let e = c.call_raw(Request::SetDns { enabled: false }).unwrap_err();
+    assert_eq!(e.code(), Some(ErrorCode::AuthRequired));
+    let mut raw = std::os::unix::net::UnixStream::connect(&sock).unwrap();
+    raw.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    let env = RequestEnvelope {
+        id: 3,
+        auth: Some("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".into()),
+        request: Request::SetProtection { paused_minutes: 60 },
+    };
+    raw.write_all(&encode_line(&env).unwrap()).unwrap();
+    let mut line = String::new();
+    BufReader::new(raw.try_clone().unwrap())
+        .read_line(&mut line)
+        .unwrap();
+    let r: ResponseEnvelope = serde_json::from_str(line.trim()).unwrap();
+    assert_eq!(r.error.unwrap().code, ErrorCode::AuthRequired);
+
+    // Not weakening: still allowed. Secrets hidden from non-admin peers.
+    let st: StatusInfo = cli_json(&sock, &["resume"]).await;
+    assert_ne!(st.protection, ProtectionState::Paused);
+    let (code, _, err) = cli(&sock, &["devices", "block", "nope"]).await;
+    assert_eq!(code, 2);
+    assert!(err.contains("introuvable"), "{err}");
+    let got: Config = cli_json(&sock, &["config", "get"]).await;
+    assert_eq!(got.privacy.virustotal_api_key.as_deref(), Some("********"));
     d.shutdown().await;
 }

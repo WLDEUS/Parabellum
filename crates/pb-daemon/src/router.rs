@@ -327,14 +327,24 @@ async fn scan(
 pub async fn set_dns(ctx: &Arc<Ctx>, enabled: bool) -> Result<DnsStatus, IpcError> {
     let mut cfg = (*ctx.config()).clone();
     cfg.dns.enabled = enabled;
-    let status = if enabled {
+    let mut status = if enabled {
         ctx.backends.dns.enable(&cfg).await?
     } else {
         ctx.backends.dns.disable().await?
     };
     crate::setup::save_config(&ctx.paths, &cfg)
         .map_err(|e| IpcError::new(ErrorCode::Internal, e.to_string()))?;
-    ctx.publish_config(cfg);
+    ctx.publish_config(cfg.clone());
+    if enabled {
+        // The supervisor starts its proxy and switches the system DNS: report what it achieved.
+        for _ in 0..16 {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            status = ctx.backends.dns.status(&cfg).await;
+            if status.running {
+                break;
+            }
+        }
+    }
     tracing::info!(enabled, "DNS blocking toggled");
     Ok(status)
 }
