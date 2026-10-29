@@ -110,6 +110,9 @@ fn new_alert(
         device_id: None,
         persistence_id: None,
         quarantine_id: None,
+        process_pid: None,
+        process_path: None,
+        network_id: None,
         status: AlertStatus::Open,
         actions,
     }
@@ -689,6 +692,38 @@ pub async fn resolve_alert(
                 PersistenceStatus::Quarantined
             };
             crate::persistence::set_status(ctx, &id, status).await?;
+            alert.status = AlertStatus::Resolved;
+            alert.actions.clear();
+        }
+        AlertAction::KillProcess | AlertAction::ResumeProcess => {
+            let pid = alert.process_pid.ok_or_else(|| missing("processus"))?;
+            let path = alert
+                .process_path
+                .clone()
+                .ok_or_else(|| missing("processus"))?;
+            let resume = action == AlertAction::ResumeProcess;
+            let done = crate::guard::act_on_process(ctx, pid, &path, resume)
+                .map_err(|e| IpcError::new(ErrorCode::Internal, e))?;
+            let what = match (resume, done) {
+                (false, true) => format!("{path} (pid {pid}) a été arrêté."),
+                (true, true) => format!("{path} (pid {pid}) a repris son exécution."),
+                (_, false) => format!("{path} (pid {pid}) ne tourne plus."),
+            };
+            tracing::warn!(pid, path = %path, resume, done, "process action from alert");
+            alert.message.push_str(&format!("\n{what}"));
+            alert
+                .actions
+                .retain(|a| !matches!(a, AlertAction::KillProcess | AlertAction::ResumeProcess));
+            if resume || !alert.actions.contains(&AlertAction::Quarantine) {
+                alert.status = AlertStatus::Resolved;
+            }
+            if alert.actions.is_empty() {
+                alert.actions.push(AlertAction::Acknowledge);
+            }
+        }
+        AlertAction::TrustNetwork => {
+            let id = alert.network_id.clone().ok_or_else(|| missing("réseau"))?;
+            crate::vpn::set_network_trust(ctx, &id, true).await?;
             alert.status = AlertStatus::Resolved;
             alert.actions.clear();
         }

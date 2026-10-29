@@ -1,0 +1,38 @@
+[package]
+name = "pb-privacy"
+description = "Privacy: GDPR erasure requests to data brokers, breach monitoring, email aliases, Pwned Passwords, metadata cleaning"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+pb-core = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+async-trait = "0.1"
+reqwest = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+zip = { workspace = true }
+regex = { workspace = true }
+libc = { workspace = true }
+sha1 = "0.11"
+# SMTP (STARTTLS / implicit TLS) with rustls + Mozilla roots, no OpenSSL.
+lettre = { version = "0.11", default-features = false, features = [
+    "builder",
+    "hostname",
+    "smtp-transport",
+    "tokio1",
+    "tokio1-rustls",
+    "ring",
+    "webpki-roots",
+] }
+
+[dev-dependencies]
+tempfile = { workspace = true }

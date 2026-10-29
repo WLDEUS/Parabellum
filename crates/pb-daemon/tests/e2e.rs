@@ -353,6 +353,7 @@ async fn monitor_events_realtime_devices_persistence() {
     for _ in 0..3 {
         tx.send(MonitorEvent::FileActivity {
             path: eicar.to_string_lossy().into_owned(),
+            from: None,
             source: FileEventSource::FsEvents,
             process: None,
         })

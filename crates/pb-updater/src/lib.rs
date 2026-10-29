@@ -33,9 +33,9 @@ pub use adblock::{
     CHROME_UBOL_STORE_URL, SAFARI_UBOL_STORE_URL,
 };
 pub use components::{
-    dnscrypt_proxy_binary, ComponentManager, BLOCKBLOCK_DAEMON_APP, CLAMAV_PKG_CLAMSCAN,
-    CLAMAV_TEAM_ID, COMPONENT_NAMES, DNSCRYPT_MINISIGN_KEY, LULU_APP, OBJECTIVE_SEE_TEAM_ID,
-    OSQUERYI, OSQUERY_TEAM_ID, OVERSIGHT_APP,
+    dnscrypt_proxy_binary, read_db_pin, singbox_binary, ComponentManager, BLOCKBLOCK_DAEMON_APP,
+    CLAMAV_PKG_CLAMSCAN, CLAMAV_TEAM_ID, COMPONENT_NAMES, DNSCRYPT_MINISIGN_KEY, LULU_APP,
+    OBJECTIVE_SEE_TEAM_ID, OSQUERYI, OSQUERY_TEAM_ID, OVERSIGHT_APP,
 };
 pub use db::{DbUpdateOutcome, DbUpdater, MAX_BUNDLE_BYTES, MAX_MANIFEST_BYTES};
 pub use freshclam::{find_freshclam, find_trusted_freshclam, run_freshclam, FRESHCLAM_CANDIDATES};

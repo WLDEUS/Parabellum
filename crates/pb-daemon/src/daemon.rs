@@ -178,6 +178,12 @@ pub async fn start(opts: DaemonOptions) -> anyhow::Result<Daemon> {
         tasks.extend(ctx.backends.monitors.start(mctx));
     }
 
+    // VPN / kill switch / network guard and privacy services (their system work is macOS-only).
+    tasks.push(crate::vpn::start(&ctx).await);
+    tasks.push(crate::privacy::start(&ctx));
+    if opts.start_monitors {
+        tasks.push(tokio::spawn(crate::guard::run(ctx.clone())));
+    }
     tasks.push(tokio::spawn(dns_startup(ctx.clone())));
     if let Some(h) = ctx
         .backends
@@ -254,6 +260,15 @@ impl Daemon {
             tracing::warn!("some tasks did not stop in time, aborting them");
             for a in aborts {
                 a.abort();
+            }
+        }
+        if let Some(vpn) = ctx.vpn.get() {
+            // Fail open: stop the tunnel and remove the kill switch.
+            if tokio::time::timeout(Duration::from_secs(10), vpn.shutdown())
+                .await
+                .is_err()
+            {
+                tracing::error!("VPN shutdown timed out");
             }
         }
         match tokio::time::timeout(

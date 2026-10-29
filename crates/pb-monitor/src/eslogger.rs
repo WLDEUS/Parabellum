@@ -9,8 +9,10 @@
 //! `codesigning_flags`…) and `event: { "<short event name>": {…} }`. Parsing is tolerant: unknown
 //! fields are ignored and events missing a required field are skipped.
 //!
-//! Events used: `exec` (-> `ProcessExec`, platform binaries skipped), `create` / `rename`
-//! (-> `FileActivity` for interesting locations only), optional `close` with `modified == true`,
+//! Events used: `exec` (-> `ProcessExec`; platform binaries skipped except the tools info-stealers drive,
+//! see [`crate::sensitive::platform_exec_of_interest`]), `create` / `rename` (-> `FileActivity` for
+//! interesting locations, renames out of them, and credential-store file names anywhere — stealer staging),
+//! optional `close` with `modified == true`,
 //! `btm_launch_item_add` (-> [`crate::persistence_trigger`]), `mount` / `unmount`
 //! (-> [`crate::volume_trigger`]). eslogger itself suppresses events from its own process group,
 //! i.e. from the daemon and every tool it spawns.
@@ -132,6 +134,7 @@ struct RawCreate {
 
 #[derive(Debug, Deserialize)]
 struct RawRename {
+    source: Option<Value>,
     destination: Option<Value>,
 }
 
@@ -173,6 +176,8 @@ pub enum EsEvent {
     },
     File {
         path: String,
+        /// Rename: the previous path.
+        from: Option<String>,
         source: FileEventSource,
         process: Option<EsProcessInfo>,
         is_dir: bool,
@@ -284,6 +289,7 @@ pub fn parse_line(line: &[u8]) -> Option<EsEvent> {
         let (path, is_dir) = destination_path(c.destination.as_ref()?)?;
         return Some(EsEvent::File {
             path,
+            from: None,
             source: FileEventSource::EsCreate,
             process,
             is_dir,
@@ -291,8 +297,10 @@ pub fn parse_line(line: &[u8]) -> Option<EsEvent> {
     }
     if let Some(r) = ev.rename {
         let (path, is_dir) = destination_path(r.destination.as_ref()?)?;
+        let from = r.source.as_ref().and_then(file_from_value).map(|(p, _)| p);
         return Some(EsEvent::File {
             path,
+            from,
             source: FileEventSource::EsRename,
             process,
             is_dir,
@@ -314,6 +322,7 @@ pub fn parse_line(line: &[u8]) -> Option<EsEvent> {
             .unwrap_or(false);
         return Some(EsEvent::File {
             path,
+            from: None,
             source: FileEventSource::EsCloseModified,
             process,
             is_dir,
@@ -378,6 +387,12 @@ impl EsFilter {
             return false;
         }
         if under_any(p, &self.prefixes) {
+            return true;
+        }
+        // Credential-store files copied anywhere but their home (stealer staging).
+        if crate::sensitive::is_sensitive_file_name(p)
+            && !crate::sensitive::is_legit_store_location(p)
+        {
             return true;
         }
         // Any user's ~/Library/LaunchAgents.
@@ -799,9 +814,10 @@ fn dispatch(ev: EsEvent, filter: &EsFilter, tx: &mpsc::Sender<MonitorEvent>) -> 
             args,
             parent,
         } => {
-            if target.is_platform_binary
-                || target.pid == filter.own_pid
+            if target.pid == filter.own_pid
                 || Path::new(&target.path).starts_with(&filter.own_root)
+                || (target.is_platform_binary
+                    && !crate::sensitive::platform_exec_of_interest(&target.path, &args))
             {
                 return Dispatch::Skipped;
             }
@@ -813,15 +829,22 @@ fn dispatch(ev: EsEvent, filter: &EsFilter, tx: &mpsc::Sender<MonitorEvent>) -> 
         }
         EsEvent::File {
             path,
+            from,
             source,
             process,
             is_dir,
         } => {
-            if is_dir || !filter.accept_file(&path, process.as_ref()) {
+            // A rename out of a watched folder matters too (ransomware moving files away).
+            let accepted = filter.accept_file(&path, process.as_ref())
+                || from
+                    .as_deref()
+                    .is_some_and(|f| filter.accept_file(f, process.as_ref()));
+            if is_dir || !accepted {
                 return Dispatch::Skipped;
             }
             MonitorEvent::FileActivity {
                 path,
+                from,
                 source,
                 process,
             }
@@ -884,10 +907,12 @@ mod tests {
         match &events[2] {
             Some(EsEvent::File {
                 path,
+                from,
                 source,
                 process,
                 is_dir,
             }) => {
+                assert_eq!(from, &None);
                 assert_eq!(path, "/Users/q/Library/LaunchAgents/com.evil.agent.plist");
                 assert_eq!(*source, FileEventSource::EsCreate);
                 assert!(!is_dir);
@@ -902,9 +927,10 @@ mod tests {
         assert!(
             matches!(&events[3], Some(EsEvent::File { path, source: FileEventSource::EsCreate, is_dir: false, .. }) if path == "/private/tmp/stage2.sh")
         );
-        // 4: rename -> destination new_path
+        // 4: rename -> destination new_path, source kept
         assert!(
-            matches!(&events[4], Some(EsEvent::File { path, source: FileEventSource::EsRename, .. }) if path == "/Users/q/Downloads/Installer.dmg")
+            matches!(&events[4], Some(EsEvent::File { path, from: Some(f), source: FileEventSource::EsRename, .. })
+                if path == "/Users/q/Downloads/Installer.dmg" && f == "/Users/q/Downloads/Installer.dmg.download/Installer.dmg")
         );
         // 5: close modified
         assert!(
@@ -1038,6 +1064,73 @@ mod tests {
             dispatch(EsEvent::BtmLaunchItemAdd, &f, &tx),
             Dispatch::Skipped
         ));
+    }
+
+    #[tokio::test]
+    async fn dispatch_guard_relevant_events() {
+        let cfg = pb_core::config::Config::default();
+        let f = EsFilter::new(&cfg, Some(Path::new("/Users/q")), Path::new("/pbroot"));
+        let (tx, mut rx) = mpsc::channel(8);
+        let proc_info = |path: &str, platform: bool| EsProcessInfo {
+            pid: 42,
+            ppid: 41,
+            path: path.into(),
+            is_platform_binary: platform,
+            ..Default::default()
+        };
+        // Platform tool driven by a stealer: forwarded.
+        let ev = EsEvent::Exec {
+            target: proc_info("/usr/bin/osascript", true),
+            args: vec![
+                "osascript".into(),
+                "-e".into(),
+                "display dialog \"Mot de passe\" default answer \"\" with hidden answer".into(),
+            ],
+            parent: Some(proc_info("/private/tmp/.x/payload", false)),
+        };
+        assert!(matches!(dispatch(ev, &f, &tx), Dispatch::Sent));
+        // Ordinary platform exec: skipped.
+        let ev = EsEvent::Exec {
+            target: proc_info("/bin/ls", true),
+            args: vec!["ls".into()],
+            parent: None,
+        };
+        assert!(matches!(dispatch(ev, &f, &tx), Dispatch::Skipped));
+        // Credential store copied to a staging folder outside the watched paths: forwarded.
+        let ev = EsEvent::File {
+            path: "/private/var/folders/xy/T/stage/Login Data".into(),
+            from: None,
+            source: FileEventSource::EsCreate,
+            process: Some(proc_info("/private/tmp/.x/payload", false)),
+            is_dir: false,
+        };
+        assert!(matches!(dispatch(ev, &f, &tx), Dispatch::Sent));
+        // The browser updating its own store: skipped.
+        let ev = EsEvent::File {
+            path: "/Users/q/Library/Application Support/Google/Chrome/Default/Login Data".into(),
+            from: None,
+            source: FileEventSource::EsCreate,
+            process: None,
+            is_dir: false,
+        };
+        assert!(matches!(dispatch(ev, &f, &tx), Dispatch::Skipped));
+        // Rename out of a watched folder: forwarded with its origin.
+        let ev = EsEvent::File {
+            path: "/Volumes/Exfil/report.docx".into(),
+            from: Some("/Users/q/Documents/report.docx".into()),
+            source: FileEventSource::EsRename,
+            process: None,
+            is_dir: false,
+        };
+        assert!(matches!(dispatch(ev, &f, &tx), Dispatch::Sent));
+        let mut n = 0;
+        while let Ok(ev) = rx.try_recv() {
+            n += 1;
+            if let MonitorEvent::FileActivity { from: Some(f), .. } = ev {
+                assert_eq!(f, "/Users/q/Documents/report.docx");
+            }
+        }
+        assert_eq!(n, 3);
     }
 
     #[cfg(not(target_os = "macos"))]

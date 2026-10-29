@@ -53,6 +53,7 @@ pub(crate) enum Kind {
     BlockBlock,
     OverSight,
     Parabellum,
+    SingBox,
 }
 
 /// How a downloaded artifact is authenticated before installation.
@@ -66,6 +67,9 @@ pub(crate) enum Verify {
     MinisignDnscrypt,
     /// Detached `.minisig` verified with Parabellum's embedded key.
     MinisignEmbedded,
+    /// No vendor signature checkable on the Mac: the archive SHA-256 is pinned in `components/pins.json` of the
+    /// signed threat-DB bundle (the pipeline verified the vendor's GitHub build-provenance attestation).
+    DbPin,
 }
 
 /// Static description of a component.
@@ -92,7 +96,7 @@ pub(crate) struct Spec {
 
 const MIB: u64 = 1024 * 1024;
 
-pub(crate) const SPECS: [Spec; 7] = [
+pub(crate) const SPECS: [Spec; 8] = [
     Spec {
         kind: Kind::Clamav,
         name: "clamav",
@@ -158,6 +162,18 @@ pub(crate) const SPECS: [Spec; 7] = [
         verify: Verify::AppTeamId(OBJECTIVE_SEE_TEAM_ID),
         asset_pattern: r"^OverSight_(\d+(?:\.\d+)+)\.zip$",
         max_bytes: 256 * MIB,
+    },
+    Spec {
+        kind: Kind::SingBox,
+        name: "sing-box",
+        display_name: "sing-box (VPN)",
+        repo: "SagerNet/sing-box",
+        required: false,
+        auto_install: false,
+        verify: Verify::DbPin,
+        // `sing-box-1.14.4-darwin-arm64.tar.gz` (tag `v1.14.4`), pinned by the nightly pipeline.
+        asset_pattern: r"^sing-box-(\d+(?:\.\d+)+)-darwin-arm64\.tar\.gz$",
+        max_bytes: 128 * MIB,
     },
     Spec {
         kind: Kind::Parabellum,
@@ -259,6 +275,12 @@ mod tests {
             v("oversight", "OverSight_2.4.0.zip").as_deref(),
             Some("2.4.0")
         );
+        assert_eq!(
+            v("sing-box", "sing-box-1.14.4-darwin-arm64.tar.gz").as_deref(),
+            Some("1.14.4")
+        );
+        assert_eq!(v("sing-box", "sing-box-1.14.4-darwin-amd64.tar.gz"), None);
+        assert_eq!(v("sing-box", "sing-box-1.14.4-linux-arm64.tar.gz"), None);
         assert_eq!(
             v("parabellum", "Parabellum-0.2.0.pkg").as_deref(),
             Some("0.2.0")

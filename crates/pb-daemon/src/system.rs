@@ -405,6 +405,61 @@ pub fn lower_process_priority() {
     }
 }
 
+/// Parent pid of a process (`proc_pidinfo(PROC_PIDTBSDINFO)` on macOS, `/proc/<pid>/stat` elsewhere).
+pub fn parent_pid(pid: i32) -> Option<i32> {
+    if pid <= 0 {
+        return None;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
+        let size = std::mem::size_of::<libc::proc_bsdinfo>() as libc::c_int;
+        // SAFETY: `info` is a valid, writable proc_bsdinfo of `size` bytes.
+        let n = unsafe {
+            libc::proc_pidinfo(
+                pid,
+                libc::PROC_PIDTBSDINFO,
+                0,
+                &mut info as *mut libc::proc_bsdinfo as *mut libc::c_void,
+                size,
+            )
+        };
+        if n != size {
+            return None;
+        }
+        Some(info.pbi_ppid as i32)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        // pid (comm) state ppid …: comm may contain spaces, split after the last ')'.
+        let rest = &stat[stat.rfind(')')? + 1..];
+        rest.split_whitespace().nth(1)?.parse().ok()
+    }
+}
+
+/// Send `signal` to `pid` only if it still runs `expected` (pid reuse guard). Never pid ≤ 1 nor ourselves.
+/// `Ok(false)`: the process is gone or runs something else.
+pub fn signal_if_path(pid: i32, expected: &Path, signal: libc::c_int) -> Result<bool, String> {
+    // SAFETY: getpid has no preconditions.
+    if pid <= 1 || pid == unsafe { libc::getpid() } {
+        return Err(format!("pid {pid} refusé"));
+    }
+    let Some(actual) = pid_path(pid) else {
+        return Ok(false);
+    };
+    let canonical = std::fs::canonicalize(expected).ok();
+    if actual != expected && canonical.as_deref() != Some(actual.as_path()) {
+        return Ok(false);
+    }
+    // SAFETY: sending a signal to a validated pid.
+    if unsafe { libc::kill(pid, signal) } == 0 {
+        Ok(true)
+    } else {
+        Err(std::io::Error::last_os_error().to_string())
+    }
+}
+
 /// SIGKILL `pid` only if it still runs `expected` (guards against pid reuse). Never pid ≤ 1 nor ourselves.
 pub fn kill_if_path(pid: i32, expected: &Path) -> Result<bool, String> {
     // SAFETY: getpid has no preconditions.

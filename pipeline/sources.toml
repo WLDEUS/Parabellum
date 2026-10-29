@@ -306,3 +306,38 @@ fetcher = "zbt_release"
 url = "https://api.github.com/repos/interplains/Zero-Breach-Toolkit/releases/latest"
 license = "Apache-2.0 (code), CC0 / publishers' terms (indicators)"
 key_file = "pipeline/data/zbt-signing-key.asc"
+
+# ------------------------------------------------------------------------------------------------
+# Privacy: organisations that receive the GDPR erasure requests (privacy/brokers.json).
+#
+# SECURITY: parabellumd emails the user's identity (name, addresses, phone) to every address of this
+# list. Both upstreams are therefore fetched at PINNED COMMITS: bumping a pin is a reviewed change
+# (diff the upstream data first) — a poisoned list could send personal data to an attacker's address.
+# Datenanfragen: companies relevant for France/everyone in the ads / addresses / credit agency categories.
+
+[[source]]
+name = "data-brokers"
+kind = "privacy"
+fetcher = "privacy_brokers"
+url = "https://github.com/datenanfragen/data"
+license = "CC0-1.0 (datenanfragen/data) + MIT (digisamroc/eraser)"
+datenanfragen_commit = "c0ba27dda41f660eccd0e6290a83ab8de5c3b6c0" # 2026-10 HEAD
+eraser_commit = "ff6cd50e84dfca809a2e08c18b9358a7b3e2e448"        # 2026-10 HEAD
+countries = ["all", "fr"]
+min_brokers = 50
+
+# ------------------------------------------------------------------------------------------------
+# Pinned components (components/pins.json): sing-box for the VPN. Latest stable release >= 1.12 < 2,
+# shipped only after `gh attestation verify --repo SagerNet/sing-box` (GitHub build provenance) and a
+# SHA-256 cross-check with the release API digest; the daemon checks the download against this pin.
+
+[[source]]
+name = "sing-box"
+kind = "components"
+fetcher = "component_pin"
+url = "https://api.github.com/repos/SagerNet/sing-box/releases"
+license = "GPL-3.0-or-later (SagerNet/sing-box)"
+component = "sing-box"
+repo = "SagerNet/sing-box"
+min_version = "1.12.0"
+max_major = 2

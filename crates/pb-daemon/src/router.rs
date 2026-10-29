@@ -58,25 +58,35 @@ where
         .map_err(IpcError::from)
 }
 
+/// Every secret field of the configuration.
+fn secrets_mut(c: &mut Config) -> [&mut Option<String>; 5] {
+    [
+        &mut c.updates.github_token,
+        &mut c.privacy.virustotal_api_key,
+        &mut c.data_removal.smtp_password,
+        &mut c.breach.hibp_api_key,
+        &mut c.aliases.api_key,
+    ]
+}
+
 /// Hide secrets.
 pub fn redact(cfg: &Config) -> Config {
     let mut c = cfg.clone();
-    if c.updates.github_token.is_some() {
-        c.updates.github_token = Some(REDACTED.into());
-    }
-    if c.privacy.virustotal_api_key.is_some() {
-        c.privacy.virustotal_api_key = Some(REDACTED.into());
+    for s in secrets_mut(&mut c) {
+        if s.is_some() {
+            *s = Some(REDACTED.into());
+        }
     }
     c
 }
 
 /// A client sending back a redacted config keeps the stored secrets.
 pub fn unredact(new: &mut Config, old: &Config) {
-    if new.updates.github_token.as_deref() == Some(REDACTED) {
-        new.updates.github_token = old.updates.github_token.clone();
-    }
-    if new.privacy.virustotal_api_key.as_deref() == Some(REDACTED) {
-        new.privacy.virustotal_api_key = old.privacy.virustotal_api_key.clone();
+    let mut old = old.clone();
+    for (n, o) in secrets_mut(new).into_iter().zip(secrets_mut(&mut old)) {
+        if n.as_deref() == Some(REDACTED) {
+            *n = o.clone();
+        }
     }
 }
 
@@ -302,6 +312,133 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
             job_id: crate::spyware::start(ctx).await?,
         }),
         Request::Posture { refresh } => json(&crate::posture::get(ctx, refresh).await?),
+
+        // ----- VPN & networks -----
+        Request::VpnStatus => json(&crate::vpn::service(ctx)?.status().await),
+        Request::VpnConnect => json(
+            &crate::vpn::service(ctx)?
+                .connect()
+                .await
+                .map_err(crate::vpn::err)?,
+        ),
+        Request::VpnDisconnect => json(
+            &crate::vpn::service(ctx)?
+                .disconnect()
+                .await
+                .map_err(crate::vpn::err)?,
+        ),
+        Request::VpnImportProfile { profile } => {
+            if profile.len() > 64 * 1024 {
+                return Err(bad("profil trop long"));
+            }
+            json(
+                &crate::vpn::service(ctx)?
+                    .import_profile(&profile)
+                    .await
+                    .map_err(crate::vpn::err)?,
+            )
+        }
+        Request::VpnRemoveProfile => {
+            crate::vpn::service(ctx)?
+                .remove_profile()
+                .await
+                .map_err(crate::vpn::err)?;
+            Ok(Value::Null)
+        }
+        Request::VpnLeakTest => json(
+            &crate::vpn::service(ctx)?
+                .leak_test()
+                .await
+                .map_err(crate::vpn::err)?,
+        ),
+        Request::VpnListServices => json(&crate::vpn::service(ctx)?.list_services().await),
+        Request::ListNetworks => json(&crate::vpn::service(ctx)?.networks().await),
+        Request::SetNetworkTrust {
+            network_id,
+            trusted,
+        } => json(&crate::vpn::set_network_trust(ctx, &network_id, trusted).await?),
+
+        // ----- Behaviour guard & snapshots -----
+        Request::GuardStatus => json(&crate::guard::status(ctx).await),
+        Request::ListSnapshots => json(&crate::guard::snapshots::list(ctx).await?),
+        Request::CreateSnapshot => json(&crate::guard::snapshots::create(ctx).await?),
+        Request::RestoreFromSnapshot { snapshot, path } => {
+            let dest = crate::guard::snapshots::restore(ctx, &snapshot, &path).await?;
+            Ok(serde_json::json!({ "restored_to": dest }))
+        }
+
+        // ----- Privacy -----
+        Request::PrivacyGetProfile { reveal } => json(
+            &crate::privacy::service(ctx)?
+                .get_profile(reveal && peer.admin)
+                .await,
+        ),
+        Request::PrivacySetProfile { profile } => json(
+            &crate::privacy::service(ctx)?
+                .set_profile(profile)
+                .await
+                .map_err(crate::privacy::err)?,
+        ),
+        Request::PrivacyListBrokers => {
+            json(&crate::privacy::service(ctx)?.brokers(&ctx.config()).await)
+        }
+        Request::PrivacyListRequests => json(&crate::privacy::service(ctx)?.requests().await),
+        Request::PrivacySummary => {
+            json(&crate::privacy::service(ctx)?.summary(&ctx.config()).await)
+        }
+        Request::PrivacyStartRemoval { broker_ids } => json(
+            &crate::privacy::service(ctx)?
+                .start_removal(&ctx.config(), broker_ids)
+                .await
+                .map_err(crate::privacy::err)?,
+        ),
+        Request::PrivacyUpdateRequest {
+            request_id,
+            status,
+            note,
+        } => {
+            if note.as_ref().is_some_and(|n| n.len() > 4096) {
+                return Err(bad("note trop longue"));
+            }
+            json(
+                &crate::privacy::service(ctx)?
+                    .update_request(&request_id, status, note)
+                    .await
+                    .map_err(crate::privacy::err)?,
+            )
+        }
+        Request::PrivacyDraft { request_id } => json(
+            &crate::privacy::service(ctx)?
+                .draft(&ctx.config(), &request_id)
+                .await
+                .map_err(crate::privacy::err)?,
+        ),
+        Request::PrivacyComplaint { request_id } => json(
+            &crate::privacy::service(ctx)?
+                .complaint(&ctx.config(), &request_id)
+                .await
+                .map_err(crate::privacy::err)?,
+        ),
+        Request::BreachList => json(&crate::privacy::service(ctx)?.breaches().await),
+        Request::BreachCheckNow => json(
+            &crate::privacy::service(ctx)?
+                .check_breaches(&ctx.config())
+                .await
+                .map_err(crate::privacy::err)?,
+        ),
+        Request::AliasList => json(&crate::privacy::service(ctx)?.aliases().await),
+        Request::AliasCreate { label } => {
+            let label = label.trim().to_string();
+            if label.is_empty() || label.len() > 200 || label.chars().any(char::is_control) {
+                return Err(bad("libellé invalide (1 à 200 caractères)"));
+            }
+            json(
+                &crate::privacy::service(ctx)?
+                    .create_alias(&ctx.config(), &label)
+                    .await
+                    .map_err(crate::privacy::err)?,
+            )
+        }
         Request::Subscribe => Ok(Value::Null),
     }
 }
@@ -465,6 +602,21 @@ mod tests {
         changed.privacy.virustotal_api_key = Some("new".into());
         unredact(&mut changed, &cfg);
         assert_eq!(changed.privacy.virustotal_api_key.as_deref(), Some("new"));
+    }
+
+    #[test]
+    fn new_secrets_are_redacted() {
+        let mut cfg = Config::default();
+        cfg.data_removal.smtp_password = Some("app-password".into());
+        cfg.breach.hibp_api_key = Some("hibp".into());
+        cfg.aliases.api_key = Some("addy".into());
+        let r = redact(&cfg);
+        assert_eq!(r.data_removal.smtp_password.as_deref(), Some(REDACTED));
+        assert_eq!(r.breach.hibp_api_key.as_deref(), Some(REDACTED));
+        assert_eq!(r.aliases.api_key.as_deref(), Some(REDACTED));
+        let mut back = r;
+        unredact(&mut back, &cfg);
+        assert_eq!(back, cfg);
     }
 
     #[test]

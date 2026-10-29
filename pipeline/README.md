@@ -19,7 +19,9 @@ Env: `ABUSECH_AUTH_KEY` (abuse.ch), `MINISIGN_SECRET_KEY` (`--sign`), `MALWARE_C
 measurement), `GITHUB_RUN_NUMBER` (the `N` of version `YYYY.MM.DD.N`).
 Outputs: `parabellum-db.tar.gz` + `.minisig`, `manifest.json` (same bytes as inside the tarball),
 `pipeline-state.tar.gz` + `.minisig` (per-source data for tomorrow's carry-over, never shipped to
-clients), `report.json` (errors, FP-gate rejections, detection numbers), `stage/` (unpacked bundle).
+clients), `report.json` (errors, FP-gate rejections, detection numbers, broker count, component pins),
+`shadowrocket-reject.list` (DOMAIN-SET for Shadowrocket, published in `db-latest`, not in the bundle),
+`stage/` (unpacked bundle). Bundle layout: `docs/db-bundle.md`.
 `pipeline/publish.sh dist/db` uploads to `db-<version>` and `db-latest` (manifest last) and prunes
 dated releases older than 14 days.
 
@@ -27,8 +29,8 @@ dated releases older than 14 days.
 
 1. **Fetch** every source of `sources.toml` independently. A failed source is reported
    `fresh: false` with its last successful `fetched_at`, and its data is carried over (domains from the
-   state, YARA files from the previous bundle, hashes through the rolling index, ML model from the
-   previous bundle).
+   state, YARA files from the previous bundle, hashes through the rolling index, ML model, broker list and
+   component pins from the previous bundle).
 2. **Normalise**: domains lowercased/IDNA, hosts/adblock/URL syntaxes reduced to hostnames, IPs dropped,
    shared platforms (`data/shared_hosts.txt`: github.com, drive.google.com, Discord CDN…) and their
    parents never blocked, allowlisted names (`data/dns_allowlist.txt`) removed, subdomains of listed
@@ -66,6 +68,16 @@ dated releases older than 14 days.
 | Homebrew bottles | Anonymous ghcr.io pulls use `Authorization: Bearer QQ==` (Homebrew `brew.sh`); bottle URL/SHA-256 from `formulae.brew.sh/api/formula/<name>.json`. ghcr.io unreachable from the container: untested live |
 | Trusted Team IDs | Read from the code signatures of official artefacts (see `data/trusted_team_ids.txt`) |
 | Zero Breach Toolkit (2026-10-28) | Source read (`cli.py`, `feeds.py`, `report.py`, `contract.py`, `docs/VERIFYING.md`): releases carry `zero-breach-toolkit.py`, `SHA256SUMS.txt` and detached `.asc` signatures made with the Ed25519 key `C24E C92B 12D6 670A 2516 065F 9B4D 5754 99AF A53C` (`tools/make_release.py` also attaches `archivegenocide-signing-key.asc`). `pipeline/zbt.py` discovers asset names at runtime, imports the key from keys.openpgp.org, the release's `*key*.asc` or `data/zbt-signing-key.asc` (not committed yet: the key could not be downloaded from the build container), and refuses anything not signed by that exact primary key or whose SHA-256 differs. **Not verified live**: the GitHub API, the asset names of a real release, keyserver availability (blocked in the container) |
+| GDPR brokers (2026-10-29) | Datenanfragen `datenanfragen/data` (CC0, schema read: `slug`, `name`, `email`, `web`, `webform`, `categories`, `relevant-countries`) and Eraser `digisamroc/eraser` `data/brokers.yaml` (MIT: `id`, `name`, `email`, `website`, `opt_out_url`, `region`, `category`) cloned at the pinned commits: 237 + 764 entries → 954 after dedupe (eu 235, global 10, us 709). `codeload.github.com` / `raw.githubusercontent.com` URLs not fetched from the container (git clone used) |
+| sing-box (2026-10-29) | `SagerNet/sing-box` `.github/workflows/build.yml` read: darwin archives `sing-box-<v>-darwin-<arch>.tar.gz` holding `sing-box-<v>-darwin-<arch>/sing-box`, every release artefact attested with `actions/attest` (build provenance). Latest stable 1.14.4 per `docs/changelog.md`. **Not verified live**: the GitHub API `digest` field and `gh attestation verify` on a real asset (API blocked in the container) |
+
+## GDPR brokers and component pins
+
+* `privacy.py` → `privacy/brokers.json`: see `docs/db-bundle.md`. Pins live in `sources.toml`
+  (`datenanfragen_commit`, `eraser_commit`); **bumping them is a reviewed change** — the daemon emails the
+  user's identity to every address of the list.
+* `pins.py` → `components/pins.json`: newest stable sing-box `>= 1.12 < 2`, digest cross-check, arm64 Mach-O
+  check, `gh attestation verify --repo SagerNet/sing-box`; any failure keeps the previous pin.
 
 ## Detection measurement and the GitHub Acceptable Use caveat
 
@@ -90,4 +102,4 @@ ABUSECH_AUTH_KEY=… make -C pipeline corpus-local     # prints the detection re
 `make -C pipeline test lint` (pytest + ruff, no network), `make -C pipeline build-offline` (local data
 and GitHub-hosted lists only). Add a source = one `[[source]]` block in `sources.toml` (fetchers:
 `mb_export`, `mb_api_macos`, `urlhaus_export`, `threatfox_export`, `domain_list`, `yara_tarball`,
-`yara_raw`, `yara_local`, `local_file`, `ml_local`).
+`yara_raw`, `yara_local`, `local_file`, `ml_local`, `zbt_release`, `privacy_brokers`, `component_pin`).

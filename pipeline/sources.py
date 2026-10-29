@@ -6,7 +6,9 @@ Each source is fetched independently. When a fetch fails, its data is carried ov
 * YARA sources from the previous bundle (``yara/<source>__*.yar``);
 * hash sources need no carry-over: the rolling index lives in the state;
 * the ML model from the previous bundle's ``ml/``;
-* Zero Breach Toolkit from the previous bundle's ``zbt/`` (see :mod:`pipeline.zbt`).
+* Zero Breach Toolkit from the previous bundle's ``zbt/`` (see :mod:`pipeline.zbt`);
+* the broker list and the component pins from the previous bundle's ``privacy/brokers.json`` and
+  ``components/pins.json`` (see :mod:`pipeline.privacy`, :mod:`pipeline.pins`).
 The source is then reported with ``fresh: false`` and its last successful ``fetched_at``.
 """
 
@@ -20,7 +22,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import zbt
+from . import pins, privacy, zbt
 from .abusech import (
     MB_API,
     MalwareBazaar,
@@ -277,6 +279,37 @@ def f_zbt_release(spec: SourceSpec, ctx: Context) -> Fetched:
     return Fetched(files=files, count=count)
 
 
+def f_privacy_brokers(spec: SourceSpec, ctx: Context) -> Fetched:
+    """GDPR broker list from Datenanfragen + Eraser at pinned commits (see pipeline/privacy.py)."""
+    countries = tuple(str(c).lower() for c in spec.opt("countries", ["all", "fr"]))  # type: ignore[union-attr]
+    data, n = privacy.fetch(
+        ctx.http,
+        str(spec.opt("datenanfragen_commit", "")),
+        str(spec.opt("eraser_commit", "")),
+        countries,
+        int(spec.opt("min_brokers", privacy.MIN_BROKERS)),  # type: ignore[call-overload]
+    )
+    return Fetched(files={privacy.BUNDLE_PATH: data}, count=n)
+
+
+#: Injectable for tests (real `gh attestation verify` in CI).
+PINS_ATTESTOR: Callable[[], pins.Attestor] = pins.GhAttestor
+
+
+def f_component_pin(spec: SourceSpec, ctx: Context) -> Fetched:
+    """sing-box release pinned after `gh attestation verify` (see pipeline/pins.py)."""
+    lo = pins.parse_version(str(spec.opt("min_version", "1.12.0"))) or (1, 12, 0)
+    data, _version = pins.fetch_pin(
+        ctx.http,
+        PINS_ATTESTOR(),
+        repo=str(spec.opt("repo", pins.DEFAULT_REPO)),
+        component=str(spec.opt("component", pins.DEFAULT_COMPONENT)),
+        min_version=lo,
+        max_major=int(spec.opt("max_major", 2)),  # type: ignore[call-overload]
+    )
+    return Fetched(files={pins.BUNDLE_PATH: data}, count=1)
+
+
 FETCHERS: dict[str, Callable[[SourceSpec, Context], Fetched]] = {
     "mb_export": f_mb_export,
     "mb_api_macos": f_mb_api_macos,
@@ -289,6 +322,8 @@ FETCHERS: dict[str, Callable[[SourceSpec, Context], Fetched]] = {
     "local_file": f_local_file,
     "ml_local": f_ml_local,
     "zbt_release": f_zbt_release,
+    "privacy_brokers": f_privacy_brokers,
+    "component_pin": f_component_pin,
 }
 
 
@@ -327,6 +362,12 @@ def carry_over(spec: SourceSpec, state_dir: Path | None, prev_dir: Path | None) 
         out.files = zbt.carry_over(prev_dir)
         prefix = zbt.BUNDLE_INDICATORS + "/"
         out.count = sum(1 for k in out.files if k.startswith(prefix) and not k.endswith("/manifest.json"))
+    elif spec.fetcher == "privacy_brokers" and prev_dir is not None:
+        out.files = privacy.carry_over(prev_dir)
+        out.count = sum(privacy.count(d) for d in out.files.values())
+    elif spec.fetcher == "component_pin" and prev_dir is not None:
+        out.files = pins.carry_over(prev_dir)
+        out.count = len(out.files)
     return out
 
 
@@ -361,7 +402,7 @@ def fetch_all(
             got = carry_over(spec, state_dir, prev_dir)
             fresh = False
             fetched_at = int(last_success.get(spec.name, {}).get("fetched_at", 0))
-            if got.count == 0 and not got.files and spec.kind in ("ml", "spyware"):
+            if got.count == 0 and not got.files and spec.kind in ("ml", "spyware", "privacy", "components"):
                 payloads[spec.name] = got
                 continue  # no model at all: do not list an empty ML source
         payloads[spec.name] = got

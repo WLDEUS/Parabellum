@@ -5,7 +5,8 @@
 #   1. dated release db-<version> (immutable record): bundle, signature, manifest, report;
 #   2. rolling release db-latest (what clients fetch, see UpdatesConfig.db_base_url): bundle and
 #      signature first, manifest LAST (a client polling the manifest never sees a new version before
-#      the matching bundle/signature are in place), plus the signed pipeline state for tomorrow's run;
+#      the matching bundle/signature are in place), plus the signed pipeline state for tomorrow's run
+#      and the Shadowrocket blocklist (shadowrocket-reject.list);
 #   3. prune dated db-* releases older than KEEP_DAYS (default 14).
 # Env: GH_TOKEN (or GITHUB_TOKEN), GH_REPO (default WLDEUS/Parabellum), KEEP_DAYS.
 set -euo pipefail
@@ -43,6 +44,10 @@ gh release upload db-latest --repo "$repo" --clobber "$out/parabellum-db.tar.gz"
 gh release upload db-latest --repo "$repo" --clobber \
     "$out/pipeline-state.tar.gz" "$out/pipeline-state.tar.gz.minisig" "$out/report.json"
 gh release upload db-latest --repo "$repo" --clobber "$out/manifest.json"
+# Shadowrocket DOMAIN-SET (external VPN backend): not part of the signed bundle, fetched by Shadowrocket itself.
+if [[ -s "$out/shadowrocket-reject.list" ]]; then
+    gh release upload db-latest --repo "$repo" --clobber "$out/shadowrocket-reject.list"
+fi
 echo "published $version to db-latest and $dated"
 
 # 3. Prune dated releases (tags db-YYYY.MM.DD.N) older than keep_days.

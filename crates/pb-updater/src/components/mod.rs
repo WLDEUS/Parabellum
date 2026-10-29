@@ -33,13 +33,14 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 /// Every component name reported by [`ComponentManager::check_all`] / [`ComponentManager::statuses`].
-pub const COMPONENT_NAMES: [&str; 9] = [
+pub const COMPONENT_NAMES: [&str; 10] = [
     "clamav",
     "osquery",
     "dnscrypt-proxy",
     "lulu",
     "blockblock",
     "oversight",
+    "sing-box",
     "parabellum",
     "ublock-chrome",
     "ublock-safari",
@@ -58,6 +59,39 @@ pub fn dnscrypt_proxy_binary(paths: &Paths) -> PathBuf {
         .components_dir()
         .join("dnscrypt-proxy")
         .join("dnscrypt-proxy")
+}
+
+/// Path of the managed sing-box binary (`components/sing-box/sing-box`), shared with the VPN service.
+pub fn singbox_binary(paths: &Paths) -> PathBuf {
+    paths.components_dir().join("sing-box").join("sing-box")
+}
+
+/// Pin of `name` from the active signed threat-DB bundle (`components/pins.json`), validated.
+pub fn read_db_pin(paths: &Paths, name: &str) -> Option<pb_core::db::ComponentPin> {
+    let bytes = read_capped(
+        &paths.db_current().join(pb_core::db::COMPONENT_PINS),
+        1024 * 1024,
+    )
+    .ok()?;
+    let pins: pb_core::db::ComponentPins = serde_json::from_slice(&bytes).ok()?;
+    let pin = pins.pins.get(name)?.clone();
+    let spec = Spec::by_name(name)?;
+    let safe_inner =
+        !pin.binary.starts_with('/') && !pin.binary.split('/').any(|c| c == ".." || c.is_empty());
+    let ok = spec.asset_version(&pin.asset).as_deref() == Some(pin.version.as_str())
+        && (pin.url.starts_with("https://")
+            || (cfg!(test) && pin.url.starts_with("http://127.0.0.1:")))
+        && pin.sha256.len() == 64
+        && pin.sha256.bytes().all(|b| b.is_ascii_hexdigit())
+        && safe_inner;
+    if !ok {
+        tracing::warn!(
+            component = name,
+            "invalid pin in components/pins.json, ignored"
+        );
+        return None;
+    }
+    Some(pin)
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -445,6 +479,22 @@ impl ComponentManager {
         http: &Http,
         spec: &Spec,
     ) -> Result<Option<LatestRelease>, UpdateError> {
+        if spec.verify == Verify::DbPin {
+            // The signed DB decides which version is trusted: no GitHub lookup.
+            return Ok(read_db_pin(&self.paths, spec.name).map(|p| LatestRelease {
+                release_url: Some(format!(
+                    "https://github.com/{}/releases/tag/v{}",
+                    spec.repo, p.version
+                )),
+                version: p.version,
+                asset_name: p.asset,
+                asset: AssetSource {
+                    url: p.url,
+                    accept: None,
+                },
+                signature: None,
+            }));
+        }
         let releases = if spec.kind == Kind::Parabellum {
             github::list_releases_at(http, &self.updates.app_releases_api).await?
         } else {
@@ -501,6 +551,12 @@ impl ComponentManager {
                 apple::bundle_short_version(&Path::new(OVERSIGHT_APP).join("Contents/Info.plist"))
             }
             Kind::Parabellum => Some(pb_core::VERSION.to_string()),
+            Kind::SingBox => {
+                if !singbox_binary(&self.paths).is_file() {
+                    return None;
+                }
+                Some(rec.installed_version.clone().unwrap_or_else(|| "?".into()))
+            }
         }
     }
 
@@ -636,7 +692,8 @@ impl ComponentManager {
         if spec.verify == Verify::MinisignEmbedded && self.public_key.is_none() {
             return Err(UpdateError::MissingPublicKey);
         }
-        let platform_ok = cfg!(target_os = "macos") || spec.kind == Kind::Dnscrypt;
+        let platform_ok =
+            cfg!(target_os = "macos") || matches!(spec.kind, Kind::Dnscrypt | Kind::SingBox);
         if !platform_ok {
             return Err(UpdateError::Unsupported(format!(
                 "{} ne s'installe que sur macOS",
@@ -647,8 +704,10 @@ impl ComponentManager {
         let now = pb_core::now_ts();
         let rec = self.record(spec.name);
         let cached = rec.latest.clone().filter(|_| {
-            rec.last_check
-                .is_some_and(|t| now - t < FRESH_RELEASE_SECS && t <= now)
+            spec.verify != Verify::DbPin
+                && rec
+                    .last_check
+                    .is_some_and(|t| now - t < FRESH_RELEASE_SECS && t <= now)
         });
         let latest = match cached {
             Some(l) => l,
@@ -716,6 +775,26 @@ impl ComponentManager {
                 verify_file_async(&asset_path, sig.clone(), key.clone()).await?;
                 minisig = Some((sig, key));
             }
+            Verify::DbPin => {
+                // Re-read the pin from the signed bundle (never trust the cached release record).
+                let pin = read_db_pin(&self.paths, spec.name).ok_or_else(|| {
+                    UpdateError::Verification("épingle absente de la base signée".into())
+                })?;
+                if pin.version != latest.version || pin.url != latest.asset.url {
+                    return Err(UpdateError::Verification(
+                        "la base signée a changé pendant l'installation".into(),
+                    ));
+                }
+                let a = asset_path.clone();
+                let digest = tokio::task::spawn_blocking(move || crate::fsutil::sha256_file(&a))
+                    .await
+                    .map_err(|e| UpdateError::Archive(e.to_string()))??;
+                if !digest.eq_ignore_ascii_case(&pin.sha256) {
+                    return Err(UpdateError::Verification(format!(
+                        "empreinte SHA-256 différente de la base signée ({digest})"
+                    )));
+                }
+            }
             Verify::PkgTeamId(_) | Verify::AppTeamId(_) => {}
         }
 
@@ -734,6 +813,29 @@ impl ComponentManager {
                 self.update_record(spec.name, |r| r.installed_version = Some(ver));
                 Ok((
                     format!("dnscrypt-proxy {v} installé (signature minisign vérifiée)"),
+                    false,
+                ))
+            }
+            (Kind::SingBox, Verify::DbPin) => {
+                let pin = read_db_pin(&self.paths, spec.name).ok_or_else(|| {
+                    UpdateError::Verification("épingle absente de la base signée".into())
+                })?;
+                let dest = singbox_binary(&self.paths);
+                if let Some(parent) = dest.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                let a = asset_path.clone();
+                let inner = pin.binary.clone();
+                tokio::task::spawn_blocking(move || archive::extract_tar_binary(&a, &inner, &dest))
+                    .await
+                    .map_err(|e| UpdateError::Archive(e.to_string()))??;
+                let ver = v.clone();
+                self.update_record(spec.name, |r| r.installed_version = Some(ver));
+                Ok((
+                    format!(
+                        "sing-box {v} installé (empreinte vérifiée par la base signée, {})",
+                        pin.verified_by
+                    ),
                     false,
                 ))
             }
@@ -1323,6 +1425,57 @@ mod tests {
             "optional components are never auto-installed"
         );
         assert!(dnscrypt_proxy_binary(&e.paths).exists());
+    }
+
+    fn write_pin(paths: &Paths, url: &str, sha: &str) {
+        let dir = paths.db_current().join("components");
+        std::fs::create_dir_all(&dir).unwrap();
+        let pins = serde_json::json!({
+            "format": 1,
+            "pins": {"sing-box": {
+                "version": "1.14.4",
+                "asset": "sing-box-1.14.4-darwin-arm64.tar.gz",
+                "url": url,
+                "sha256": sha,
+                "binary": "sing-box-1.14.4-darwin-arm64/sing-box",
+                "verified_by": "github-attestation:SagerNet/sing-box"
+            }}
+        });
+        std::fs::write(dir.join("pins.json"), serde_json::to_vec(&pins).unwrap()).unwrap();
+    }
+
+    #[tokio::test]
+    async fn installs_singbox_from_db_pin_only() {
+        use sha2::{Digest, Sha256};
+        let key = TestKey::new();
+        let e = env(&key).await;
+        // No pin in the DB: nothing to install.
+        assert!(e.mgr.install("sing-box").await.is_err());
+        let tgz = archive::tests::singbox_targz("1.14.4", &archive::tests::fake_macho());
+        e.srv
+            .set("/sb/sing-box-1.14.4-darwin-arm64.tar.gz", tgz.clone());
+        let url = e.srv.url("/sb/sing-box-1.14.4-darwin-arm64.tar.gz");
+        // Wrong digest: refused, nothing installed.
+        write_pin(&e.paths, &url, &"0".repeat(64));
+        let err = e.mgr.install("sing-box").await.unwrap_err();
+        assert!(matches!(err, UpdateError::Verification(_)), "{err}");
+        assert!(!singbox_binary(&e.paths).exists());
+        // Right digest: installed, version from the pin, no GitHub lookup needed.
+        write_pin(&e.paths, &url, &hex::encode(Sha256::digest(&tgz)));
+        let msg = e.mgr.install("sing-box").await.unwrap();
+        assert!(msg.contains("1.14.4"), "{msg}");
+        assert_eq!(
+            std::fs::read(singbox_binary(&e.paths)).unwrap(),
+            archive::tests::fake_macho()
+        );
+        let st = e.mgr.check_all().await;
+        let sb = st.iter().find(|s| s.name == "sing-box").unwrap();
+        assert_eq!(sb.installed_version.as_deref(), Some("1.14.4"));
+        assert_eq!(sb.state, ComponentState::Installed);
+        assert!(!sb.required);
+        // A pin with an unsafe inner path or a non-https URL is ignored.
+        write_pin(&e.paths, "http://evil/x", &"0".repeat(64));
+        assert!(read_db_pin(&e.paths, "sing-box").is_none());
     }
 
     #[test]

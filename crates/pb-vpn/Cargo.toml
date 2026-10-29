@@ -1,0 +1,27 @@
+[package]
+name = "pb-vpn"
+description = "VPN (sing-box or a macOS VPN service), pf kill switch, leak tests, network guard (ARP spoofing, evil twin)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+pb-core = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+async-trait = "0.1"
+reqwest = { workspace = true }
+base64 = { workspace = true }
+regex = { workspace = true }
+once_cell = { workspace = true }
+libc = { workspace = true }
+percent-encoding = "2"
+futures = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }

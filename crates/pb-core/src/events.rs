@@ -41,11 +41,16 @@ pub enum MonitorEvent {
     /// (a file being downloaded produces many events) before scanning.
     FileActivity {
         path: String,
+        /// Rename: where the file was before (eslogger `rename` only).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        from: Option<String>,
         source: FileEventSource,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         process: Option<EsProcessInfo>,
     },
-    /// A process was executed (eslogger `exec`). `target` is the new image.
+    /// A process was executed (eslogger `exec`). `target` is the new image; `parent` is the process image
+    /// before the exec (same pid as `target`), whose `ppid` is the real parent. Apple platform binaries are
+    /// only reported for the tools the behaviour guard inspects.
     ProcessExec {
         target: EsProcessInfo,
         #[serde(default)]

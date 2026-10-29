@@ -167,6 +167,83 @@ pub enum Request {
         #[serde(default)]
         refresh: bool,
     },
+    // ----- VPN & networks -----
+    /// -> [`VpnStatus`]
+    VpnStatus,
+    /// Bring the tunnel up now (manual override until `vpn_disconnect`). -> [`VpnStatus`]
+    VpnConnect,
+    /// Take the tunnel down (manual override until the next network change). Weakens protection when the
+    /// mode wants it up: admin. -> [`VpnStatus`]
+    VpnDisconnect,
+    /// Import the VPN profile used by the sing-box backend: a share link (`ss://`, `vless://`, `vmess://`,
+    /// `trojan://`, `hysteria2://` / `hy2://`, `tuic://`, `wireguard://`) or a WireGuard `.conf` text.
+    /// Replaces the previous one. Admin (it decides where all traffic goes). -> [`VpnProfileInfo`]
+    VpnImportProfile { profile: String },
+    /// Forget the imported profile (disconnects). Admin. -> `null`
+    VpnRemoveProfile,
+    /// Run a leak test now (public IPv4/IPv6, DNS servers, kill switch). -> [`LeakTestResult`]
+    VpnLeakTest,
+    /// VPNs configured in macOS, for the external backend. -> `Vec<ExternalVpnService>`
+    VpnListServices,
+    /// Networks seen, current first. -> `Vec<NetworkInfo>`
+    ListNetworks,
+    /// Trust (admin) or stop trusting a network (`gw:<router MAC>`). -> [`NetworkInfo`]
+    SetNetworkTrust { network_id: String, trusted: bool },
+
+    // ----- Behaviour guard & snapshots -----
+    /// -> [`GuardStatus`]
+    GuardStatus,
+    /// APFS local snapshots of the data volume, newest first. -> `Vec<SnapshotInfo>`
+    ListSnapshots,
+    /// -> [`SnapshotInfo`]
+    CreateSnapshot,
+    /// Copy `path` (inside the console user's home) as it was in `snapshot` to
+    /// `~/Parabellum-Restauration/<snapshot>/<path relative to home>`; nothing is overwritten. Admin.
+    /// -> `{"restored_to": String}`
+    RestoreFromSnapshot { snapshot: String, path: String },
+
+    // ----- Privacy -----
+    /// The identity used for GDPR requests, masked unless `reveal` (admin). -> [`IdentityProfile`]
+    PrivacyGetProfile {
+        #[serde(default)]
+        reveal: bool,
+    },
+    /// Admin. -> [`IdentityProfile`] (masked)
+    PrivacySetProfile { profile: IdentityProfile },
+    /// Brokers of the configured regions (signed list from the threat DB). -> `Vec<BrokerInfo>`
+    PrivacyListBrokers,
+    /// -> `Vec<RemovalRequest>`
+    PrivacyListRequests,
+    /// -> [`RemovalSummary`]
+    PrivacySummary,
+    /// Queue erasure requests to every broker of the configured regions (or only `broker_ids`) that has no
+    /// open request. Sends in your name: admin. -> [`RemovalSummary`]
+    PrivacyStartRemoval {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        broker_ids: Option<Vec<String>>,
+    },
+    /// Record what happened (draft sent, broker answered, web form done…). -> [`RemovalRequest`]
+    PrivacyUpdateRequest {
+        request_id: String,
+        status: RemovalStatus,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        note: Option<String>,
+    },
+    /// The email to send for a request (first letter, or the reminder once overdue). Contains your identity:
+    /// admin. -> [`MailDraft`]
+    PrivacyDraft { request_id: String },
+    /// Complaint text for the supervisory authority (CNIL) about an unanswered request. Contains your
+    /// identity: admin. -> [`ComplaintDraft`]
+    PrivacyComplaint { request_id: String },
+    /// -> `Vec<BreachFinding>`
+    BreachList,
+    /// Check `breach.emails` now. -> `Vec<BreachFinding>`
+    BreachCheckNow,
+    /// -> `Vec<EmailAlias>`
+    AliasList,
+    /// Create a new alias (provider from `aliases`) labelled with what it is for. -> [`EmailAlias`]
+    AliasCreate { label: String },
+
     /// Start receiving [`EventEnvelope`]s on this connection. -> `null`
     Subscribe,
 }
@@ -195,6 +272,16 @@ impl Request {
             | Request::SetConfig { .. }
             | Request::QuarantinePath { .. }
             | Request::SetPersistenceStatus { .. } => true,
+            Request::VpnDisconnect
+            | Request::VpnImportProfile { .. }
+            | Request::VpnRemoveProfile
+            | Request::RestoreFromSnapshot { .. }
+            | Request::PrivacySetProfile { .. }
+            | Request::PrivacyDraft { .. }
+            | Request::PrivacyComplaint { .. }
+            | Request::PrivacyStartRemoval { .. } => true,
+            Request::SetNetworkTrust { trusted, .. } => *trusted,
+            Request::PrivacyGetProfile { reveal } => *reveal,
             Request::SetDns { enabled } => !enabled,
             Request::SetProtection { paused_minutes } => *paused_minutes > 0,
             Request::SetDeviceTrust { trust, .. } => *trust != DeviceTrust::Blocked,
@@ -207,6 +294,8 @@ impl Request {
                     | AlertAction::ApprovePersistence
                     | AlertAction::RemovePersistence
                     | AlertAction::ReportFalsePositive
+                    | AlertAction::ResumeProcess
+                    | AlertAction::TrustNetwork
             ),
             _ => false,
         }
@@ -231,6 +320,17 @@ impl Request {
                 | Request::WeeklyReport { .. }
                 | Request::Posture { .. }
                 | Request::Subscribe
+                | Request::VpnStatus
+                | Request::VpnListServices
+                | Request::ListNetworks
+                | Request::GuardStatus
+                | Request::ListSnapshots
+                | Request::PrivacyGetProfile { reveal: false }
+                | Request::PrivacyListBrokers
+                | Request::PrivacyListRequests
+                | Request::PrivacySummary
+                | Request::BreachList
+                | Request::AliasList
         )
     }
 }
@@ -339,6 +439,8 @@ pub enum DaemonEvent {
     UpdateFinished(UpdateResult),
     Component(ComponentStatus),
     Quarantined(QuarantineEntry),
+    /// VPN state, kill switch, current network or leak test changed.
+    Vpn(VpnStatus),
 }
 
 /// Alias kept for documentation symmetry with the module docs.
@@ -465,6 +567,58 @@ mod tests {
         assert_eq!(r.request, Request::Posture { refresh: false });
         assert!(!r.request.is_mutating());
         assert!(!r.request.requires_admin());
+    }
+
+    #[test]
+    fn protection_requests() {
+        let r: RequestEnvelope =
+            serde_json::from_str(r#"{"id":1,"cmd":"vpn_import_profile","profile":"ss://x"}"#)
+                .unwrap();
+        assert!(r.request.requires_admin() && r.request.is_mutating());
+        let r: RequestEnvelope =
+            serde_json::from_str(r#"{"id":2,"cmd":"privacy_get_profile"}"#).unwrap();
+        assert_eq!(r.request, Request::PrivacyGetProfile { reveal: false });
+        assert!(!r.request.requires_admin() && !r.request.is_mutating());
+        let reveal = Request::PrivacyGetProfile { reveal: true };
+        assert!(reveal.requires_admin() && reveal.is_mutating());
+        assert!(Request::SetNetworkTrust {
+            network_id: "gw:00:11:22:33:44:55".into(),
+            trusted: true
+        }
+        .requires_admin());
+        assert!(!Request::SetNetworkTrust {
+            network_id: "gw:00:11:22:33:44:55".into(),
+            trusted: false
+        }
+        .requires_admin());
+        assert!(!Request::VpnConnect.requires_admin() && Request::VpnConnect.is_mutating());
+        assert!(Request::VpnDisconnect.requires_admin());
+        assert!(!Request::VpnStatus.is_mutating());
+        assert!(Request::ResolveAlert {
+            alert_id: 1,
+            action: AlertAction::ResumeProcess
+        }
+        .requires_admin());
+        assert!(!Request::ResolveAlert {
+            alert_id: 1,
+            action: AlertAction::KillProcess
+        }
+        .requires_admin());
+        let r: RequestEnvelope = serde_json::from_str(
+            r#"{"id":3,"cmd":"privacy_update_request","request_id":"r","status":"completed"}"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            r.request,
+            Request::PrivacyUpdateRequest {
+                status: RemovalStatus::Completed,
+                note: None,
+                ..
+            }
+        ));
+        let line = String::from_utf8(encode_line(&DaemonEvent::Vpn(VpnStatus::default())).unwrap())
+            .unwrap();
+        assert!(line.starts_with(r#"{"event":"vpn","data":{"#));
     }
 
     #[test]

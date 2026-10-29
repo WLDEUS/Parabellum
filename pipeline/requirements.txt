@@ -3,3 +3,5 @@
 yara-x==1.22.0
 pyzipper==0.4.0
 pycryptodomex==3.23.0
+# Eraser broker list (data/brokers.yaml), parsed with yaml.safe_load only.
+pyyaml==6.0.3

@@ -68,7 +68,8 @@ pub enum Command {
         limit: u32,
     },
     /// Appliquer une action à une alerte (acknowledge, quarantine, allow, restore, trust-device,
-    /// block-device, approve-persistence, remove-persistence, report-false-positive, dismiss).
+    /// block-device, approve-persistence, remove-persistence, report-false-positive, kill-process,
+    /// resume-process, trust-network, dismiss).
     Resolve {
         /// Numéro de l'alerte.
         alert_id: i64,
@@ -165,6 +166,21 @@ pub enum Command {
         /// Refaire les vérifications maintenant.
         #[arg(long)]
         refresh: bool,
+    },
+    /// VPN (sing-box ou VPN de macOS), kill switch, tests de fuite, réseaux de confiance.
+    Vpn {
+        #[command(subcommand)]
+        action: Option<VpnCmd>,
+    },
+    /// Garde comportementale (voleurs de données, rançongiciels) et instantanés APFS.
+    Guard {
+        #[command(subcommand)]
+        action: Option<GuardCmd>,
+    },
+    /// Vie privée : demandes RGPD aux courtiers en données, fuites, alias, mots de passe, métadonnées.
+    Privacy {
+        #[command(subcommand)]
+        action: PrivacyCmd,
     },
     /// Afficher les événements du daemon en continu (Ctrl-C pour quitter).
     Watch,
@@ -274,6 +290,187 @@ pub enum ConfigCmd {
     Set {
         /// Fichier TOML.
         file: PathBuf,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum VpnCmd {
+    /// État du VPN, du kill switch et du réseau (défaut).
+    Status,
+    /// Se connecter maintenant.
+    Connect,
+    /// Se déconnecter (jusqu'au prochain changement de réseau ; sudo si le mode l'exige).
+    Disconnect,
+    /// Importer le profil sing-box : lien (ss://, vless://, vmess://, trojan://, hysteria2://, tuic://,
+    /// wireguard://), fichier WireGuard .conf, ou « - » pour lire l'entrée standard (sudo).
+    Import {
+        /// Lien, chemin de fichier ou « - ».
+        source: String,
+    },
+    /// Oublier le profil importé (sudo).
+    Remove,
+    /// Lancer un test de fuite (IP publique, IPv6, DNS, kill switch).
+    LeakTest,
+    /// VPN configurés dans macOS (pour le mode « externe » : Shadowrocket, WireGuard…).
+    Services,
+    /// Réseaux rencontrés.
+    Networks,
+    /// Faire confiance à un réseau (gw:<MAC du routeur>) : pas de VPN forcé dessus (sudo).
+    Trust {
+        /// Identifiant du réseau (parabellum vpn networks).
+        id: String,
+    },
+    /// Ne plus faire confiance à un réseau.
+    Untrust {
+        /// Identifiant du réseau.
+        id: String,
+    },
+    /// Quand le VPN doit être actif (sudo).
+    Mode {
+        #[arg(value_enum)]
+        mode: VpnModeArg,
+    },
+    /// Moteur : sing-box géré par Parabellum, ou un VPN déjà configuré dans macOS (sudo).
+    Backend {
+        #[arg(value_enum)]
+        backend: VpnBackendArg,
+        /// Nom du service macOS (mode externe), ex. Shadowrocket.
+        #[arg(long)]
+        service: Option<String>,
+        /// Adresses des serveurs à laisser passer par le kill switch (mode externe).
+        #[arg(long = "server", value_name = "HÔTE_OU_IP")]
+        servers: Vec<String>,
+    },
+    /// Kill switch : bloquer tout le trafic hors du tunnel quand le VPN doit être actif (sudo).
+    KillSwitch {
+        #[arg(value_enum)]
+        state: OnOff,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum VpnModeArg {
+    /// Jamais automatiquement.
+    Off,
+    /// Toujours.
+    Always,
+    /// Sur les réseaux non approuvés.
+    Untrusted,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum VpnBackendArg {
+    SingBox,
+    External,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum GuardCmd {
+    /// État de la garde (défaut).
+    Status,
+    /// Instantanés APFS locaux.
+    Snapshots,
+    /// Créer un instantané maintenant.
+    Snapshot,
+    /// Restaurer un fichier ou dossier depuis un instantané dans ~/Parabellum-Restauration (sudo).
+    Restore {
+        /// Nom de l'instantané (parabellum guard snapshots).
+        snapshot: String,
+        /// Fichier ou dossier de votre dossier personnel.
+        path: PathBuf,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum PrivacyCmd {
+    /// Identité utilisée pour les demandes RGPD.
+    Profile {
+        #[command(subcommand)]
+        action: Option<ProfileCmd>,
+    },
+    /// Courtiers en données de vos régions.
+    Brokers,
+    /// Demandes d'effacement et leur suivi.
+    Requests,
+    /// Lancer (ou compléter) la campagne d'effacement (sudo).
+    Start {
+        /// Seulement ces courtiers (identifiants).
+        #[arg(long = "broker", value_name = "ID")]
+        brokers: Vec<String>,
+    },
+    /// Noter l'issue d'une demande (sent, completed, refused, needs-form…).
+    Mark {
+        /// Identifiant de la demande.
+        id: String,
+        /// Nouveau statut.
+        status: String,
+        /// Remarque.
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Écrire les e-mails à envoyer (.eml) dans un dossier (mode brouillons ; sudo).
+    Drafts {
+        /// Dossier de sortie.
+        #[arg(long, default_value = ".")]
+        out: PathBuf,
+        /// Seulement cette demande.
+        #[arg(long)]
+        id: Option<String>,
+    },
+    /// Texte de plainte CNIL pour une demande restée sans réponse (sudo).
+    Complaint {
+        /// Identifiant de la demande.
+        id: String,
+    },
+    /// Fuites de données connues pour vos adresses.
+    Breaches {
+        /// Vérifier maintenant.
+        #[arg(long)]
+        check: bool,
+    },
+    /// Alias e-mail (addy.io / SimpleLogin).
+    Alias {
+        #[command(subcommand)]
+        action: Option<AliasCmd>,
+    },
+    /// Vérifier un mot de passe (saisi sans écho) ou un export CSV de mots de passe avec Pwned Passwords
+    /// (k-anonymat : seuls 5 caractères de l'empreinte SHA-1 quittent le Mac).
+    PasswordCheck {
+        /// Export CSV (Chrome, Safari, Firefox, Bitwarden…). Supprimez-le après usage.
+        #[arg(long)]
+        csv: Option<PathBuf>,
+    },
+    /// Retirer les métadonnées (GPS, EXIF, auteur…) : copie « .clean » à côté de l'original.
+    Clean {
+        /// Fichiers à nettoyer.
+        #[arg(required = true)]
+        files: Vec<PathBuf>,
+        /// Remplacer l'original au lieu d'écrire une copie.
+        #[arg(long)]
+        in_place: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ProfileCmd {
+    /// Afficher (masqué ; --reveal avec sudo).
+    Show {
+        #[arg(long)]
+        reveal: bool,
+    },
+    /// Remplacer par un fichier TOML ou JSON (full_name, emails, phones, postal_address,
+    /// previous_addresses, birth_date, country) (sudo).
+    Set { file: PathBuf },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AliasCmd {
+    /// Lister (défaut).
+    List,
+    /// Créer un alias pour un site.
+    New {
+        /// À quoi il sert (nom du site).
+        label: String,
     },
 }
 
@@ -460,6 +657,73 @@ mod tests {
             parse(&["report", "--week", "1"]).unwrap().command,
             Command::Report { week: 1 }
         ));
+        assert!(matches!(
+            parse(&["vpn"]).unwrap().command,
+            Command::Vpn { action: None }
+        ));
+        assert!(matches!(
+            parse(&["vpn", "mode", "untrusted"]).unwrap().command,
+            Command::Vpn {
+                action: Some(VpnCmd::Mode {
+                    mode: VpnModeArg::Untrusted
+                })
+            }
+        ));
+        assert!(matches!(
+            parse(&[
+                "vpn",
+                "backend",
+                "external",
+                "--service",
+                "Shadowrocket",
+                "--server",
+                "203.0.113.4"
+            ])
+            .unwrap()
+            .command,
+            Command::Vpn {
+                action: Some(VpnCmd::Backend {
+                    backend: VpnBackendArg::External,
+                    ..
+                })
+            }
+        ));
+        assert!(matches!(
+            parse(&["vpn", "kill-switch", "on"]).unwrap().command,
+            Command::Vpn {
+                action: Some(VpnCmd::KillSwitch { state: OnOff::On })
+            }
+        ));
+        assert!(matches!(
+            parse(&[
+                "guard",
+                "restore",
+                "com.apple.TimeMachine.2026-10-29-120000.local",
+                "/Users/q/a"
+            ])
+            .unwrap()
+            .command,
+            Command::Guard {
+                action: Some(GuardCmd::Restore { .. })
+            }
+        ));
+        assert!(matches!(
+            parse(&["privacy", "clean", "a.jpg", "b.png", "--in-place"])
+                .unwrap()
+                .command,
+            Command::Privacy {
+                action: PrivacyCmd::Clean { in_place: true, .. }
+            }
+        ));
+        assert!(matches!(
+            parse(&["privacy", "start", "--broker", "acxiom", "--broker", "criteo"])
+                .unwrap()
+                .command,
+            Command::Privacy {
+                action: PrivacyCmd::Start { .. }
+            }
+        ));
+        assert!(parse(&["privacy"]).is_err());
         assert!(parse(&["pause"]).is_err());
         assert!(parse(&["resolve", "x", "acknowledge"]).is_err());
     }
