@@ -140,6 +140,17 @@ struct MenuBarContentView: View {
             .disabled(model.isBusy("dns"))
             .padding(.vertical, 4)
 
+            if let vpn = model.vpnStatus, vpn.profile != nil || vpn.externalService != nil {
+                Toggle(isOn: vpnBinding(vpn)) {
+                    Label("VPN · \(vpn.state.label.lowercased())", systemImage: vpn.state.symbol)
+                        .foregroundStyle(vpn.isBlocking ? Color.orange : Color.primary)
+                }
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .disabled(model.isBusy("vpn-connect") || model.isBusy("vpn-disconnect"))
+                .padding(.vertical, 2)
+            }
+
             if model.status?.protection == .paused {
                 MenuActionButton(title: "Reprendre la protection", symbol: "play.circle") {
                     Task { await model.setProtection(pausedMinutes: 0) }
@@ -175,6 +186,22 @@ struct MenuBarContentView: View {
             }
             .help("Ferme l'app de la barre de menus ; la protection (parabellumd) continue de tourner.")
         }
+    }
+
+    /// On = connected or connecting; switching off asks for administrator approval.
+    private func vpnBinding(_ vpn: VpnStatus) -> Binding<Bool> {
+        Binding(
+            get: { vpn.state == .connected || vpn.state == .connecting },
+            set: { newValue in
+                Task {
+                    if newValue {
+                        await model.vpnConnect()
+                    } else {
+                        await model.vpnDisconnect()
+                    }
+                }
+            }
+        )
     }
 
     private var dnsBinding: Binding<Bool> {

@@ -44,6 +44,7 @@ pub mod eslogger;
 pub mod fs_watcher;
 pub mod osquery;
 pub mod persistence;
+pub mod sensitive;
 mod user;
 mod util;
 

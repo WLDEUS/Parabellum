@@ -58,25 +58,82 @@ where
         .map_err(IpcError::from)
 }
 
-/// Hide secrets.
+/// Every secret field of the configuration.
+fn secrets_mut(c: &mut Config) -> [&mut Option<String>; 5] {
+    [
+        &mut c.updates.github_token,
+        &mut c.privacy.virustotal_api_key,
+        &mut c.data_removal.smtp_password,
+        &mut c.breach.hibp_api_key,
+        &mut c.aliases.api_key,
+    ]
+}
+
+/// `q.m@example.com` -> `q***1a2b@example.com` (first character, `***`, 4 hex digits of the SHA-256 of the
+/// value so two masked values never collide, domain); without `@`: `q***1a2b`. Empty stays empty.
+pub fn mask_identifier(s: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let Some(first) = s.chars().next() else {
+        return String::new();
+    };
+    let tag: String = hex::encode(Sha256::digest(s.as_bytes()))
+        .chars()
+        .take(4)
+        .collect();
+    match s.rsplit_once('@') {
+        Some((_, domain)) => format!("{first}***{tag}@{domain}"),
+        None => format!("{first}***{tag}"),
+    }
+}
+
+/// Hide secrets and mask personal identifiers (monitored addresses, SMTP sender and login), like the GDPR
+/// identity: shown in clear only with administrator approval.
 pub fn redact(cfg: &Config) -> Config {
     let mut c = cfg.clone();
-    if c.updates.github_token.is_some() {
-        c.updates.github_token = Some(REDACTED.into());
+    for s in secrets_mut(&mut c) {
+        if s.is_some() {
+            *s = Some(REDACTED.into());
+        }
     }
-    if c.privacy.virustotal_api_key.is_some() {
-        c.privacy.virustotal_api_key = Some(REDACTED.into());
+    for e in &mut c.breach.emails {
+        *e = mask_identifier(e);
     }
+    c.data_removal.from_address = mask_identifier(&c.data_removal.from_address);
+    c.data_removal.smtp_username = mask_identifier(&c.data_removal.smtp_username);
     c
 }
 
-/// A client sending back a redacted config keeps the stored secrets.
-pub fn unredact(new: &mut Config, old: &Config) {
-    if new.updates.github_token.as_deref() == Some(REDACTED) {
-        new.updates.github_token = old.updates.github_token.clone();
+/// Original of a masked value sent back (masks are unique per value).
+fn unmask(value: &str, originals: &[String]) -> Option<String> {
+    if !value.contains("***") {
+        return None;
     }
-    if new.privacy.virustotal_api_key.as_deref() == Some(REDACTED) {
-        new.privacy.virustotal_api_key = old.privacy.virustotal_api_key.clone();
+    originals
+        .iter()
+        .find(|o| mask_identifier(o) == value)
+        .cloned()
+}
+
+/// A client sending back a redacted config keeps the stored secrets and identifiers.
+pub fn unredact(new: &mut Config, old: &Config) {
+    let mut old_c = old.clone();
+    for (n, o) in secrets_mut(new).into_iter().zip(secrets_mut(&mut old_c)) {
+        if n.as_deref() == Some(REDACTED) {
+            *n = o.clone();
+        }
+    }
+    for e in &mut new.breach.emails {
+        if let Some(o) = unmask(e, &old.breach.emails) {
+            *e = o;
+        }
+    }
+    let from = std::slice::from_ref(&old.data_removal.from_address);
+    if let Some(o) = unmask(&new.data_removal.from_address, from) {
+        new.data_removal.from_address = o;
+    }
+    let user = std::slice::from_ref(&old.data_removal.smtp_username);
+    if let Some(o) = unmask(&new.data_removal.smtp_username, user) {
+        new.data_removal.smtp_username = o;
     }
 }
 
@@ -302,6 +359,133 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
             job_id: crate::spyware::start(ctx).await?,
         }),
         Request::Posture { refresh } => json(&crate::posture::get(ctx, refresh).await?),
+
+        // ----- VPN & networks -----
+        Request::VpnStatus => json(&crate::vpn::service(ctx)?.status().await),
+        Request::VpnConnect => json(
+            &crate::vpn::service(ctx)?
+                .connect()
+                .await
+                .map_err(crate::vpn::err)?,
+        ),
+        Request::VpnDisconnect => json(
+            &crate::vpn::service(ctx)?
+                .disconnect()
+                .await
+                .map_err(crate::vpn::err)?,
+        ),
+        Request::VpnImportProfile { profile } => {
+            if profile.len() > 64 * 1024 {
+                return Err(bad("profil trop long"));
+            }
+            json(
+                &crate::vpn::service(ctx)?
+                    .import_profile(&profile)
+                    .await
+                    .map_err(crate::vpn::err)?,
+            )
+        }
+        Request::VpnRemoveProfile => {
+            crate::vpn::service(ctx)?
+                .remove_profile()
+                .await
+                .map_err(crate::vpn::err)?;
+            Ok(Value::Null)
+        }
+        Request::VpnLeakTest => json(
+            &crate::vpn::service(ctx)?
+                .leak_test()
+                .await
+                .map_err(crate::vpn::err)?,
+        ),
+        Request::VpnListServices => json(&crate::vpn::service(ctx)?.list_services().await),
+        Request::ListNetworks => json(&crate::vpn::service(ctx)?.networks().await),
+        Request::SetNetworkTrust {
+            network_id,
+            trusted,
+        } => json(&crate::vpn::set_network_trust(ctx, &network_id, trusted).await?),
+
+        // ----- Behaviour guard & snapshots -----
+        Request::GuardStatus => json(&crate::guard::status(ctx).await),
+        Request::ListSnapshots => json(&crate::guard::snapshots::list(ctx).await?),
+        Request::CreateSnapshot => json(&crate::guard::snapshots::create(ctx).await?),
+        Request::RestoreFromSnapshot { snapshot, path } => {
+            let dest = crate::guard::snapshots::restore(ctx, &snapshot, &path).await?;
+            Ok(serde_json::json!({ "restored_to": dest }))
+        }
+
+        // ----- Privacy -----
+        Request::PrivacyGetProfile { reveal } => json(
+            &crate::privacy::service(ctx)?
+                .get_profile(reveal && peer.admin)
+                .await,
+        ),
+        Request::PrivacySetProfile { profile } => json(
+            &crate::privacy::service(ctx)?
+                .set_profile(profile)
+                .await
+                .map_err(crate::privacy::err)?,
+        ),
+        Request::PrivacyListBrokers => {
+            json(&crate::privacy::service(ctx)?.brokers(&ctx.config()).await)
+        }
+        Request::PrivacyListRequests => json(&crate::privacy::service(ctx)?.requests().await),
+        Request::PrivacySummary => {
+            json(&crate::privacy::service(ctx)?.summary(&ctx.config()).await)
+        }
+        Request::PrivacyStartRemoval { broker_ids } => json(
+            &crate::privacy::service(ctx)?
+                .start_removal(&ctx.config(), broker_ids)
+                .await
+                .map_err(crate::privacy::err)?,
+        ),
+        Request::PrivacyUpdateRequest {
+            request_id,
+            status,
+            note,
+        } => {
+            if note.as_ref().is_some_and(|n| n.len() > 4096) {
+                return Err(bad("note trop longue"));
+            }
+            json(
+                &crate::privacy::service(ctx)?
+                    .update_request(&request_id, status, note)
+                    .await
+                    .map_err(crate::privacy::err)?,
+            )
+        }
+        Request::PrivacyDraft { request_id } => json(
+            &crate::privacy::service(ctx)?
+                .draft(&ctx.config(), &request_id)
+                .await
+                .map_err(crate::privacy::err)?,
+        ),
+        Request::PrivacyComplaint { request_id } => json(
+            &crate::privacy::service(ctx)?
+                .complaint(&ctx.config(), &request_id)
+                .await
+                .map_err(crate::privacy::err)?,
+        ),
+        Request::BreachList => json(&crate::privacy::service(ctx)?.breaches().await),
+        Request::BreachCheckNow => json(
+            &crate::privacy::service(ctx)?
+                .check_breaches(&ctx.config())
+                .await
+                .map_err(crate::privacy::err)?,
+        ),
+        Request::AliasList => json(&crate::privacy::service(ctx)?.aliases().await),
+        Request::AliasCreate { label } => {
+            let label = label.trim().to_string();
+            if label.is_empty() || label.len() > 200 || label.chars().any(char::is_control) {
+                return Err(bad("libellé invalide (1 à 200 caractères)"));
+            }
+            json(
+                &crate::privacy::service(ctx)?
+                    .create_alias(&ctx.config(), &label)
+                    .await
+                    .map_err(crate::privacy::err)?,
+            )
+        }
         Request::Subscribe => Ok(Value::Null),
     }
 }
@@ -465,6 +649,50 @@ mod tests {
         changed.privacy.virustotal_api_key = Some("new".into());
         unredact(&mut changed, &cfg);
         assert_eq!(changed.privacy.virustotal_api_key.as_deref(), Some("new"));
+    }
+
+    #[test]
+    fn new_secrets_are_redacted() {
+        let mut cfg = Config::default();
+        cfg.data_removal.smtp_password = Some("app-password".into());
+        cfg.breach.hibp_api_key = Some("hibp".into());
+        cfg.aliases.api_key = Some("addy".into());
+        let r = redact(&cfg);
+        assert_eq!(r.data_removal.smtp_password.as_deref(), Some(REDACTED));
+        assert_eq!(r.breach.hibp_api_key.as_deref(), Some(REDACTED));
+        assert_eq!(r.aliases.api_key.as_deref(), Some(REDACTED));
+        let mut back = r;
+        unredact(&mut back, &cfg);
+        assert_eq!(back, cfg);
+    }
+
+    #[test]
+    fn identifiers_are_masked_and_restored() {
+        let mut cfg = Config::default();
+        cfg.breach.emails = vec!["c.m@example.com".into(), "c.n@example.com".into()];
+        cfg.data_removal.from_address = "c.m@example.com".into();
+        cfg.data_removal.smtp_username = "cm".into();
+        let r = redact(&cfg);
+        assert!(
+            r.breach.emails[0].starts_with("c***") && r.breach.emails[0].ends_with("@example.com")
+        );
+        assert_ne!(r.breach.emails[0], r.breach.emails[1]);
+        assert!(!r.breach.emails[0].contains("c.m"));
+        assert_eq!(r.data_removal.from_address, r.breach.emails[0]);
+        assert!(r.data_removal.smtp_username.starts_with("c***"));
+        assert_eq!(mask_identifier(""), "");
+        let mut back = r.clone();
+        unredact(&mut back, &cfg);
+        assert_eq!(back, cfg);
+        // Removing one masked address and adding a new one keeps the right originals.
+        let mut edited = r.clone();
+        edited.breach.emails.remove(0);
+        edited.breach.emails.push("new@example.org".into());
+        unredact(&mut edited, &cfg);
+        assert_eq!(
+            edited.breach.emails,
+            vec!["c.n@example.com", "new@example.org"]
+        );
     }
 
     #[test]

@@ -31,6 +31,12 @@ pub struct Config {
     pub privacy: PrivacyConfig,
     pub notifications: NotificationsConfig,
     pub security: SecurityConfig,
+    pub vpn: VpnConfig,
+    pub guard: GuardConfig,
+    pub network: NetworkGuardConfig,
+    pub data_removal: DataRemovalConfig,
+    pub breach: BreachConfig,
+    pub aliases: AliasConfig,
 }
 
 impl Config {
@@ -115,8 +121,151 @@ impl Config {
                 "energy.pause_on_battery_below must be 0..100".into(),
             ));
         }
+        self.validate_protection()
+    }
+
+    /// Validation of the VPN / guard / network / privacy sections.
+    fn validate_protection(&self) -> Result<(), ConfigError> {
+        let invalid = |m: &str| Err(ConfigError::Invalid(m.into()));
+        if self.vpn.leak_test_interval_minutes > 7 * 24 * 60 {
+            return invalid("vpn.leak_test_interval_minutes must be <= 10080");
+        }
+        if let Some(s) = &self.vpn.external_service {
+            if s.trim().is_empty() || s.len() > 128 || s.chars().any(char::is_control) {
+                return invalid("vpn.external_service must be a non-empty name (<= 128 chars)");
+            }
+        }
+        for a in &self.vpn.external_server_addresses {
+            if !is_host_or_ip(a) {
+                return Err(ConfigError::Invalid(format!(
+                    "vpn.external_server_addresses: invalid host or IP: {a}"
+                )));
+            }
+        }
+        for n in &self.vpn.trusted_networks {
+            if !is_network_id(n) {
+                return Err(ConfigError::Invalid(format!(
+                    "vpn.trusted_networks: invalid network id: {n}"
+                )));
+            }
+        }
+        if !(15..=24 * 60).contains(&self.guard.snapshot_interval_minutes) {
+            return invalid("guard.snapshot_interval_minutes must be 15..1440");
+        }
+        for t in &self.guard.trusted_team_ids {
+            if !is_team_id(t) {
+                return Err(ConfigError::Invalid(format!(
+                    "guard.trusted_team_ids: invalid Team ID: {t}"
+                )));
+            }
+        }
+        if !(5..=600).contains(&self.network.poll_seconds) {
+            return invalid("network.poll_seconds must be 5..600");
+        }
+        let d = &self.data_removal;
+        if !(1..=200).contains(&d.max_emails_per_day) {
+            return invalid("data_removal.max_emails_per_day must be 1..200");
+        }
+        if !(7..=90).contains(&d.reminder_after_days) {
+            return invalid("data_removal.reminder_after_days must be 7..90");
+        }
+        if !(7..=90).contains(&d.escalate_after_days) {
+            return invalid("data_removal.escalate_after_days must be 7..90");
+        }
+        if d.repeat_every_days != 0 && !(30..=730).contains(&d.repeat_every_days) {
+            return invalid("data_removal.repeat_every_days must be 0 or 30..730");
+        }
+        for r in &d.regions {
+            if !matches!(r.as_str(), "eu" | "global" | "us") {
+                return Err(ConfigError::Invalid(format!(
+                    "data_removal.regions: unknown region {r} (eu, global, us)"
+                )));
+            }
+        }
+        if !matches!(d.language.as_str(), "fr" | "en") {
+            return invalid("data_removal.language must be fr or en");
+        }
+        if d.send_mode == SendMode::Smtp {
+            if d.smtp_host.trim().is_empty() || !is_host_or_ip(d.smtp_host.trim()) {
+                return invalid("data_removal.smtp_host is required in smtp mode");
+            }
+            if d.smtp_port == 0 {
+                return invalid("data_removal.smtp_port must be > 0");
+            }
+            if !is_email(&d.from_address) {
+                return invalid("data_removal.from_address must be an email address in smtp mode");
+            }
+        }
+        if !d.from_address.is_empty() && !is_email(&d.from_address) {
+            return invalid("data_removal.from_address must be an email address");
+        }
+        for e in &self.breach.emails {
+            if !is_email(e) {
+                return Err(ConfigError::Invalid(format!(
+                    "breach.emails: invalid address: {e}"
+                )));
+            }
+        }
+        if !(1..=24 * 30).contains(&self.breach.check_interval_hours) {
+            return invalid("breach.check_interval_hours must be 1..720");
+        }
+        if !self.aliases.base_url.is_empty() && !self.aliases.base_url.starts_with("https://") {
+            return invalid("aliases.base_url must use https");
+        }
         Ok(())
     }
+}
+
+/// `host`, `host.domain`, IPv4 or IPv6 literal (no scheme, port or path).
+pub fn is_host_or_ip(s: &str) -> bool {
+    if s.parse::<std::net::IpAddr>().is_ok() {
+        return true;
+    }
+    !s.is_empty()
+        && s.len() <= 253
+        && s.split('.').all(|l| {
+            !l.is_empty()
+                && l.len() <= 63
+                && !l.starts_with('-')
+                && !l.ends_with('-')
+                && l.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+        })
+}
+
+/// Network fingerprint id: `gw:<router MAC, lowercase aa:bb:cc:dd:ee:ff>`.
+pub fn is_network_id(s: &str) -> bool {
+    let Some(mac) = s.strip_prefix("gw:") else {
+        return false;
+    };
+    let parts: Vec<&str> = mac.split(':').collect();
+    parts.len() == 6
+        && parts.iter().all(|p| {
+            p.len() == 2
+                && p.bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        })
+}
+
+/// Apple Developer Team ID: 10 uppercase letters / digits.
+pub fn is_team_id(s: &str) -> bool {
+    s.len() == 10
+        && s.bytes()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+}
+
+/// Minimal email syntax check (`local@domain.tld`, no spaces / control characters / angle brackets).
+pub fn is_email(s: &str) -> bool {
+    let Some((local, domain)) = s.rsplit_once('@') else {
+        return false;
+    };
+    !local.is_empty()
+        && local.len() <= 64
+        && s.len() <= 254
+        && domain.contains('.')
+        && is_host_or_ip(domain)
+        && !s.chars().any(|c| {
+            c.is_whitespace() || c.is_control() || matches!(c, '<' | '>' | ',' | ';' | '"')
+        })
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -407,9 +556,286 @@ impl Default for SecurityConfig {
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// VPN, behaviour guard, network guard, privacy (data removal, breaches, aliases)
+// ---------------------------------------------------------------------------------------------
+
+/// When the VPN must be up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum VpnMode {
+    /// Never connected automatically (manual `vpn_connect` still works).
+    #[default]
+    Off,
+    /// Always connected.
+    Always,
+    /// Connected on every network that is not in `vpn.trusted_networks`.
+    UntrustedNetworks,
+}
+
+/// Which VPN engine Parabellum drives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum VpnBackend {
+    /// sing-box (open source, GPL-3.0) run by the daemon with a TUN interface, from the imported profile.
+    #[default]
+    SingBox,
+    /// A VPN already configured in macOS (Shadowrocket, WireGuard, sing-box for Apple…), driven with
+    /// `scutil --nc start|stop <vpn.external_service>`.
+    External,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct VpnConfig {
+    pub mode: VpnMode,
+    pub backend: VpnBackend,
+    /// External backend: name of the macOS VPN service (`scutil --nc list`), e.g. `Shadowrocket`.
+    pub external_service: Option<String>,
+    /// External backend: VPN server hosts / IPs the kill switch lets through (the sing-box backend takes
+    /// them from the imported profile).
+    pub external_server_addresses: Vec<String>,
+    /// Network fingerprints (`gw:<router MAC>`) considered safe for `untrusted_networks` mode.
+    pub trusted_networks: Vec<String>,
+    /// While the VPN should be up, block every packet that does not go through the tunnel (pf anchor).
+    pub kill_switch: bool,
+    /// Keep the local network (printers, NAS, AirDrop, DHCP) reachable outside the tunnel.
+    pub allow_lan: bool,
+    /// sing-box: route IPv6 into the tunnel too (otherwise IPv6 is blocked while connected).
+    pub tunnel_ipv6: bool,
+    /// Automatic leak test while connected, in minutes (0 = only on demand).
+    pub leak_test_interval_minutes: u32,
+}
+
+impl Default for VpnConfig {
+    fn default() -> Self {
+        Self {
+            mode: VpnMode::Off,
+            backend: VpnBackend::SingBox,
+            external_service: None,
+            external_server_addresses: vec![],
+            trusted_networks: vec![],
+            kill_switch: false,
+            allow_lan: true,
+            tunnel_ipv6: true,
+            leak_test_interval_minutes: 60,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GuardConfig {
+    /// Info-stealer behaviour: fake password dialogs, browser / keychain / wallet credential theft,
+    /// staging + exfiltration of the loot (eslogger exec / create / rename events).
+    pub stealer_detection: bool,
+    /// Kill the offending process on a high-confidence match (never Apple system services).
+    pub kill_on_detection: bool,
+    /// Team IDs allowed to read browser / keychain data on top of the DB allowlist (password managers…).
+    pub trusted_team_ids: Vec<String>,
+    /// Ransomware: decoy files in the watched user folders + mass "encrypt-and-rename" detection.
+    pub ransomware_detection: bool,
+    /// Suspend (SIGSTOP) suspected ransomware until you decide (kill or resume) instead of only alerting.
+    pub suspend_ransomware: bool,
+    /// Periodic APFS local snapshots of the data volume (Time Machine local snapshots, purged by macOS
+    /// after about 24 h): restore points if files get encrypted.
+    pub snapshots: bool,
+    pub snapshot_interval_minutes: u32,
+}
+
+impl Default for GuardConfig {
+    fn default() -> Self {
+        Self {
+            stealer_detection: true,
+            kill_on_detection: true,
+            trusted_team_ids: vec![],
+            ransomware_detection: true,
+            suspend_ransomware: true,
+            snapshots: true,
+            snapshot_interval_minutes: 60,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct NetworkGuardConfig {
+    /// Watch the current network: router identity change (ARP spoofing), another host claiming the
+    /// router's MAC, a known Wi-Fi name now open (evil twin). Also feeds the VPN auto-connect.
+    pub enabled: bool,
+    /// Polling period of the routing table / ARP cache, seconds.
+    pub poll_seconds: u32,
+}
+
+impl Default for NetworkGuardConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            poll_seconds: 20,
+        }
+    }
+}
+
+/// How GDPR erasure requests leave the Mac.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SendMode {
+    /// `.eml` drafts written to `~/Downloads/Parabellum-RGPD/`, sent by you from your mail app.
+    #[default]
+    Drafts,
+    /// Sent by the daemon through your SMTP account (rate-limited).
+    Smtp,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DataRemovalConfig {
+    pub enabled: bool,
+    /// Broker lists: `eu` (Datenanfragen: ad-tech, address and credit brokers relevant in France / EU),
+    /// `global` (international marketing data brokers), `us` (US people-search sites).
+    pub regions: Vec<String>,
+    pub send_mode: SendMode,
+    pub smtp_host: String,
+    pub smtp_port: u16,
+    pub smtp_username: String,
+    /// Secret (app password); redacted over IPC.
+    pub smtp_password: Option<String>,
+    /// Sender address (also where brokers answer).
+    pub from_address: String,
+    pub max_emails_per_day: u32,
+    /// Unanswered requests get a formal reminder after this many days (GDPR art. 12(3): one month).
+    pub reminder_after_days: u32,
+    /// Days after the reminder before a CNIL complaint is suggested.
+    pub escalate_after_days: u32,
+    /// Letter language: `fr` or `en` (non-French recipients always get English).
+    pub language: String,
+    /// Brokers re-collect data: send a new request every N days (0 = never).
+    pub repeat_every_days: u32,
+}
+
+impl Default for DataRemovalConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            regions: vec!["eu".into(), "global".into()],
+            send_mode: SendMode::Drafts,
+            smtp_host: String::new(),
+            smtp_port: 587,
+            smtp_username: String::new(),
+            smtp_password: None,
+            from_address: String::new(),
+            max_emails_per_day: 20,
+            reminder_after_days: 30,
+            escalate_after_days: 15,
+            language: "fr".into(),
+            repeat_every_days: 180,
+        }
+    }
+}
+
+/// Data-breach lookup service.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum BreachProvider {
+    /// XposedOrNot (free, no key).
+    #[default]
+    XposedOrNot,
+    /// Have I Been Pwned (paid API key).
+    Hibp,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BreachConfig {
+    pub enabled: bool,
+    /// Addresses checked against known breaches (only the address is sent to the provider).
+    pub emails: Vec<String>,
+    pub provider: BreachProvider,
+    /// Secret; redacted over IPC.
+    pub hibp_api_key: Option<String>,
+    pub check_interval_hours: u32,
+}
+
+impl Default for BreachConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            emails: vec![],
+            provider: BreachProvider::XposedOrNot,
+            hibp_api_key: None,
+            check_interval_hours: 24 * 7,
+        }
+    }
+}
+
+/// Email alias service.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AliasProvider {
+    #[default]
+    None,
+    /// addy.io (open source, self-hostable).
+    Addy,
+    /// SimpleLogin (open source, Proton).
+    SimpleLogin,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct AliasConfig {
+    pub provider: AliasProvider,
+    /// Secret; redacted over IPC.
+    pub api_key: Option<String>,
+    /// Empty = the provider's public instance (`https://app.addy.io`, `https://app.simplelogin.io`);
+    /// set it for a self-hosted instance.
+    pub base_url: String,
+    /// addy.io: alias domain (empty = account default).
+    pub domain: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn protection_sections_validate() {
+        let c = Config::default();
+        assert!(c.validate().is_ok());
+        assert!(
+            Config::from_toml("[vpn]\nmode = \"untrusted_networks\"\nkill_switch = true\n").is_ok()
+        );
+        assert!(
+            Config::from_toml("[vpn]\ntrusted_networks = [\"gw:aa:bb:cc:dd:ee:ff\"]\n").is_ok()
+        );
+        assert!(
+            Config::from_toml("[vpn]\ntrusted_networks = [\"gw:AA:bb:cc:dd:ee:ff\"]\n").is_err()
+        );
+        assert!(Config::from_toml("[vpn]\nexternal_server_addresses = [\"vpn.example.com\", \"203.0.113.7\", \"2001:db8::1\"]\n").is_ok());
+        assert!(Config::from_toml("[vpn]\nexternal_server_addresses = [\"https://x\"]\n").is_err());
+        assert!(Config::from_toml("[guard]\nsnapshot_interval_minutes = 5\n").is_err());
+        assert!(Config::from_toml("[guard]\ntrusted_team_ids = [\"2BUA8C4S2C\"]\n").is_ok());
+        assert!(Config::from_toml("[guard]\ntrusted_team_ids = [\"nope\"]\n").is_err());
+        assert!(Config::from_toml("[network]\npoll_seconds = 1\n").is_err());
+        assert!(Config::from_toml("[data_removal]\nregions = [\"eu\", \"mars\"]\n").is_err());
+        assert!(Config::from_toml("[data_removal]\nsend_mode = \"smtp\"\n").is_err());
+        assert!(Config::from_toml(
+            "[data_removal]\nsend_mode = \"smtp\"\nsmtp_host = \"smtp.gmail.com\"\nfrom_address = \"q@example.com\"\n"
+        )
+        .is_ok());
+        assert!(Config::from_toml("[breach]\nemails = [\"not an email\"]\n").is_err());
+        assert!(Config::from_toml("[aliases]\nbase_url = \"http://addy.local\"\n").is_err());
+    }
+
+    #[test]
+    fn syntax_helpers() {
+        assert!(is_email("q.m+tag@sub.example.fr"));
+        assert!(!is_email("q@localhost"));
+        assert!(!is_email("a b@example.com"));
+        assert!(!is_email("<x@example.com>"));
+        assert!(is_host_or_ip("smtp.gmail.com") && is_host_or_ip("::1") && !is_host_or_ip("a..b"));
+        assert!(is_team_id("EQHXZ8M8AV") && !is_team_id("eqhxz8m8av"));
+        assert!(is_network_id("gw:00:11:22:aa:bb:cc") && !is_network_id("gw:00:11:22:aa:bb"));
+    }
 
     #[test]
     fn default_roundtrip() {

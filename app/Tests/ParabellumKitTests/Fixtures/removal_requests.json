@@ -1,0 +1,20 @@
+[
+  {
+    "broker_email": "privacy@acxiom.example",
+    "broker_id": "acxiom",
+    "broker_name": "Acxiom",
+    "created_at": 1792000000,
+    "due_at": 1794692000,
+    "id": "2f1c8a4e-0000-4000-8000-000000000002",
+    "sent_at": 1792100000,
+    "status": "sent"
+  },
+  {
+    "broker_id": "acxiom",
+    "broker_name": "Acxiom",
+    "created_at": 1792000000,
+    "id": "2f1c8a4e-0000-4000-8000-000000000003",
+    "opt_out_url": "https://example.com/opt-out",
+    "status": "needs_form"
+  }
+]

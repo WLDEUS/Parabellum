@@ -130,6 +130,86 @@ fn extract_from_targz(archive: &Path, out: &Path) -> Result<(), UpdateError> {
     ))
 }
 
+/// Max size of the extracted sing-box binary.
+const MAX_SINGBOX_BINARY: u64 = 160 * 1024 * 1024;
+
+/// Extract the entry `inner` (exact path, e.g. `sing-box-1.14.4-darwin-arm64/sing-box`) of a `.tar.gz`
+/// (already authenticated) to `dest` (via `dest.new`, arm64 Mach-O check, chmod 0755, rename).
+pub(crate) fn extract_tar_binary(
+    archive: &Path,
+    inner: &str,
+    dest: &Path,
+) -> Result<(), UpdateError> {
+    let want = inner.trim_start_matches("./");
+    if want.is_empty()
+        || want.starts_with('/')
+        || want.split('/').any(|c| c == ".." || c.is_empty())
+    {
+        return Err(UpdateError::Archive(format!(
+            "chemin d'archive invalide : {inner}"
+        )));
+    }
+    let mut tmp_name = dest.as_os_str().to_os_string();
+    tmp_name.push(".new");
+    let tmp = std::path::PathBuf::from(tmp_name);
+    let _ = std::fs::remove_file(&tmp);
+    let res = (|| -> Result<(), UpdateError> {
+        let f = std::fs::File::open(archive)?;
+        let mut ar = tar::Archive::new(flate2::read::GzDecoder::new(std::io::BufReader::new(f)));
+        let entries = ar
+            .entries()
+            .map_err(|e| UpdateError::Archive(e.to_string()))?;
+        let mut found = false;
+        for (n, entry) in entries.enumerate() {
+            if n > MAX_ENTRIES {
+                break;
+            }
+            let entry = entry.map_err(|e| UpdateError::Archive(e.to_string()))?;
+            if entry.header().entry_type() != tar::EntryType::Regular {
+                continue;
+            }
+            let path = entry
+                .path()
+                .map_err(|e| UpdateError::Archive(e.to_string()))?
+                .to_string_lossy()
+                .trim_start_matches("./")
+                .to_string();
+            if path != want {
+                continue;
+            }
+            let mut out = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&tmp)?;
+            let n = std::io::copy(&mut entry.take(MAX_SINGBOX_BINARY + 1), &mut out)?;
+            if n > MAX_SINGBOX_BINARY {
+                return Err(UpdateError::Archive("binaire trop gros".into()));
+            }
+            out.flush()?;
+            out.sync_all()?;
+            found = true;
+            break;
+        }
+        if !found {
+            return Err(UpdateError::Archive(format!("{want} absent de l'archive")));
+        }
+        let mut head = [0u8; 8];
+        std::fs::File::open(&tmp)?.read_exact(&mut head)?;
+        if head != MACHO_ARM64_HEADER {
+            return Err(UpdateError::Archive(
+                "le binaire n'est pas un Mach-O arm64".into(),
+            ));
+        }
+        set_exec(&tmp)?;
+        std::fs::rename(&tmp, dest)?;
+        Ok(())
+    })();
+    if res.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    res
+}
+
 /// Reject zips with unsafe names (absolute, `..`), too many entries or an excessive expanded size
 /// before handing them to `ditto`.
 pub(crate) fn prescan_zip(archive: &Path, max_total: u64) -> Result<(), UpdateError> {
@@ -246,5 +326,46 @@ pub(crate) mod tests {
         let p = d.path().join("x.tar.gz");
         std::fs::write(&p, gz.finish().unwrap()).unwrap();
         extract_dnscrypt_binary(&p, &d.path().join("bin")).unwrap();
+    }
+
+    pub(crate) fn singbox_targz(version: &str, binary: &[u8]) -> Vec<u8> {
+        let mut b = tar::Builder::new(Vec::new());
+        let dir = format!("sing-box-{version}-darwin-arm64");
+        for (name, data) in [
+            (format!("{dir}/LICENSE"), b"GPL-3.0".to_vec()),
+            (format!("{dir}/sing-box"), binary.to_vec()),
+        ] {
+            let mut h = tar::Header::new_gnu();
+            h.set_size(data.len() as u64);
+            h.set_mode(0o755);
+            h.set_cksum();
+            b.append_data(&mut h, name, data.as_slice()).unwrap();
+        }
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        gz.write_all(&b.into_inner().unwrap()).unwrap();
+        gz.finish().unwrap()
+    }
+
+    #[test]
+    fn extracts_named_tar_entry() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("sing-box-1.14.4-darwin-arm64.tar.gz");
+        std::fs::write(&p, singbox_targz("1.14.4", &fake_macho())).unwrap();
+        let dest = d.path().join("sing-box");
+        extract_tar_binary(&p, "sing-box-1.14.4-darwin-arm64/sing-box", &dest).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), fake_macho());
+        assert!(
+            extract_tar_binary(&p, "sing-box-1.14.4-darwin-arm64/nope", &d.path().join("x"))
+                .is_err()
+        );
+        assert!(extract_tar_binary(&p, "../sing-box", &d.path().join("y")).is_err());
+        std::fs::write(&p, singbox_targz("1.14.4", b"#!/bin/sh\n")).unwrap();
+        assert!(extract_tar_binary(
+            &p,
+            "sing-box-1.14.4-darwin-arm64/sing-box",
+            &d.path().join("z")
+        )
+        .is_err());
+        assert!(!d.path().join("z").exists() && !d.path().join("z.new").exists());
     }
 }

@@ -20,11 +20,24 @@ public struct Config: Codable, Sendable, Hashable {
     public var privacy = PrivacyConfig()
     public var notifications = NotificationsConfig()
     public var security = SecurityConfig()
+    public var vpn = VpnConfig()
+    /// Rust `guard` (a Swift keyword).
+    public var behaviorGuard = GuardConfig()
+    /// Rust `network`.
+    public var networkGuard = NetworkGuardConfig()
+    public var dataRemoval = DataRemovalConfig()
+    public var breach = BreachConfig()
+    public var aliases = AliasConfig()
 
     public init() {}
 
     enum CodingKeys: String, CodingKey {
         case scan, realtime, ml, dns, devices, persistence, updates, energy, privacy, notifications, security
+        case vpn
+        case behaviorGuard = "guard"
+        case networkGuard = "network"
+        case dataRemoval = "data_removal"
+        case breach, aliases
     }
 
     public init(from decoder: Decoder) throws {
@@ -41,6 +54,12 @@ public struct Config: Codable, Sendable, Hashable {
         privacy = try c.decodeOr(.privacy, privacy)
         notifications = try c.decodeOr(.notifications, notifications)
         security = try c.decodeOr(.security, security)
+        vpn = try c.decodeOr(.vpn, vpn)
+        behaviorGuard = try c.decodeOr(.behaviorGuard, behaviorGuard)
+        networkGuard = try c.decodeOr(.networkGuard, networkGuard)
+        dataRemoval = try c.decodeOr(.dataRemoval, dataRemoval)
+        breach = try c.decodeOr(.breach, breach)
+        aliases = try c.decodeOr(.aliases, aliases)
     }
 
     /// Same rules as `Config::validate` in Rust (messages in French). Empty = valid.
@@ -73,6 +92,7 @@ public struct Config: Codable, Sendable, Hashable {
         if persistence.fullScanIntervalMinutes < 0 {
             errors.append("L'intervalle d'énumération de la persistance ne peut pas être négatif.")
         }
+        errors.append(contentsOf: protectionValidationErrors())
         return errors
     }
 }

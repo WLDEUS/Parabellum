@@ -1,0 +1,8 @@
+{
+  "backend": "sing_box",
+  "engine_installed": false,
+  "kill_switch": "off",
+  "mode": "off",
+  "state": "disconnected",
+  "wanted": false
+}

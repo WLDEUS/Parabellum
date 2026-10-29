@@ -225,3 +225,11 @@ def render(domains: Iterable[str]) -> str:
     """Sorted, newline-terminated list (deterministic bundle content)."""
     items = sorted(set(domains))
     return "".join(f"{d}\n" for d in items)
+
+
+def render_domain_set(domains: Iterable[str], header: Iterable[str] = ()) -> str:
+    """Surge / Shadowrocket ``DOMAIN-SET``: one ``.domain`` per line (the leading dot also matches every
+    subdomain, the bundle semantics), ``#`` header comments, subdomains of listed parents pruned."""
+    lines = [f"# {h}" for h in header]
+    lines += [f".{d}" for d in sorted(prune_subdomains(domains))]
+    return "\n".join(lines) + "\n"

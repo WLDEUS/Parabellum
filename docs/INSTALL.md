@@ -141,6 +141,8 @@ une seule fois lors du passage de l'ad hoc au certificat, ou après `setup-codes
 | uBlock Origin Lite Safari | Vous | [App Store](https://apps.apple.com/app/id6745342698), puis Safari > Réglages > Extensions > activer |
 | Blocage DNS global | Désactivé par défaut | L'activer dans l'app **après** le retrait de Kaspersky (§ 9) |
 | Notifications | App | Accepter la demande d'autorisation |
+| sing-box (VPN) | Daemon, à la première connexion (version épinglée dans la base signée) | Importer ton serveur : app > VPN > Coller un lien (dans Shadowrocket : appui long sur le nœud > Partager > Copier le lien) |
+| Effacement RGPD | Désactivé par défaut | Réglages > Effacement : activer, choisir brouillons ou SMTP (mot de passe d'application Gmail), puis app > Vie privée > Identité > Lancer la campagne |
 
 L'app vérifie l'état de chaque élément (menu **Composants** et **Pubs et trackers**).
 
@@ -201,6 +203,8 @@ de Kaspersky peut entrer en conflit avec le DNS local : gardez le blocage DNS de
 | L'app dit « daemon injoignable » | `sudo launchctl print system/com.wldeus.parabellum.daemon` (state, pid, last exit code) | `sudo launchctl kickstart -k system/com.wldeus.parabellum.daemon` ; lire les journaux |
 | Le daemon redémarre en boucle | `tail -n 100 /Library/Logs/Parabellum/parabellumd.stderr.log` et `parabellumd.log` | Selon l'erreur ; vérifier l'espace disque et la présence des binaires |
 | « Protection dégradée » après une mise à jour | `parabellum status` ; `codesign -d -r- "/Library/Application Support/Parabellum/bin/parabellumd"` (`cdhash` = ad hoc) | Redonner l'accès complet au disque (§ 6) ; pour ne plus avoir à le faire : `make codesign-cert` + secrets CI (§ 2, § 8) |
+| Plus d'accès Internet avec le kill switch | `parabellum vpn` (état « Internet bloqué ») | `parabellum vpn disconnect` ; secours sans daemon : `sudo pfctl -a com.apple/250.Parabellum -F all` |
+| Le VPN ne se connecte pas | `parabellum vpn`, journal `/Library/Application Support/Parabellum/state/vpn/sing-box.log` | Réimporter le lien ; vérifier que la base contient l'épinglage de sing-box (`parabellum components`) |
 | Plus d'accès Internet après activation du DNS | `scutil --dns`, `networksetup -getdnsservers Wi-Fi` | `parabellum dns off` ; secours sans daemon : `sudo "/Library/Application Support/Parabellum/bin/restore-dns.sh"` |
 | Base jamais mise à jour | `parabellum status` (version, dernière erreur) | Signature refusée = clé publique du binaire ≠ clé secrète de la CI (§ 2) ; dépôt privé = token manquant (§ 8) |
 | Le daemon ou l'app ne démarre pas au login | Réglages Système > Général > Ouverture (éléments d'arrière-plan) | Réactiver les entrées Parabellum |

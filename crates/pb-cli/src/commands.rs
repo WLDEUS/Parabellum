@@ -101,7 +101,7 @@ fn admin_probe(cmd: &Command) -> Option<Request> {
             name: none(),
             auto_update: *state == OnOff::On,
         },
-        _ => return None,
+        other => return crate::protect::admin_probe(other),
     })
 }
 
@@ -167,8 +167,14 @@ fn connect(cli: &Cli) -> Result<Client, CliError> {
 }
 
 fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
+    if crate::protect::is_local(&cli.command) {
+        return crate::protect::local(cli, io);
+    }
     let mut c = connect(cli)?;
     match &cli.command {
+        Command::Vpn { action } => return crate::protect::vpn(cli, io, &mut c, action),
+        Command::Guard { action } => return crate::protect::guard(cli, io, &mut c, action),
+        Command::Privacy { action } => return crate::protect::privacy(cli, io, &mut c, action),
         Command::Ping => {
             let p: PingResponse = c.call(Request::Ping)?;
             emit(cli, io, &p, |p| {
@@ -212,7 +218,8 @@ fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
             let action: AlertAction = parse_wire_enum(action).ok_or_else(|| {
                 CliError::Usage(format!(
                     "action inconnue « {action} » (acknowledge, quarantine, allow, restore, trust-device, block-device, \
-                     approve-persistence, remove-persistence, report-false-positive, dismiss)"
+                     approve-persistence, remove-persistence, report-false-positive, kill-process, resume-process, \
+                     trust-network, dismiss)"
                 ))
             })?;
             let a: Alert = c.call(Request::ResolveAlert {

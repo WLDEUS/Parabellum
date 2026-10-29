@@ -39,7 +39,46 @@ final class ProtocolTests: XCTestCase {
             .spywareScan,
             .posture(refresh: true),
             .subscribe,
+            .vpnStatus,
+            .vpnConnect,
+            .vpnDisconnect,
+            .vpnImportProfile(profile: "trojan://pw@203.0.113.9:443#Paris"),
+            .vpnRemoveProfile,
+            .vpnLeakTest,
+            .vpnListServices,
+            .listNetworks,
+            .setNetworkTrust(networkId: "gw:00:24:d4:a1:b2:c3", trusted: true),
+            .setNetworkTrust(networkId: "gw:00:24:d4:a1:b2:c3", trusted: false),
+            .guardStatus,
+            .listSnapshots,
+            .createSnapshot,
+            .restoreFromSnapshot(snapshot: "com.apple.TimeMachine.2026-10-29-120000.local", path: "/Users/q/Documents/budget.xlsx"),
+            .privacyGetProfile(reveal: false),
+            .privacyGetProfile(reveal: true),
+            .privacySetProfile(Self.fixtureIdentity),
+            .privacyListBrokers,
+            .privacyListRequests,
+            .privacySummary,
+            .privacyStartRemoval(brokerIds: nil),
+            .privacyStartRemoval(brokerIds: ["acxiom"]),
+            .privacyUpdateRequest(requestId: "r", status: .completed, note: "confirmé"),
+            .privacyDraft(requestId: "r"),
+            .privacyComplaint(requestId: "r"),
+            .breachList,
+            .breachCheckNow,
+            .aliasList,
+            .aliasCreate(label: "boutique"),
+            .resolveAlert(alertId: 31, action: .killProcess),
+            .resolveAlert(alertId: 31, action: .resumeProcess),
         ]
+    }
+
+    private static var fixtureIdentity: IdentityProfile {
+        var profile = IdentityProfile()
+        profile.fullName = "Camille Martin"
+        profile.emails = ["c.m@example.com"]
+        profile.country = "FR"
+        return profile
     }
 
     func testRequestsMatchRustEncoding() throws {
@@ -213,9 +252,9 @@ final class ProtocolTests: XCTestCase {
 
     func testServerLines() throws {
         let lines = try Fixtures.lines("server_lines.jsonl")
-        XCTAssertEqual(lines.count, 11)
+        XCTAssertEqual(lines.count, 12)
         let messages = try lines.map { try ServerMessage.parse($0) }
-        guard messages.count == 11 else { return }
+        guard messages.count == 12 else { return }
 
         // 1: response with StatusInfo
         guard case .response(let first) = messages[0] else { return XCTFail("ligne 1 : réponse attendue") }
@@ -239,10 +278,10 @@ final class ProtocolTests: XCTestCase {
             XCTAssertEqual(error as? DaemonClientError, .daemon(IpcError(code: .notFound, message: "alerte introuvable")))
         }
 
-        // 4…11: one event of each kind
+        // 4…12: one event of each kind
         let expectedNames = [
             "alert", "scan_progress", "scan_finished", "status_changed",
-            "device", "update_finished", "component", "quarantined",
+            "device", "update_finished", "component", "quarantined", "vpn",
         ]
         for (offset, name) in expectedNames.enumerated() {
             guard case .event(let event) = messages[3 + offset] else {
@@ -297,6 +336,11 @@ final class ProtocolTests: XCTestCase {
             XCTAssertEqual(entry.originalPath, "/Users/q/Downloads/eicar.com")
         } else {
             XCTFail("quarantined")
+        }
+        if case .event(.vpn(let vpn)) = messages[11] {
+            XCTAssertEqual(vpn, try Fixtures.decode(VpnStatus.self, from: "vpn_status.json"))
+        } else {
+            XCTFail("vpn")
         }
     }
 

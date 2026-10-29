@@ -1,4 +1,35 @@
 {
+  "aliases": {
+    "api_key": null,
+    "base_url": "",
+    "domain": "",
+    "provider": "none"
+  },
+  "breach": {
+    "check_interval_hours": 168,
+    "emails": [],
+    "enabled": false,
+    "hibp_api_key": null,
+    "provider": "xposed_or_not"
+  },
+  "data_removal": {
+    "enabled": false,
+    "escalate_after_days": 15,
+    "from_address": "",
+    "language": "fr",
+    "max_emails_per_day": 20,
+    "regions": [
+      "eu",
+      "global"
+    ],
+    "reminder_after_days": 30,
+    "repeat_every_days": 180,
+    "send_mode": "drafts",
+    "smtp_host": "",
+    "smtp_password": null,
+    "smtp_port": 587,
+    "smtp_username": ""
+  },
   "devices": {
     "alert_bluetooth": true,
     "alert_network_interfaces": true,
@@ -26,10 +57,23 @@
     "background_qos": true,
     "pause_on_battery_below": 20
   },
+  "guard": {
+    "kill_on_detection": true,
+    "ransomware_detection": true,
+    "snapshot_interval_minutes": 60,
+    "snapshots": true,
+    "stealer_detection": true,
+    "suspend_ransomware": true,
+    "trusted_team_ids": []
+  },
   "ml": {
     "enabled": true,
     "only_untrusted": true,
     "suspicious_threshold": 0.8500000238418579
+  },
+  "network": {
+    "enabled": true,
+    "poll_seconds": 20
   },
   "notifications": {
     "enabled": true,
@@ -84,5 +128,16 @@
     "db_base_url": "https://github.com/WLDEUS/Parabellum/releases/download/db-latest",
     "freshclam": true,
     "github_token": null
+  },
+  "vpn": {
+    "allow_lan": true,
+    "backend": "sing_box",
+    "external_server_addresses": [],
+    "external_service": null,
+    "kill_switch": false,
+    "leak_test_interval_minutes": 60,
+    "mode": "off",
+    "trusted_networks": [],
+    "tunnel_ipv6": true
   }
 }

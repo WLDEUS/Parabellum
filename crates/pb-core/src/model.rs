@@ -214,6 +214,10 @@ pub enum AlertKind {
     Network,
     Update,
     System,
+    /// Behaviour detection: info-stealer, ransomware (decoy files, mass encryption).
+    Behavior,
+    /// Privacy: data breaches, GDPR request follow-up.
+    Privacy,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
@@ -240,6 +244,12 @@ pub enum AlertAction {
     RemovePersistence,
     ReportFalsePositive,
     Dismiss,
+    /// Kill the process named in the alert (`process_pid` + `process_path`, re-checked before signalling).
+    KillProcess,
+    /// Resume a process Parabellum suspended (SIGCONT).
+    ResumeProcess,
+    /// Mark the network named in the alert (`network_id`) as trusted.
+    TrustNetwork,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -264,6 +274,18 @@ pub struct Alert {
     pub status: AlertStatus,
     /// Actions the UI should offer for this alert.
     pub actions: Vec<AlertAction>,
+    /// Process involved (behaviour alerts): pid at detection time and executable path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub process_pid: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub process_path: Option<String>,
+    /// Start time of that process (opaque, from the kernel): with the pid it identifies the process, so a
+    /// later kill / resume never hits another process that reused the pid.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub process_started_at: Option<i64>,
+    /// Network involved (network / VPN alerts), `gw:<router MAC>`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_id: Option<String>,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -627,9 +649,371 @@ pub struct WeeklyReport {
     pub dns_blocked_queries: Option<u64>,
 }
 
+// ---------------------------------------------------------------------------------------------
+// VPN & networks
+// ---------------------------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum VpnState {
+    #[default]
+    Disconnected,
+    Connecting,
+    Connected,
+    Disconnecting,
+    /// The last attempt failed (see `VpnStatus::message`); retried with backoff while the VPN is wanted.
+    Error,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum KillSwitchState {
+    /// Not enabled in the configuration, or the VPN is not wanted right now.
+    #[default]
+    Off,
+    /// Rules loaded, the tunnel is up: only tunnel / LAN / VPN-server traffic leaves the Mac.
+    Armed,
+    /// Rules loaded, the tunnel is down: Internet traffic is blocked until it comes back.
+    Blocking,
+    /// pf could not be configured (see `VpnStatus::message`).
+    Error,
+}
+
+/// Imported VPN profile, without its secrets.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VpnProfileInfo {
+    /// Display name (link fragment / `[Interface]` comment / server).
+    pub name: String,
+    /// `shadowsocks`, `vless`, `vmess`, `trojan`, `hysteria2`, `tuic`, `wireguard`.
+    pub protocol: String,
+    pub server: String,
+    pub port: u16,
+    /// Transport / security summary, e.g. `tls+ws`, `reality`, `udp`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transport: Option<String>,
+    pub imported_at: i64,
+}
+
+/// A network the Mac joined, identified by its router.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NetworkInfo {
+    /// `gw:<router MAC>` (stable for a given router; also works on Ethernet, no location permission).
+    pub id: String,
+    /// Wi-Fi name when macOS reveals it, else `Ethernet` / interface name.
+    pub name: String,
+    /// BSD interface (`en0`).
+    pub interface: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gateway_ip: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gateway_mac: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssid: Option<String>,
+    /// Wi-Fi security as reported by macOS (`WPA2 Personal`, `None`…), when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub security: Option<String>,
+    pub trusted: bool,
+    pub first_seen: i64,
+    pub last_seen: i64,
+    /// The Mac is on this network right now.
+    pub current: bool,
+}
+
+/// One check of a leak test.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LeakCheck {
+    /// `tunnel`, `ipv4`, `ipv6`, `dns`, `kill_switch`.
+    pub id: String,
+    pub ok: bool,
+    /// What was observed (French).
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LeakTestResult {
+    pub ts: i64,
+    /// Every check passed.
+    pub ok: bool,
+    pub vpn_connected: bool,
+    /// Public IPv4 seen by the Internet now.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public_ipv4: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public_ipv6: Option<String>,
+    /// Public IPv4 of this network without the VPN (remembered per network).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub home_ipv4: Option<String>,
+    /// System DNS servers in use (`scutil --dns`).
+    #[serde(default)]
+    pub dns_servers: Vec<String>,
+    pub checks: Vec<LeakCheck>,
+}
+
+/// A VPN configured in macOS (Network settings), as listed by `scutil --nc list`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExternalVpnService {
+    pub name: String,
+    /// Provider bundle id (`com.liguangming.Shadowrocket`, `com.wireguard.macos`…), when shown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    pub state: VpnState,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct VpnStatus {
+    pub mode: crate::config::VpnMode,
+    pub backend: crate::config::VpnBackend,
+    pub state: VpnState,
+    /// The daemon wants the tunnel up right now (mode + network + manual override).
+    pub wanted: bool,
+    /// `Some(true)`: connected by hand; `Some(false)`: disconnected by hand until the next network change.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manual_override: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<VpnProfileInfo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_service: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connected_since: Option<i64>,
+    /// Tunnel interface (`utun5`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interface: Option<String>,
+    pub kill_switch: KillSwitchState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network: Option<NetworkInfo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_leak_test: Option<LeakTestResult>,
+    /// sing-box binary installed (backend `sing_box`).
+    pub engine_installed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+// ---------------------------------------------------------------------------------------------
+// Behaviour guard (stealers, ransomware) & snapshots
+// ---------------------------------------------------------------------------------------------
+
+/// APFS local snapshot (`tmutil listlocalsnapshots /`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SnapshotInfo {
+    /// Full name, e.g. `com.apple.TimeMachine.2026-10-29-120000.local`.
+    pub name: String,
+    /// Creation time parsed from the name (local time), when possible.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<i64>,
+    /// Created by Parabellum (vs. Time Machine / the system).
+    pub ours: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct GuardStatus {
+    pub stealer_detection: bool,
+    pub ransomware_detection: bool,
+    /// Decoy files in place.
+    #[serde(default)]
+    pub canaries: Vec<String>,
+    pub snapshots_enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_snapshot: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot_error: Option<String>,
+    /// Processes suspended by Parabellum, waiting for a decision.
+    #[serde(default)]
+    pub suspended: Vec<SuspendedProcess>,
+    /// Detections in the last 7 days.
+    pub detections_7d: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SuspendedProcess {
+    pub pid: i32,
+    pub path: String,
+    pub since: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alert_id: Option<i64>,
+}
+
+// ---------------------------------------------------------------------------------------------
+// Privacy: identity, data brokers, GDPR requests, breaches, aliases
+// ---------------------------------------------------------------------------------------------
+
+/// The person data brokers must erase. Stored by the daemon (root-only); masked over IPC unless revealed
+/// with administrator approval.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct IdentityProfile {
+    pub full_name: String,
+    /// Every address brokers may know (the first one is used as the contact address).
+    pub emails: Vec<String>,
+    pub phones: Vec<String>,
+    /// Current postal address (multi-line).
+    pub postal_address: String,
+    pub previous_addresses: Vec<String>,
+    /// `YYYY-MM-DD`, optional (some brokers need it to find you).
+    pub birth_date: String,
+    /// ISO country code of residence (`FR`): selects the supervisory authority (CNIL).
+    pub country: String,
+}
+
+/// One organisation from the signed broker list (`privacy/brokers.json` in the threat DB).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BrokerInfo {
+    /// Stable slug.
+    pub id: String,
+    pub name: String,
+    /// Privacy / DPO contact address; brokers without one need the web form (`opt_out_url`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub website: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opt_out_url: Option<String>,
+    /// `eu`, `global`, `us`.
+    pub region: String,
+    /// `ads`, `addresses`, `credit`, `people-search`, `marketing`, `background-check`…
+    pub category: String,
+    /// `datenanfragen` (CC0) or `eraser` (MIT).
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RemovalStatus {
+    /// Waiting for the daily sending quota.
+    #[default]
+    Queued,
+    /// Draft written, waiting for you to send it (drafts mode).
+    DraftReady,
+    /// Sent (or marked sent); the one-month deadline runs.
+    Sent,
+    /// Deadline passed: reminder sent / drafted.
+    Reminded,
+    /// Reminder unanswered: CNIL complaint suggested.
+    Escalated,
+    /// The broker confirmed the erasure (or said it holds nothing).
+    Completed,
+    /// The broker refused or asked for something you do not want to give.
+    Refused,
+    /// The broker only accepts its web form: do it by hand, then mark it completed.
+    NeedsForm,
+    /// Sending failed (see `last_error`).
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemovalRequest {
+    /// UUID v4.
+    pub id: String,
+    pub broker_id: String,
+    pub broker_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub broker_email: Option<String>,
+    pub status: RemovalStatus,
+    pub created_at: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sent_at: Option<i64>,
+    /// Legal answer deadline (sent + one month).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub due_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reminded_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closed_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opt_out_url: Option<String>,
+    /// Draft file (drafts mode).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub draft_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+}
+
+/// Counters of the removal campaign.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct RemovalSummary {
+    pub total: u64,
+    pub queued: u64,
+    pub waiting_answer: u64,
+    pub overdue: u64,
+    pub completed: u64,
+    pub needs_action: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_send_at: Option<i64>,
+}
+
+/// A ready-to-send email (drafts mode, reminders): the app / CLI writes it as an `.eml` or opens a
+/// `mailto:` link, as the user — the daemon never writes into the home folder.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MailDraft {
+    pub request_id: String,
+    pub to: String,
+    pub subject: String,
+    /// Plain-text body (UTF-8, `\n` line breaks).
+    pub body: String,
+}
+
+/// GDPR complaint draft for the supervisory authority.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ComplaintDraft {
+    pub authority: String,
+    /// Where to file it (CNIL online form).
+    pub url: String,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BreachFinding {
+    pub email: String,
+    /// Breach name as given by the provider.
+    pub breach: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub breach_date: Option<String>,
+    /// Exposed data classes (`Passwords`, `Email addresses`…), when the provider says.
+    #[serde(default)]
+    pub data_classes: Vec<String>,
+    pub first_seen: i64,
+    /// Seen for the first time by the last check.
+    pub new: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EmailAlias {
+    /// Provider id of the alias.
+    pub id: String,
+    pub email: String,
+    /// What it is for (site name).
+    pub label: String,
+    pub provider: crate::config::AliasProvider,
+    pub created_at: i64,
+    pub active: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn protection_models_wire_format() {
+        assert_eq!(
+            serde_json::to_string(&KillSwitchState::Blocking).unwrap(),
+            "\"blocking\""
+        );
+        assert_eq!(
+            serde_json::to_string(&RemovalStatus::NeedsForm).unwrap(),
+            "\"needs_form\""
+        );
+        assert_eq!(
+            serde_json::to_string(&AlertAction::KillProcess).unwrap(),
+            "\"kill_process\""
+        );
+        let s = VpnStatus::default();
+        let v = serde_json::to_value(&s).unwrap();
+        assert_eq!(v["mode"], "off");
+        assert_eq!(v["backend"], "sing_box");
+        assert!(v.get("profile").is_none());
+    }
 
     #[test]
     fn enums_are_snake_case() {

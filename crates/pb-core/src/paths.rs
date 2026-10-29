@@ -15,6 +15,8 @@
 //!   dns/                                        dnscrypt-proxy.toml, merged blocklist, allowlist, query log stats
 //!   quarantine/                                 (root:wheel 0700) neutralised files + metadata
 //!   state/parabellum.sqlite                     alerts, scan history, devices, persistence baseline, reports
+//!   state/vpn/                                  VPN profile (secrets), sing-box config, kill-switch rules
+//!   state/privacy/                              identity used for GDPR erasure requests
 //!   cache/                                      scan cache, compiled YARA rules cache
 //!   tmp/                                        scratch (DMG mounts, PKG expansion), wiped at start
 //! /Library/Logs/Parabellum/parabellumd.log
@@ -117,6 +119,14 @@ impl Paths {
     pub fn state_db(&self) -> PathBuf {
         self.state_dir().join("parabellum.sqlite")
     }
+    /// VPN profile (secrets), generated sing-box config, kill-switch rules (root-only, under `state/`).
+    pub fn vpn_dir(&self) -> PathBuf {
+        self.state_dir().join("vpn")
+    }
+    /// Identity profile for GDPR requests (root-only, under `state/`).
+    pub fn privacy_dir(&self) -> PathBuf {
+        self.state_dir().join("privacy")
+    }
     pub fn cache_dir(&self) -> PathBuf {
         self.root.join("cache")
     }
@@ -141,6 +151,8 @@ impl Paths {
             self.dns_dir(),
             self.quarantine_dir(),
             self.state_dir(),
+            self.vpn_dir(),
+            self.privacy_dir(),
             self.cache_dir(),
             self.tmp_dir(),
             self.log_dir.clone(),

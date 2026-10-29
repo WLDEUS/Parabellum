@@ -1,0 +1,11 @@
+[
+  {
+    "created_at": 1793012400,
+    "name": "com.apple.TimeMachine.2026-10-29-120000.local",
+    "ours": true
+  },
+  {
+    "name": "com.apple.os.update-ABCDEF",
+    "ours": false
+  }
+]

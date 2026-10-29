@@ -9,6 +9,9 @@
 //! - [`persistence`], [`devices`], [`baseline`]: monitor-specific handling,
 //! - [`scheduler`]: updates, retro-hunts, osquery, battery; [`status`], [`report`],
 //! - [`backends`]: traits the other crates are plugged into ([`adapters`] = production wiring),
+//! - [`guard`]: behaviour detection (info-stealers, ransomware decoys / mass encryption) and APFS snapshots,
+//! - [`vpn`] / [`privacy`]: glue to pb-vpn (VPN, kill switch, network guard) and pb-privacy (GDPR requests,
+//!   breaches, aliases),
 //! - [`system`], [`setup`]: platform helpers, directories, logging, config file.
 
 pub mod actions;
@@ -20,10 +23,12 @@ pub mod bus;
 pub mod ctx;
 pub mod daemon;
 pub mod devices;
+pub mod guard;
 pub mod ipc;
 pub mod jobs;
 pub mod persistence;
 pub mod posture;
+pub mod privacy;
 pub mod realtime;
 pub mod report;
 pub mod router;
@@ -34,3 +39,4 @@ pub mod status;
 pub mod store;
 pub mod system;
 pub mod virustotal;
+pub mod vpn;

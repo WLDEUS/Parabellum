@@ -20,6 +20,8 @@ pb-engine = { workspace = true }
 pb-monitor = { workspace = true }
 pb-updater = { workspace = true }
 pb-dns = { workspace = true }
+pb-vpn = { workspace = true }
+pb-privacy = { workspace = true }
 tokio = { workspace = true }
 rusqlite = { workspace = true }
 serde = { workspace = true }

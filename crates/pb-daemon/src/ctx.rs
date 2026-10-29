@@ -67,6 +67,12 @@ pub struct Ctx {
     /// Hashes restored by the user in the last minute (the destination may differ from the original path).
     pub restored_hashes: Mutex<HashMap<String, std::time::Instant>>,
     pub realtime_slots: Arc<Semaphore>,
+    /// Behaviour guard state (correlation, decoys, suspended processes).
+    pub guard: crate::guard::GuardState,
+    /// VPN / kill switch / network guard (set at startup; `None` in tests that do not start it).
+    pub vpn: std::sync::OnceLock<Arc<pb_vpn::VpnService>>,
+    /// GDPR requests, breaches, aliases (set at startup).
+    pub privacy: std::sync::OnceLock<Arc<pb_privacy::PrivacyService>>,
 }
 
 impl Ctx {
@@ -99,6 +105,9 @@ impl Ctx {
             restored: Mutex::new(HashMap::new()),
             restored_hashes: Mutex::new(HashMap::new()),
             realtime_slots: Arc::new(Semaphore::new(REALTIME_SLOTS)),
+            guard: crate::guard::GuardState::default(),
+            vpn: std::sync::OnceLock::new(),
+            privacy: std::sync::OnceLock::new(),
         }
     }
 

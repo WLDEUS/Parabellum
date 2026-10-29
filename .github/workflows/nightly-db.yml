@@ -6,6 +6,9 @@ name: Nightly threat DB
 # Secrets: ABUSECH_AUTH_KEY (abuse.ch), MINISIGN_SECRET_KEY (unencrypted minisign secret key).
 # Zero Breach Toolkit (pipeline/zbt.py): latest release via the GitHub API (GH_TOKEN), shipped only after
 # gpg verifies SHA256SUMS.txt.asc with the pinned publisher key; its `--update` (network) runs here, in CI.
+# sing-box pin (pipeline/pins.py): `gh attestation verify --repo SagerNet/sing-box` (gh + GH_TOKEN, job env).
+# GDPR broker list (pipeline/privacy.py): Datenanfragen + Eraser at the commits pinned in sources.toml.
+# shadowrocket-reject.list (DOMAIN-SET) is uploaded to db-latest next to the bundle by publish.sh.
 
 on:
   schedule:
@@ -23,6 +26,7 @@ on:
 
 permissions:
   contents: write # gh release create/upload
+  attestations: read # gh attestation verify of the pinned sing-box release (pipeline/pins.py)
 
 concurrency:
   group: threat-db # shared with ml-train.yml: never publish model and bundle at the same time
@@ -117,7 +121,7 @@ jobs:
           {
             echo "## Threat DB $(python -c 'import json;print(json.load(open("dist/db/report.json")).get("version",""))')"
             echo '```json'
-            python -c 'import json; r = json.load(open("dist/db/report.json")); print(json.dumps({k: r.get(k) for k in ("stats", "sanity_problems", "source_errors", "domains", "detection")}, indent=2))'
+            python -c 'import json; r = json.load(open("dist/db/report.json")); print(json.dumps({k: r.get(k) for k in ("stats", "sanity_problems", "source_errors", "domains", "detection", "privacy_brokers", "component_pins")}, indent=2))'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Save clean corpus cache

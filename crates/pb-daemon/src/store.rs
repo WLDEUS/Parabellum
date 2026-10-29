@@ -1075,6 +1075,10 @@ mod tests {
             device_id: None,
             persistence_id: None,
             quarantine_id: None,
+            process_pid: None,
+            process_path: None,
+            process_started_at: None,
+            network_id: None,
             status: AlertStatus::Open,
             actions: vec![AlertAction::Acknowledge],
         }

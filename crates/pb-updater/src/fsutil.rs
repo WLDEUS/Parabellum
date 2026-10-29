@@ -81,6 +81,23 @@ pub(crate) fn read_capped(path: &Path, max: u64) -> std::io::Result<Vec<u8>> {
 }
 
 /// Name of the last component of a symlink's target (`db/current -> versions/X` gives `X`).
+/// Lowercase hex SHA-256 of a file (streamed).
+pub(crate) fn sha256_file(path: &Path) -> std::io::Result<String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let mut f = std::fs::File::open(path)?;
+    let mut h = Sha256::new();
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        let n = f.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        h.update(&buf[..n]);
+    }
+    Ok(hex::encode(h.finalize()))
+}
+
 pub(crate) fn link_target_name(link: &Path) -> Option<String> {
     let t = std::fs::read_link(link).ok()?;
     t.file_name().map(|n| n.to_string_lossy().to_string())

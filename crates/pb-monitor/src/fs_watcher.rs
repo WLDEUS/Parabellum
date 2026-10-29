@@ -355,6 +355,7 @@ async fn sleep_until_opt(deadline: Option<Instant>) {
 fn emit(tx: &mpsc::Sender<MonitorEvent>, path: PathBuf) -> bool {
     let ev = MonitorEvent::FileActivity {
         path: path.to_string_lossy().into_owned(),
+        from: None,
         source: FileEventSource::FsEvents,
         process: None,
     };

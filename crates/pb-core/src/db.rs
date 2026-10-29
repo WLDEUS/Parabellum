@@ -29,6 +29,12 @@
 //!                                     `--update` at the release-pinned commits), flat directory, optional
 //! zbt/meta.json                       {"version":"0.1.9","sha256":"<script hex>","indicators_updated_at":<unix>,
 //!                                     "signer_fingerprint":"C24E…A53C"}
+//! privacy/brokers.json                [`BrokersFile`]: organisations to send GDPR erasure requests to (Datenanfragen
+//!                                     CC0 + Eraser MIT, both fetched at pinned commits), optional
+//! components/pins.json                [`ComponentPins`]: third-party binaries without a vendor signature we can check
+//!                                     on the Mac (sing-box): the pipeline verifies the vendor's GitHub build
+//!                                     provenance attestation (Sigstore) and pins the archive SHA-256 here, so the
+//!                                     daemon trusts the download through this signed bundle; optional
 //! ```
 //! `.minisig` (minisign, Ed25519) signs the `.tar.gz`; the client verifies it with the public key
 //! compiled into the binary *before* unpacking, then checks every `files` digest.
@@ -47,6 +53,47 @@ pub const ZBT_META: &str = "zbt/meta.json";
 pub const ZBT_INDICATORS_DIR: &str = "zbt/indicators";
 /// Full fingerprint of the Ed25519 key that signs Zero Breach Toolkit releases (docs/VERIFYING.md upstream).
 pub const ZBT_SIGNER_FINGERPRINT: &str = "C24EC92B12D6670A2516065F9B4D575499AFA53C";
+
+/// Broker list inside the bundle (see the layout above).
+pub const PRIVACY_BROKERS: &str = "privacy/brokers.json";
+/// Pinned third-party components inside the bundle (see the layout above).
+pub const COMPONENT_PINS: &str = "components/pins.json";
+
+/// `privacy/brokers.json`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct BrokersFile {
+    /// Format version (1).
+    pub format: u32,
+    /// Upstream revisions the list was built from, e.g. `{"datenanfragen": "<commit>", "eraser": "<commit>"}`.
+    pub sources: BTreeMap<String, String>,
+    pub brokers: Vec<crate::model::BrokerInfo>,
+}
+
+/// One pinned component archive (`components/pins.json`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ComponentPin {
+    /// Upstream version, e.g. `1.14.4`.
+    pub version: String,
+    /// Release asset file name, e.g. `sing-box-1.14.4-darwin-arm64.tar.gz`.
+    pub asset: String,
+    /// HTTPS download URL of the asset.
+    pub url: String,
+    /// Lowercase hex SHA-256 of the asset.
+    pub sha256: String,
+    /// Path of the executable inside the archive, e.g. `sing-box-1.14.4-darwin-arm64/sing-box`.
+    pub binary: String,
+    /// How the pipeline authenticated the asset, e.g. `github-attestation:SagerNet/sing-box`.
+    pub verified_by: String,
+}
+
+/// `components/pins.json`: component name (`sing-box`) -> pin.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ComponentPins {
+    pub format: u32,
+    pub pins: BTreeMap<String, ComponentPin>,
+}
 
 /// `zbt/meta.json`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]

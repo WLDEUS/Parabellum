@@ -5,7 +5,8 @@
         [--pb-features target/release/pb-features] [--build-number N] [--sign] [--allow-shrink]
 
 Outputs in ``--out``: ``parabellum-db.tar.gz`` (+ ``.minisig`` with ``--sign``), ``manifest.json``,
-``pipeline-state.tar.gz`` (+ ``.minisig``), ``report.json``, and ``stage/`` (the unpacked bundle).
+``pipeline-state.tar.gz`` (+ ``.minisig``), ``report.json``, ``shadowrocket-reject.list`` (DOMAIN-SET for
+Shadowrocket, not in the bundle) and ``stage/`` (the unpacked bundle).
 Exit codes: 0 ok, 2 sanity guard refused the bundle (yesterday's release stays), 1 error.
 Env: ``ABUSECH_AUTH_KEY`` (abuse.ch sources), ``MINISIGN_SECRET_KEY`` (``--sign``),
 ``MALWARE_CORPUS=1`` (detection measurement), ``GITHUB_RUN_NUMBER`` (default build number).
@@ -37,7 +38,7 @@ from .bundle import (
 )
 from .corpus import CorpusItem, ensure_corpus, iter_files, load_spec
 from .detection import measure
-from .domains import Exclusions, prune_subdomains, render
+from .domains import Exclusions, prune_subdomains, render, render_domain_set
 from .fpgate import fp_rate, run_fp_gate
 from .hashes import (
     HashIndex,
@@ -50,12 +51,18 @@ from .hashes import (
     write_names_tsv,
 )
 from .http import Fetcher, Http
+from .pins import BUNDLE_PATH as PINS_PATH
+from .privacy import BUNDLE_PATH as BROKERS_PATH
+from .privacy import count as broker_count
 from .sign import sign
 from .sources import DOMAIN_CATEGORIES, Context, env_key, fetch_all, load_settings
 from .yara_rules import validate
 
 log = logging.getLogger("pipeline")
 REPO_ROOT = Path(__file__).resolve().parent.parent
+#: Blocklist for Shadowrocket (external VPN backend), published next to the bundle in `db-latest`, not inside it.
+SHADOWROCKET_FILE = "shadowrocket-reject.list"
+SHADOWROCKET_URL = "https://github.com/WLDEUS/Parabellum/releases/download/db-latest/" + SHADOWROCKET_FILE
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -173,6 +180,8 @@ def build(args: argparse.Namespace, http: Fetcher | None = None) -> int:
         "yara_tarball",
         "yara_raw",
         "zbt_release",
+        "privacy_brokers",
+        "component_pin",
     }
     payloads, infos, errors = fetch_all(
         ctx, state_dir, prev_dir, last_success, only=lambda s: not (args.offline and s.fetcher in network_fetchers)
@@ -311,6 +320,11 @@ def build(args: argparse.Namespace, http: Fetcher | None = None) -> int:
             dest.write_bytes(data)
             if rel == "ml/model_meta.json":
                 ml_version = str(json.loads(data).get("version") or "") or None
+    if (stage / BROKERS_PATH).is_file():
+        report["privacy_brokers"] = broker_count((stage / BROKERS_PATH).read_bytes())
+    if (stage / PINS_PATH).is_file():
+        pins_doc = json.loads((stage / PINS_PATH).read_text(encoding="utf-8"))
+        report["component_pins"] = {k: v.get("version") for k, v in pins_doc.get("pins", {}).items()}
 
     stats = Stats(
         malware_hashes=n_malware,
@@ -348,6 +362,18 @@ def build(args: argparse.Namespace, http: Fetcher | None = None) -> int:
 
     # --- package, state, sign ---
     deterministic_tar_gz(stage, out / BUNDLE_FILE)
+    shadowrocket = set().union(*categories.values())
+    (out / SHADOWROCKET_FILE).write_text(
+        render_domain_set(
+            shadowrocket,
+            [
+                f"Parabellum threat DB {manifest.version}: malware, ads and trackers ({len(shadowrocket)} entries)",
+                f"Built {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(now))}. Shadowrocket / Surge DOMAIN-SET:",
+                f"DOMAIN-SET,{SHADOWROCKET_URL},REJECT",
+            ],
+        ),
+        encoding="ascii",
+    )
     (out / MANIFEST_FILE).write_bytes(manifest_bytes)
     state_out = work / "state-out"
     index.save(state_out / "hashes")

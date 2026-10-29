@@ -1,0 +1,11 @@
+[
+  {
+    "category": "marketing",
+    "email": "privacy@acxiom.example",
+    "id": "acxiom",
+    "name": "Acxiom",
+    "region": "global",
+    "source": "eraser",
+    "website": "https://www.acxiom.com"
+  }
+]

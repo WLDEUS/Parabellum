@@ -17,8 +17,11 @@ pub fn prepare_dirs(paths: &Paths, as_root: bool) -> std::io::Result<()> {
         if !ours {
             continue;
         }
-        let private =
-            dir == paths.quarantine_dir() || dir == paths.state_dir() || dir == paths.tmp_dir();
+        let private = dir == paths.quarantine_dir()
+            || dir == paths.state_dir()
+            || dir == paths.vpn_dir()
+            || dir == paths.privacy_dir()
+            || dir == paths.tmp_dir();
         let mode = if private { 0o700 } else { 0o755 };
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(mode))?;
         if as_root {
@@ -87,7 +90,15 @@ fn detach_mount(path: &Path) {
             std::time::Duration::from_secs(30),
         );
         if !ok {
-            tracing::warn!(path = %path.display(), "hdiutil detach failed");
+            // Not a disk image (APFS snapshot of an interrupted restore): plain forced unmount.
+            let ok = crate::system::run_sync(
+                "/sbin/umount",
+                &[std::ffi::OsStr::new("-f"), path.as_os_str()],
+                std::time::Duration::from_secs(30),
+            );
+            if !ok {
+                tracing::warn!(path = %path.display(), "hdiutil detach and umount failed");
+            }
         }
     }
     #[cfg(not(target_os = "macos"))]

@@ -772,6 +772,14 @@ pub fn event(ev: &DaemonEvent) -> String {
         DaemonEvent::Quarantined(q) => {
             format!("[{now}] quarantaine : {} ({})", q.original_path, q.id)
         }
+        DaemonEvent::Vpn(v) => format!(
+            "[{now}] VPN : {}{}",
+            wire(&v.state),
+            v.network
+                .as_ref()
+                .map(|n| format!(" — réseau {}", n.name))
+                .unwrap_or_default()
+        ),
     }
 }
 
@@ -860,6 +868,10 @@ mod tests {
             device_id: None,
             persistence_id: None,
             quarantine_id: Some("q".into()),
+            process_pid: None,
+            process_path: None,
+            process_started_at: None,
+            network_id: None,
             status: AlertStatus::Open,
             actions: vec![AlertAction::Restore, AlertAction::ReportFalsePositive],
         };

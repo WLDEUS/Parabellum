@@ -163,11 +163,12 @@ pub async fn run_dispatcher(ctx: Arc<Ctx>, mut rx: mpsc::Receiver<MonitorEvent>)
         tokio::select! {
             ev = rx.recv() => match ev {
                 None => break,
-                Some(MonitorEvent::FileActivity { path, .. }) => {
+                Some(MonitorEvent::FileActivity { path, from, source, process }) => {
                     let cfg = ctx.config();
                     if !cfg.realtime.enabled {
                         continue;
                     }
+                    crate::guard::on_file(&ctx, &path, from.as_deref(), source, process.as_ref());
                     let p = PathBuf::from(path);
                     if !p.is_absolute() || ctx.is_excluded(&p, &cfg) {
                         continue;
@@ -176,8 +177,11 @@ pub async fn run_dispatcher(ctx: Arc<Ctx>, mut rx: mpsc::Receiver<MonitorEvent>)
                         spawn_file_scan(&ctx, &shared, evicted);
                     }
                 }
-                Some(MonitorEvent::ProcessExec { target, .. }) => {
+                Some(MonitorEvent::ProcessExec { target, args, parent }) => {
                     let cfg = ctx.config();
+                    if cfg.realtime.enabled {
+                        crate::guard::on_exec(&ctx, &target, &args, parent.as_ref());
+                    }
                     if cfg.realtime.enabled && cfg.realtime.scan_on_exec && !target.is_platform_binary {
                         spawn_exec_scan(&ctx, &shared, target);
                     }

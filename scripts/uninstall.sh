@@ -153,6 +153,37 @@ else
     warn "restore-dns.sh introuvable. Si Internet ne répond plus : networksetup -setdnsservers Wi-Fi Empty"
 fi
 
+# 3b. VPN kill switch fallback (the daemon removes it when it stops; a crashed daemon may have left it):
+#     flush our pf anchor and release our pf reference (token saved by the daemon).
+readonly PF_ANCHOR="com.apple/250.Parabellum"
+if [[ -n "$(/sbin/pfctl -a "$PF_ANCHOR" -sr 2>/dev/null || true)" ]]; then
+    /sbin/pfctl -a "$PF_ANCHOR" -F all >/dev/null 2>&1 || true
+    note "règles du kill switch retirées"
+fi
+ks_state="$ROOT/state/vpn/killswitch.json"
+if [[ -f "$ks_state" ]]; then
+    token="$(/usr/bin/plutil -extract token raw -o - "$ks_state" 2>/dev/null || true)"
+    case "$token" in
+        '' | *[!0-9]*) ;;
+        *) /sbin/pfctl -X "$token" >/dev/null 2>&1 || true ;;
+    esac
+fi
+
+# 3c. Ransomware decoy files (only ours: same name and Parabellum header).
+if [[ -n "$console_user" ]]; then
+    uhome="$(/usr/bin/dscl . -read "/Users/$console_user" NFSHomeDirectory 2>/dev/null | /usr/bin/awk '{ print $2; exit }' || true)"
+    if [[ -n "$uhome" && -d "$uhome" ]]; then
+        for d in Documents Desktop Pictures; do
+            for f in "$uhome/$d/!Parabellum - fichier leurre - ne pas modifier.docx" \
+                "$uhome/$d/~Parabellum - fichier leurre - ne pas modifier.pdf"; do
+                if [[ -f "$f" && ! -L "$f" ]] && /usr/bin/head -c 24 "$f" 2>/dev/null | /usr/bin/grep -q "PARABELLUM DECOY FILE"; then
+                    /bin/rm -f "$f" && note "fichier leurre supprimé : $f"
+                fi
+            done
+        done
+    fi
+fi
+
 # 4. Remove the program.
 say "Suppression des fichiers"
 remove() {
