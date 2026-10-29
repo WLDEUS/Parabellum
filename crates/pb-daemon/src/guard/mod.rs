@@ -471,10 +471,12 @@ async fn handle_indicator(ctx: &Arc<Ctx>, ev: IndicatorEvent) {
     }
     // 3. Quarantine the actor's executable once confirmed.
     let mut quarantine_id = None;
-    if let Some(a) = actor
-        .as_ref()
-        .filter(|_| actor_killed && corr.confirmed && cfg.realtime.auto_quarantine)
-    {
+    if let Some(a) = actor.as_ref().filter(|a| {
+        actor_killed
+            && corr.confirmed
+            && cfg.realtime.auto_quarantine
+            && !rules::is_interpreter(&a.path)
+    }) {
         let det = Detection {
             engine: DetectionEngine::Heuristic,
             name: "MacOS.Behavior.Stealer".into(),
@@ -556,11 +558,17 @@ async fn handle_indicator(ctx: &Arc<Ctx>, ev: IndicatorEvent) {
         alert.path = Some(a.path.clone());
         alert.process_pid = Some(a.pid);
         alert.process_path = Some(a.path.clone());
+        alert.process_started_at = crate::system::process_identity(a.pid).map(|(_, start)| start);
         alert.quarantine_id = quarantine_id.clone();
+        let interpreter = rules::is_interpreter(&a.path);
         alert.actions = if quarantine_id.is_some() {
             vec![AlertAction::Restore, AlertAction::Acknowledge]
+        } else if actor_killed && interpreter {
+            vec![AlertAction::Acknowledge]
         } else if actor_killed {
             vec![AlertAction::Quarantine, AlertAction::Acknowledge]
+        } else if interpreter {
+            vec![AlertAction::KillProcess, AlertAction::Acknowledge]
         } else {
             vec![
                 AlertAction::KillProcess,
@@ -606,7 +614,10 @@ async fn ransomware_trip(ctx: &Arc<Ctx>, reason: String, culprit: Option<EsProce
         }
     }
     if suspects.is_empty() {
-        // No attribution (FSEvents): untrusted programs started in the last 30 minutes and still running.
+        // No attribution (FSEvents): untrusted programs of the console user started in the last 30 minutes and
+        // still running. Never other users' or root's processes: the decoys are user-writable, so anyone able
+        // to touch them must not be able to make root freeze system services.
+        let console_uid = crate::system::console_user().map(|u| u.uid);
         let recent: Vec<RecentExec> = ctx.guard.lock().recent.iter().cloned().collect();
         let mut seen = std::collections::HashSet::new();
         for r in recent.iter().rev() {
@@ -618,6 +629,10 @@ async fn ransomware_trip(ctx: &Arc<Ctx>, reason: String, culprit: Option<EsProce
                 .unwrap_or(false);
             if !alive {
                 continue;
+            }
+            match crate::system::process_identity(r.pid) {
+                Some((uid, _)) if uid != 0 && Some(uid) == console_uid => {}
+                _ => continue,
             }
             let a = Actor {
                 pid: r.pid,
@@ -651,6 +666,7 @@ async fn ransomware_trip(ctx: &Arc<Ctx>, reason: String, culprit: Option<EsProce
     }
     for s in suspects {
         let mut suspended = false;
+        let started_at = crate::system::process_identity(s.pid).map(|(_, start)| start);
         if cfg.guard.suspend_ransomware {
             match crate::system::signal_if_path(s.pid, Path::new(&s.path), libc::SIGSTOP) {
                 Ok(true) => {
@@ -686,6 +702,7 @@ async fn ransomware_trip(ctx: &Arc<Ctx>, reason: String, culprit: Option<EsProce
         a.path = Some(s.path.clone());
         a.process_pid = Some(s.pid);
         a.process_path = Some(s.path.clone());
+        a.process_started_at = started_at;
         a.actions = if suspended {
             vec![
                 AlertAction::KillProcess,
@@ -699,6 +716,9 @@ async fn ransomware_trip(ctx: &Arc<Ctx>, reason: String, culprit: Option<EsProce
                 AlertAction::Acknowledge,
             ]
         };
+        if rules::is_interpreter(&s.path) {
+            a.actions.retain(|x| *x != AlertAction::Quarantine);
+        }
         if let Some(saved) =
             actions::raise_alert(ctx, a, Some(format!("guard:ransomware:{}", s.pid))).await
         {
@@ -711,13 +731,17 @@ async fn ransomware_trip(ctx: &Arc<Ctx>, reason: String, culprit: Option<EsProce
     ctx.bump_stat(crate::store::StatField::Threats, 1).await;
 }
 
-/// Kill or resume a process named in an alert (`kill_process` / `resume_process` actions).
-pub fn act_on_process(ctx: &Ctx, pid: i32, path: &str, resume: bool) -> Result<bool, String> {
-    let r = if resume {
-        crate::system::signal_if_path(pid, Path::new(path), libc::SIGCONT)
-    } else {
-        crate::system::kill_if_path(pid, Path::new(path))
-    };
+/// Kill or resume a process named in an alert (`kill_process` / `resume_process` actions): only if the pid
+/// still designates the very process of the alert (same start time and executable).
+pub fn act_on_process(
+    ctx: &Ctx,
+    pid: i32,
+    path: &str,
+    started_at: i64,
+    resume: bool,
+) -> Result<bool, String> {
+    let signal = if resume { libc::SIGCONT } else { libc::SIGKILL };
+    let r = crate::system::signal_if_same_process(pid, Path::new(path), started_at, signal);
     if r.is_ok() {
         ctx.guard.remove_suspended(pid);
     }
@@ -737,11 +761,16 @@ fn hash_file(path: &Path) -> Option<(u64, String)> {
         // Replaced by a symlink / directory: report as a different content.
         return Some((u64::MAX, String::new()));
     }
+    // O_NONBLOCK: a decoy swapped for a FIFO between the check above and the open must not block root
+    // forever (that would silently stop the decoy checks and snapshots).
     let f = std::fs::OpenOptions::new()
         .read(true)
-        .custom_flags(libc::O_NOFOLLOW)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)
         .ok()?;
+    if !f.metadata().map(|m| m.is_file()).unwrap_or(false) {
+        return Some((u64::MAX, String::new()));
+    }
     let mut h = Sha256::new();
     let mut buf = [0u8; 16 * 1024];
     let mut total = 0u64;

@@ -279,6 +279,10 @@ pub struct Alert {
     pub process_pid: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub process_path: Option<String>,
+    /// Start time of that process (opaque, from the kernel): with the pid it identifies the process, so a
+    /// later kill / resume never hits another process that reused the pid.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub process_started_at: Option<i64>,
     /// Network involved (network / VPN alerts), `gw:<router MAC>`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_id: Option<String>,

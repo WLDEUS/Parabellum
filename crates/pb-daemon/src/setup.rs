@@ -90,7 +90,15 @@ fn detach_mount(path: &Path) {
             std::time::Duration::from_secs(30),
         );
         if !ok {
-            tracing::warn!(path = %path.display(), "hdiutil detach failed");
+            // Not a disk image (APFS snapshot of an interrupted restore): plain forced unmount.
+            let ok = crate::system::run_sync(
+                "/sbin/umount",
+                &[std::ffi::OsStr::new("-f"), path.as_os_str()],
+                std::time::Duration::from_secs(30),
+            );
+            if !ok {
+                tracing::warn!(path = %path.display(), "hdiutil detach and umount failed");
+            }
         }
     }
     #[cfg(not(target_os = "macos"))]

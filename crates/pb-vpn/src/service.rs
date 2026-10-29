@@ -40,6 +40,27 @@ const BACKOFF_MIN: Duration = Duration::from_secs(2);
 const BACKOFF_MAX: Duration = Duration::from_secs(120);
 /// Cached `utun*` list lifetime.
 const UTUN_CACHE: Duration = Duration::from_secs(30);
+/// End-to-end checks through the tunnel: the daemon's own HTTPS requests are routed into the TUN by
+/// sing-box (`auto_route` + `strict_route`), so a success proves the server carries traffic. A captive
+/// portal fails the TLS handshake.
+pub const TUNNEL_CHECK_URLS: [&str; 2] = [
+    "https://cp.cloudflare.com/generate_204",
+    "https://captive.apple.com/hotspot-detect.html",
+];
+const TUNNEL_CHECK_TIMEOUT: Duration = Duration::from_secs(4);
+/// Spacing of the checks while the tunnel is being verified.
+const TUNNEL_VERIFY_EVERY: Duration = Duration::from_secs(3);
+/// sing-box up (TUN created) but no traffic through it after this long: wrong credentials, server down or
+/// unreachable network. The attempt fails (backoff) and the kill switch first-arm timeout applies.
+pub const TUNNEL_VERIFY_TIMEOUT: Duration = Duration::from_secs(30);
+/// Health check of an established tunnel.
+const HEALTH_INTERVAL: Duration = Duration::from_secs(60);
+/// Consecutive failed health checks before the tunnel is restarted.
+const HEALTH_MAX_FAILURES: u32 = 3;
+/// sing-box exiting this many times in a row (never carrying traffic in between) is a local problem — a
+/// configuration rejected after an update, a broken binary — not a hostile network: the kill switch is
+/// released so the Mac (and the daemon's own updater) keep Internet access.
+pub const ENGINE_FAILURE_LIMIT: u32 = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Latch {
@@ -47,6 +68,8 @@ enum Latch {
     FirstArmTimeout,
     /// pf refused the rules: retried after a configuration change or a manual connect.
     PfFailed,
+    /// sing-box keeps exiting: released until the tunnel works again or a manual connect.
+    EngineFailing,
 }
 
 /// Mutable state of the service (guarded by a tokio mutex).
@@ -73,6 +96,13 @@ pub struct Runtime {
     ks_ever_armed: bool,
     ks_latch: Option<Latch>,
     ks_blocking_alerted: bool,
+    /// Last end-to-end check while the tunnel is being verified.
+    verify_probe: Option<Instant>,
+    /// Last health check of the established tunnel and consecutive failures.
+    health_checked: Option<Instant>,
+    health_failures: u32,
+    /// Consecutive sing-box exits / start failures since the tunnel last carried traffic.
+    engine_failures: u32,
     utuns: Option<(Instant, Vec<String>)>,
     pub(crate) networks: NetworksFile,
     networks_saved: Option<Instant>,
@@ -110,6 +140,10 @@ impl Runtime {
             ks_ever_armed: false,
             ks_latch: None,
             ks_blocking_alerted: false,
+            verify_probe: None,
+            health_checked: None,
+            health_failures: 0,
+            engine_failures: 0,
             utuns: None,
             networks: NetworksFile::default(),
             networks_saved: None,
@@ -415,8 +449,93 @@ impl VpnService {
         rt.message = None;
         rt.backoff = BACKOFF_MIN;
         rt.next_attempt = None;
-        if rt.ks_latch == Some(Latch::FirstArmTimeout) {
+        rt.engine_failures = 0;
+        if matches!(
+            rt.ks_latch,
+            Some(Latch::FirstArmTimeout) | Some(Latch::EngineFailing)
+        ) {
             rt.ks_latch = None;
+        }
+    }
+
+    async fn tunnel_works(&self) -> bool {
+        for url in TUNNEL_CHECK_URLS {
+            if self.sys.http_get(url, TUNNEL_CHECK_TIMEOUT).await.is_ok() {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// sing-box runs and its TUN exists: declare the tunnel connected only once traffic actually goes
+    /// through it, then keep checking it.
+    async fn on_singbox_running(&self, rt: &mut Runtime, interface: String) {
+        if !self.sys.is_macos() {
+            self.connected(rt, Some(interface));
+            return;
+        }
+        if rt.state == VpnState::Connected {
+            rt.interface = Some(interface);
+            let due = rt
+                .health_checked
+                .map(|t| t.elapsed() >= HEALTH_INTERVAL)
+                .unwrap_or(true);
+            if !due {
+                return;
+            }
+            rt.health_checked = Some(Instant::now());
+            if self.tunnel_works().await {
+                rt.health_failures = 0;
+                return;
+            }
+            rt.health_failures += 1;
+            tracing::warn!(failures = rt.health_failures, "VPN health check failed");
+            if rt.health_failures >= HEALTH_MAX_FAILURES {
+                rt.health_failures = 0;
+                rt.runner.stop().await;
+                self.dropped(rt, "le tunnel ne laisse plus passer de trafic".into());
+            }
+            return;
+        }
+        rt.state = VpnState::Connecting;
+        rt.interface = Some(interface);
+        let due = rt
+            .verify_probe
+            .map(|t| t.elapsed() >= TUNNEL_VERIFY_EVERY)
+            .unwrap_or(true);
+        if due {
+            rt.verify_probe = Some(Instant::now());
+            if self.tunnel_works().await {
+                rt.verify_probe = None;
+                rt.health_checked = Some(Instant::now());
+                rt.health_failures = 0;
+                let iface = rt.interface.clone();
+                self.connected(rt, iface);
+                return;
+            }
+        }
+        if rt
+            .runner
+            .running_for()
+            .map(|d| d > TUNNEL_VERIFY_TIMEOUT)
+            .unwrap_or(false)
+        {
+            let tail = crate::runner::log_tail(&self.dir, 3);
+            rt.runner.stop().await;
+            rt.verify_probe = None;
+            rt.running_backend = None;
+            let detail = if tail.is_empty() {
+                String::new()
+            } else {
+                format!(" : {tail}")
+            };
+            self.fail(
+                rt,
+                format!(
+                    "le serveur VPN ne répond pas (aucun trafic à travers le tunnel en {} s){detail}",
+                    TUNNEL_VERIFY_TIMEOUT.as_secs()
+                ),
+            );
         }
     }
 
@@ -476,14 +595,22 @@ impl VpnService {
         }
         match rt.running_backend {
             Some(VpnBackend::SingBox) => match rt.runner.poll().await {
-                RunnerState::Running { interface } => self.connected(rt, Some(interface)),
+                RunnerState::Running { interface } => self.on_singbox_running(rt, interface).await,
                 RunnerState::Starting => {
                     if rt.state != VpnState::Connected {
                         rt.state = VpnState::Connecting;
                     }
                 }
-                RunnerState::Failed(msg) => self.dropped(rt, msg),
-                RunnerState::NotRunning => self.dropped(rt, "sing-box arrêté".into()),
+                RunnerState::Failed(msg) => {
+                    rt.engine_failures += 1;
+                    rt.verify_probe = None;
+                    self.dropped(rt, msg)
+                }
+                RunnerState::NotRunning => {
+                    rt.engine_failures += 1;
+                    rt.verify_probe = None;
+                    self.dropped(rt, "sing-box arrêté".into())
+                }
             },
             Some(VpnBackend::External) => {
                 let name = cfg.vpn.external_service.clone().unwrap_or_default();
@@ -626,6 +753,27 @@ impl VpnService {
 
     async fn reconcile_killswitch(&self, rt: &mut Runtime, cfg: &Config) {
         let enabled = cfg.vpn.kill_switch && self.sys.is_macos();
+        if enabled && rt.ks_latch.is_none() && rt.engine_failures >= ENGINE_FAILURE_LIMIT {
+            rt.ks_latch = Some(Latch::EngineFailing);
+            rt.ks_first_deadline = None;
+            self.hooks.alert(NetAlert {
+                severity: Severity::High,
+                title: "Coupe-circuit retiré : sing-box ne démarre plus".into(),
+                message: format!(
+                    "sing-box s'est arrêté {} fois de suite{}. Ce n'est pas un problème de réseau : les règles ont \
+                     été retirées pour ne pas couper Internet (ni les mises à jour de Parabellum). Elles reviendront \
+                     dès que le tunnel fonctionnera ; vérifiez le profil VPN.",
+                    rt.engine_failures,
+                    rt.message
+                        .as_deref()
+                        .map(|m| format!(" ({m})"))
+                        .unwrap_or_default()
+                ),
+                network_id: rt.current_network.clone(),
+                key: "killswitch-engine".into(),
+                offer_trust: false,
+            });
+        }
         if !enabled || !rt.wanted || rt.ks_latch.is_some() {
             if self.killswitch.is_applied() {
                 if let Err(e) = self.killswitch.remove().await {
@@ -945,10 +1093,11 @@ impl VpnService {
             }
             rt.manual_override = Some(true);
             rt.override_network = None;
-            if rt.ks_latch == Some(Latch::PfFailed) || rt.ks_latch == Some(Latch::FirstArmTimeout) {
+            if rt.ks_latch.is_some() {
                 rt.ks_latch = None;
                 rt.ks_first_deadline = None;
             }
+            rt.engine_failures = 0;
             rt.next_attempt = None;
             rt.backoff = BACKOFF_MIN;
         }
@@ -1060,16 +1209,17 @@ impl VpnService {
 
     pub(crate) async fn do_shutdown(&self) {
         let mut rt = self.rt.lock().await;
-        if rt.running_backend == Some(VpnBackend::SingBox) {
-            rt.runner.stop().await;
-            rt.running_backend = None;
-        }
-        // An external VPN keeps running: it is the user's own app, and stopping it here would remove the
-        // tunnel together with the kill switch.
+        // Rules first: launchd may SIGKILL us while sing-box takes its grace period to stop, and a kill
+        // switch outliving the daemon would leave the Mac offline.
         if let Err(e) = self.killswitch.remove().await {
             tracing::warn!(error = %e, "kill switch removal at shutdown");
         }
         rt.ks_state = KillSwitchState::Off;
+        if rt.running_backend == Some(VpnBackend::SingBox) {
+            rt.runner.stop().await;
+            rt.running_backend = None;
+        }
+        // An external VPN keeps running: it is the user's own app.
         if rt.running_backend.is_none() {
             rt.state = VpnState::Disconnected;
             rt.interface = None;

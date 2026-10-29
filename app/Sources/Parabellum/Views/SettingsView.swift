@@ -366,6 +366,9 @@ struct SettingsView: View {
     private var dataRemovalSection: some View {
         Section {
             Toggle("Demander l'effacement de mes données aux courtiers (RGPD)", isOn: $draft.dataRemoval.enabled)
+            if hasMaskedIdentifiers {
+                maskedIdentifiersRow
+            }
             Group {
                 ForEach(DataRemovalConfig.knownRegions, id: \.self) { region in
                     Toggle("Courtiers : \(PrivacyLabels.region(region))", isOn: regionBinding(region))
@@ -413,6 +416,9 @@ struct SettingsView: View {
     private var breachSection: some View {
         Section {
             Toggle("Surveiller mes adresses dans les fuites de données", isOn: $draft.breach.enabled)
+            if hasMaskedIdentifiers {
+                maskedIdentifiersRow
+            }
             StringListEditor(title: "Adresses surveillées", placeholder: "prenom.nom@exemple.fr", items: $draft.breach.emails)
             Picker("Service", selection: $draft.breach.provider) {
                 ForEach(BreachProvider.allCases, id: \.self) { provider in
@@ -456,6 +462,24 @@ struct SettingsView: View {
             Text("Alias e-mail")
         } footer: {
             Text("addy.io et SimpleLogin sont open source. Une adresse par site : tu la coupes si elle fuit.")
+        }
+    }
+
+    /// Addresses arrive masked (`c***1a2b@…`) unless the config was fetched with administrator approval;
+    /// sending them back unchanged keeps the stored values.
+    private var hasMaskedIdentifiers: Bool {
+        draft.breach.emails.contains { $0.contains("***") }
+            || draft.dataRemoval.fromAddress.contains("***")
+            || draft.dataRemoval.smtpUsername.contains("***")
+    }
+
+    private var maskedIdentifiersRow: some View {
+        LabeledContent("Adresses masquées") {
+            Button("Afficher…") {
+                Task { await revealSecrets() }
+            }
+            .disabled(model.isBusy("config-secrets"))
+            .help("Demande une autorisation administrateur pour afficher et modifier les adresses")
         }
     }
 
@@ -540,7 +564,20 @@ struct SettingsView: View {
     /// Fetches the config with administrator approval and puts the clear secrets into the draft
     /// (other unsaved edits are kept).
     private func revealSecrets() async {
+        let before = model.config
         guard await model.loadConfig(withSecrets: true), let fresh = model.config else { return }
+        // Masked identifiers (`c***1a2b@…`) still untouched in the draft get their clear value.
+        if let before {
+            if draft.breach.emails == before.breach.emails {
+                draft.breach.emails = fresh.breach.emails
+            }
+            if draft.dataRemoval.fromAddress == before.dataRemoval.fromAddress {
+                draft.dataRemoval.fromAddress = fresh.dataRemoval.fromAddress
+            }
+            if draft.dataRemoval.smtpUsername == before.dataRemoval.smtpUsername {
+                draft.dataRemoval.smtpUsername = fresh.dataRemoval.smtpUsername
+            }
+        }
         if draft.updates.githubToken == DaemonProtocol.redactedSecret {
             draft.updates.githubToken = fresh.updates.githubToken
         }

@@ -187,6 +187,20 @@ impl SingBoxRunner {
         RunnerState::Starting
     }
 
+    /// Time since the process was started (None when not running).
+    pub fn running_for(&self) -> Option<Duration> {
+        self.proc.as_ref()?;
+        self.started.map(|t| t.elapsed())
+    }
+
+    /// Pretend the process was started `by` earlier (tests).
+    #[cfg(test)]
+    pub(crate) fn backdate(&mut self, by: Duration) {
+        if let Some(t) = self.started {
+            self.started = Some(t - by);
+        }
+    }
+
     /// Stop the process (SIGTERM, SIGKILL after 5 s).
     pub async fn stop(&mut self) {
         if let Some(p) = self.proc.take() {

@@ -68,6 +68,8 @@ fn macos_sys() -> Arc<FakeSystem> {
     sys.respond(PFCTL, &["-a", ANCHOR, "-F", "all"], 0, "", "");
     sys.respond(PFCTL, &["-X"], 0, "", "");
     sys.respond(SCUTIL, &["--nc", "list"], 0, "", "");
+    // End-to-end check through the tunnel succeeds by default.
+    sys.http(TUNNEL_CHECK_URLS[0], Ok(""));
     sys
 }
 
@@ -450,4 +452,129 @@ async fn run_loop_stops_on_shutdown() {
         .await
         .unwrap()
         .unwrap();
+}
+
+#[tokio::test]
+async fn tun_without_traffic_is_not_connected() {
+    let sys = macos_sys();
+    sys.http(TUNNEL_CHECK_URLS[0], Err("timeout"));
+    sys.http(TUNNEL_CHECK_URLS[1], Err("timeout"));
+    let hooks = Arc::new(Hooks::default());
+    let (_d, svc) = setup(sys.clone(), hooks.clone());
+    svc.import_profile("trojan://wrong@203.0.113.9:443")
+        .await
+        .unwrap();
+    svc.set_cfg(cfg(|c| {
+        c.vpn.mode = VpnMode::Always;
+        c.vpn.kill_switch = true;
+    }));
+    svc.tick().await;
+    sys.respond(IFCONFIG, &["-l"], 0, "lo0 en0 utun0 utun1 utun7\n", "");
+    svc.tick().await;
+    // TUN up but no traffic: still connecting, kill switch not considered armed.
+    let s = svc.status().await;
+    assert_eq!(s.state, VpnState::Connecting);
+    assert_eq!(s.kill_switch, KillSwitchState::Blocking);
+    assert!(!svc.rt.lock().await.ks_ever_armed);
+    // The verification times out: attempt failed, sing-box stopped.
+    svc.rt
+        .lock()
+        .await
+        .runner
+        .backdate(TUNNEL_VERIFY_TIMEOUT + Duration::from_secs(1));
+    svc.tick().await;
+    let s = svc.status().await;
+    assert_eq!(s.state, VpnState::Error);
+    assert!(s.message.unwrap().contains("ne répond pas"));
+    assert!(sys
+        .last_process()
+        .unwrap()
+        .terminated
+        .load(Ordering::SeqCst));
+    // The first-arm timeout then releases the network.
+    svc.rt.lock().await.ks_first_deadline = Some(Instant::now() - Duration::from_secs(1));
+    svc.tick().await;
+    assert!(!svc.killswitch.is_applied());
+    assert!(hooks
+        .alert_keys()
+        .contains(&"killswitch-first-arm".to_string()));
+}
+
+#[tokio::test]
+async fn failing_health_checks_restart_the_tunnel() {
+    let sys = macos_sys();
+    let hooks = Arc::new(Hooks::default());
+    let (_d, svc) = setup(sys.clone(), hooks.clone());
+    svc.import_profile("trojan://pw@203.0.113.9:443")
+        .await
+        .unwrap();
+    svc.set_cfg(cfg(|c| c.vpn.mode = VpnMode::Always));
+    svc.tick().await;
+    sys.respond(IFCONFIG, &["-l"], 0, "lo0 en0 utun0 utun1 utun7\n", "");
+    svc.tick().await;
+    assert_eq!(svc.status().await.state, VpnState::Connected);
+    let first = sys.last_process().unwrap();
+    sys.http(TUNNEL_CHECK_URLS[0], Err("timeout"));
+    sys.http(TUNNEL_CHECK_URLS[1], Err("timeout"));
+    for _ in 0..HEALTH_MAX_FAILURES {
+        svc.rt.lock().await.health_checked = Some(Instant::now() - HEALTH_INTERVAL);
+        svc.tick().await;
+    }
+    assert!(first.terminated.load(Ordering::SeqCst));
+    assert_ne!(svc.status().await.state, VpnState::Connected);
+    assert!(hooks.alert_keys().contains(&"vpn-drop".to_string()));
+}
+
+#[tokio::test]
+async fn crashing_engine_releases_the_kill_switch() {
+    let sys = macos_sys();
+    let hooks = Arc::new(Hooks::default());
+    let (_d, svc) = setup(sys.clone(), hooks.clone());
+    svc.import_profile("trojan://pw@203.0.113.9:443")
+        .await
+        .unwrap();
+    svc.set_cfg(cfg(|c| {
+        c.vpn.mode = VpnMode::Always;
+        c.vpn.kill_switch = true;
+    }));
+    svc.tick().await;
+    sys.respond(IFCONFIG, &["-l"], 0, "lo0 en0 utun0 utun1 utun7\n", "");
+    svc.tick().await;
+    assert_eq!(svc.status().await.kill_switch, KillSwitchState::Armed);
+    // sing-box keeps exiting (config rejected after an update…).
+    svc.rt.lock().await.engine_failures = ENGINE_FAILURE_LIMIT;
+    sys.last_process()
+        .unwrap()
+        .exited
+        .store(true, Ordering::SeqCst);
+    svc.tick().await;
+    assert!(!svc.killswitch.is_applied());
+    assert_eq!(svc.status().await.kill_switch, KillSwitchState::Error);
+    assert!(hooks
+        .alert_keys()
+        .contains(&"killswitch-engine".to_string()));
+}
+
+#[tokio::test]
+async fn shutdown_removes_rules_before_stopping_sing_box() {
+    let sys = macos_sys();
+    let hooks = Arc::new(Hooks::default());
+    let (_d, svc) = setup(sys.clone(), hooks.clone());
+    svc.import_profile("trojan://pw@203.0.113.9:443")
+        .await
+        .unwrap();
+    svc.set_cfg(cfg(|c| {
+        c.vpn.mode = VpnMode::Always;
+        c.vpn.kill_switch = true;
+    }));
+    svc.tick().await;
+    sys.respond(IFCONFIG, &["-l"], 0, "lo0 en0 utun0 utun1 utun7\n", "");
+    svc.tick().await;
+    assert!(svc.killswitch.is_applied());
+    let p = sys.last_process().unwrap();
+    let flushes_before = sys.count(PFCTL, &["-a", ANCHOR, "-F", "all"]);
+    svc.shutdown().await;
+    assert!(sys.count(PFCTL, &["-a", ANCHOR, "-F", "all"]) > flushes_before);
+    assert!(p.terminated.load(Ordering::SeqCst));
+    assert!(!svc.killswitch.is_applied());
 }

@@ -405,6 +405,67 @@ pub fn lower_process_priority() {
     }
 }
 
+/// Owner uid and start time of a process. The start time is opaque (µs since the epoch on macOS, clock ticks
+/// since boot elsewhere): only compared with itself, to recognise the same process later despite pid reuse.
+pub fn process_identity(pid: i32) -> Option<(u32, i64)> {
+    if pid <= 0 {
+        return None;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
+        let size = std::mem::size_of::<libc::proc_bsdinfo>() as libc::c_int;
+        // SAFETY: `info` is a valid, writable proc_bsdinfo of `size` bytes.
+        let n = unsafe {
+            libc::proc_pidinfo(
+                pid,
+                libc::PROC_PIDTBSDINFO,
+                0,
+                &mut info as *mut libc::proc_bsdinfo as *mut libc::c_void,
+                size,
+            )
+        };
+        if n != size {
+            return None;
+        }
+        let start = (info.pbi_start_tvsec as i64)
+            .saturating_mul(1_000_000)
+            .saturating_add(info.pbi_start_tvusec as i64);
+        Some((info.pbi_uid, start))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        let rest = &stat[stat.rfind(')')? + 1..];
+        // Fields after `comm`: state(3) ppid(4) … starttime(22) -> index 19.
+        let start: i64 = rest.split_whitespace().nth(19)?.parse().ok()?;
+        let status = std::fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+        let uid: u32 = status
+            .lines()
+            .find_map(|l| l.strip_prefix("Uid:"))?
+            .split_whitespace()
+            .next()?
+            .parse()
+            .ok()?;
+        Some((uid, start))
+    }
+}
+
+/// Send `signal` to `pid` only if it is still the very process seen earlier: same start time **and** same
+/// executable. For actions taken long after the detection (alert buttons).
+pub fn signal_if_same_process(
+    pid: i32,
+    expected_path: &Path,
+    expected_start: i64,
+    signal: libc::c_int,
+) -> Result<bool, String> {
+    match process_identity(pid) {
+        Some((_, start)) if start == expected_start => {}
+        _ => return Ok(false),
+    }
+    signal_if_path(pid, expected_path, signal)
+}
+
 /// Parent pid of a process (`proc_pidinfo(PROC_PIDTBSDINFO)` on macOS, `/proc/<pid>/stat` elsewhere).
 pub fn parent_pid(pid: i32) -> Option<i32> {
     if pid <= 0 {
@@ -723,6 +784,30 @@ mod tests {
         assert_eq!(kill_if_path(pid, &real), Ok(true));
         let mut child = child;
         let _ = child.wait();
+    }
+
+    #[test]
+    fn same_process_guard_checks_start_time() {
+        let mut child = std::process::Command::new("sleep")
+            .arg("5")
+            .spawn()
+            .unwrap();
+        let pid = child.id() as i32;
+        let (uid, start) = process_identity(pid).unwrap();
+        // SAFETY: getuid has no preconditions.
+        assert_eq!(uid, unsafe { libc::getuid() });
+        let real = pid_path(pid).unwrap();
+        // Same pid and executable but another start time (pid reused): left alone.
+        assert_eq!(
+            signal_if_same_process(pid, &real, start + 1, libc::SIGKILL),
+            Ok(false)
+        );
+        assert_eq!(
+            signal_if_same_process(pid, &real, start, libc::SIGKILL),
+            Ok(true)
+        );
+        let _ = child.wait();
+        assert!(process_identity(0).is_none());
     }
 
     #[test]

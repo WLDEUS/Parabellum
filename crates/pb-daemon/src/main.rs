@@ -78,6 +78,10 @@ fn main() -> ExitCode {
     }
     if let Err(e) = setup::prepare_dirs(&paths, !dev_mode) {
         eprintln!("préparation des dossiers impossible : {e}");
+        if !dev_mode {
+            // Never leave a VPN kill switch from a previous run blocking the network.
+            pb_vpn::flush_kill_switch_blocking();
+        }
         return ExitCode::FAILURE;
     }
     let _log = setup::init_logging(&paths);
@@ -102,7 +106,13 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    if !dev_mode {
+        // First step once the instance lock is held: a kill switch left by a crash must not keep the Mac
+        // offline while (or if) the rest of the startup runs.
+        rt.block_on(pb_vpn::recover_kill_switch(&paths));
+    }
     let code = rt.block_on(async move {
+        let recovery_paths = paths.clone();
         let backends = adapters::production(&paths);
         let opts = DaemonOptions {
             paths,
@@ -116,6 +126,9 @@ fn main() -> ExitCode {
             Ok(d) => d,
             Err(e) => {
                 tracing::error!(error = %e, "startup failed");
+                if !dev_mode {
+                    pb_vpn::recover_kill_switch(&recovery_paths).await;
+                }
                 return ExitCode::FAILURE;
             }
         };

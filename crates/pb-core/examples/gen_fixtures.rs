@@ -88,6 +88,7 @@ fn alert() -> Alert {
         quarantine_id: Some("1b4e28ba-2fa1-11d2-883f-0016d3cca427".into()),
         process_pid: None,
         process_path: None,
+        process_started_at: None,
         network_id: None,
         status: AlertStatus::Open,
         actions: vec![

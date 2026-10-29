@@ -870,6 +870,7 @@ mod tests {
             quarantine_id: Some("q".into()),
             process_pid: None,
             process_path: None,
+            process_started_at: None,
             network_id: None,
             status: AlertStatus::Open,
             actions: vec![AlertAction::Restore, AlertAction::ReportFalsePositive],

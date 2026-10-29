@@ -95,6 +95,30 @@ pub trait VpnHooks: Send + Sync + 'static {
     async fn save_trusted_networks(&self, ids: Vec<String>) -> Result<(), VpnError>;
 }
 
+/// Remove a kill switch left by a previous run (crash, SIGKILL, power loss). Call it first thing at daemon
+/// startup, once the single-instance lock is held, so no later startup step can leave the Mac offline.
+pub async fn recover_kill_switch(paths: &Paths) {
+    let sys: Arc<dyn sys::System> = Arc::new(sys::RealSystem::new());
+    killswitch::KillSwitch::new(sys, &paths.vpn_dir())
+        .recover()
+        .await;
+}
+
+/// Last-resort synchronous flush of the kill-switch anchor, for startup failures before the async runtime
+/// exists (best effort; the pf reference token, if any, is released by the next successful start).
+pub fn flush_kill_switch_blocking() {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new(sys::PFCTL)
+            .args(["-a", killswitch::ANCHOR, "-F", "all"])
+            .env_clear()
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    }
+}
+
 /// Conventional location of the managed sing-box binary (`components/sing-box/sing-box`), shared with the
 /// component manager.
 pub fn singbox_binary(paths: &Paths) -> PathBuf {

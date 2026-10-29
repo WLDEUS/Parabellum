@@ -112,6 +112,7 @@ fn new_alert(
         quarantine_id: None,
         process_pid: None,
         process_path: None,
+        process_started_at: None,
         network_id: None,
         status: AlertStatus::Open,
         actions,
@@ -701,8 +702,14 @@ pub async fn resolve_alert(
                 .process_path
                 .clone()
                 .ok_or_else(|| missing("processus"))?;
+            let started_at = alert.process_started_at.ok_or_else(|| {
+                IpcError::new(
+                    ErrorCode::BadRequest,
+                    "processus non identifiable avec certitude : action refusée",
+                )
+            })?;
             let resume = action == AlertAction::ResumeProcess;
-            let done = crate::guard::act_on_process(ctx, pid, &path, resume)
+            let done = crate::guard::act_on_process(ctx, pid, &path, started_at, resume)
                 .map_err(|e| IpcError::new(ErrorCode::Internal, e))?;
             let what = match (resume, done) {
                 (false, true) => format!("{path} (pid {pid}) a été arrêté."),

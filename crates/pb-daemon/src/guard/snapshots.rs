@@ -1,7 +1,9 @@
 //! APFS local snapshots of the data volume (`tmutil localsnapshot`, purged by macOS after ~24 h) and restore of
-//! a file or folder from one: the snapshot is mounted read-only in a private mount point and `ditto` copies the
-//! item **as the console user** to `~/Parabellum-Restauration/<snapshot>/<path relative to home>` (nothing is
-//! overwritten, no root write into the home folder).
+//! a file or folder from one: the snapshot is mounted read-only inside the daemon's root-only `tmp/` (the whole
+//! volume, other users' and privacy-protected data included, is never reachable by user processes), root copies
+//! only the requested item into a private staging folder (no symlinked path component), hands it to the user,
+//! and `ditto` copies it **as the console user** to `~/Parabellum-Restauration/<snapshot>/<path relative to
+//! home>` (nothing is overwritten, no root write into the home folder).
 
 use crate::ctx::Ctx;
 use crate::system::run_command;
@@ -15,6 +17,7 @@ pub const TMUTIL: &str = "/usr/bin/tmutil";
 pub const MOUNT_APFS: &str = "/sbin/mount_apfs";
 pub const UMOUNT: &str = "/sbin/umount";
 pub const DITTO: &str = "/usr/bin/ditto";
+pub const CHOWN: &str = "/usr/sbin/chown";
 pub const DATA_VOLUME: &str = "/System/Volumes/Data";
 /// Folder (in the user's home) receiving restored items.
 pub const RESTORE_DIR: &str = "Parabellum-Restauration";
@@ -185,17 +188,13 @@ pub async fn restore(ctx: &Arc<Ctx>, snapshot: &str, path: &str) -> Result<Strin
     }
     let gid = crate::system::user_gid(user.uid)
         .ok_or_else(|| unavailable("groupe de l'utilisateur introuvable"))?;
-    // Root-owned 0755 mount point outside our private tmp (the user-side ditto must traverse it).
-    let mount = PathBuf::from(format!(
-        "/private/var/tmp/parabellum-snapshot-{}",
-        uuid::Uuid::new_v4().simple()
-    ));
+    let tmp = ctx.paths.tmp_dir();
+    detach_stale_mounts(&tmp).await;
+    // The snapshot holds the whole data volume (other users, Messages, Mail…): it is mounted inside our
+    // root-only 0700 `tmp/`, never under a world-traversable folder, and only root reads it.
+    let mount = tmp.join(format!("{MOUNT_PREFIX}{}", uuid::Uuid::new_v4().simple()));
     std::fs::create_dir(&mount)
         .map_err(|e| IpcError::new(ErrorCode::Internal, format!("point de montage : {e}")))?;
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&mount, std::fs::Permissions::from_mode(0o755));
-    }
     let mount_s = mount.to_string_lossy().to_string();
     let mut mounted = false;
     let mut last_err = String::new();
@@ -227,42 +226,136 @@ pub async fn restore(ctx: &Arc<Ctx>, snapshot: &str, path: &str) -> Result<Strin
         .strip_prefix("/")
         .map(|h| mount.join(h))
         .unwrap_or_else(|_| mount.join(&user.home));
-    let src = home_in_snap.join(&rel);
-    let dest = user.home.join(RESTORE_DIR).join(&date).join(&rel);
-    let result = if std::fs::symlink_metadata(&src).is_err() {
-        Err(IpcError::new(
-            ErrorCode::NotFound,
-            format!("{path} n'existait pas dans l'instantané du {date}"),
-        ))
-    } else {
-        let mut cmd = tokio::process::Command::new(DITTO);
-        cmd.arg(&src)
-            .arg(&dest)
-            .env_clear()
-            .env("PATH", "/usr/bin:/bin")
-            .env("HOME", &user.home)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::piped())
-            .kill_on_drop(true)
-            .uid(user.uid)
-            .gid(gid);
-        match tokio::time::timeout(Duration::from_secs(1800), cmd.output()).await {
-            Ok(Ok(o)) if o.status.success() => Ok(dest.to_string_lossy().to_string()),
-            Ok(Ok(o)) => Err(IpcError::new(
-                ErrorCode::Internal,
-                format!("ditto : {}", String::from_utf8_lossy(&o.stderr).trim()),
-            )),
-            Ok(Err(e)) => Err(IpcError::new(ErrorCode::Internal, format!("ditto : {e}"))),
-            Err(_) => Err(IpcError::new(ErrorCode::Internal, "ditto : délai dépassé")),
-        }
-    };
-    let _ = run_command(UMOUNT, &[&mount_s], CMD_TIMEOUT).await;
+    // Staging folder: root-only while root copies, then traversable (0711, not listable) so the user can
+    // copy the item out with their own rights.
+    let staging = PathBuf::from(format!("{STAGING_PREFIX}{}", uuid::Uuid::new_v4().simple()));
+    let result = stage_and_hand_over(&home_in_snap, &rel, &staging, &user, gid, &date, path).await;
+    unmount(&mount_s).await;
     let _ = std::fs::remove_dir(&mount);
+    if staging.exists() {
+        if let Err(e) = std::fs::remove_dir_all(&staging) {
+            tracing::warn!(error = %e, path = %staging.display(), "cannot remove restore staging");
+        }
+    }
     if let Ok(d) = &result {
         tracing::info!(snapshot, path, dest = %d, "restored from snapshot");
     }
     result
+}
+
+/// Mount points of interrupted restores (`tmp/snapshot-*`), detached before a new one.
+const MOUNT_PREFIX: &str = "snapshot-";
+/// Staging folders of restores (same volume as the home folder).
+const STAGING_PREFIX: &str = "/private/var/tmp/parabellum-restore-";
+
+async fn unmount(mount: &str) {
+    match run_command(UMOUNT, &[mount], CMD_TIMEOUT).await {
+        Ok(o) if o.success() => {}
+        _ => {
+            if let Err(e) = run_command(UMOUNT, &["-f", mount], CMD_TIMEOUT).await {
+                tracing::warn!(mount, error = %e, "cannot unmount snapshot");
+            }
+        }
+    }
+}
+
+async fn detach_stale_mounts(tmp: &Path) {
+    let Ok(entries) = std::fs::read_dir(tmp) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let name = e.file_name().to_string_lossy().to_string();
+        if !name.starts_with(MOUNT_PREFIX) {
+            continue;
+        }
+        let p = e.path().to_string_lossy().to_string();
+        unmount(&p).await;
+        let _ = std::fs::remove_dir(&p);
+    }
+}
+
+/// Copy `rel` (relative to the home folder inside the mounted snapshot) as root into a private staging
+/// folder, give it to the user, then let `ditto` running **as the user** copy it to
+/// `~/Parabellum-Restauration/<date>/<rel>` (no root write inside the home folder).
+async fn stage_and_hand_over(
+    home_in_snap: &Path,
+    rel: &Path,
+    staging: &Path,
+    user: &crate::system::ConsoleUser,
+    gid: u32,
+    date: &str,
+    path: &str,
+) -> Result<String, IpcError> {
+    use std::os::unix::fs::PermissionsExt;
+    let internal = |m: String| IpcError::new(ErrorCode::Internal, m);
+    // Root reads the snapshot: no component of the path may be a symlink (a `Documents -> /` link in the
+    // snapshot would otherwise make root copy files the user cannot read). The item itself may be one:
+    // ditto copies links as links.
+    let mut cur = home_in_snap.to_path_buf();
+    let comps: Vec<_> = rel.components().collect();
+    for (i, c) in comps.iter().enumerate() {
+        cur.push(c);
+        let md = std::fs::symlink_metadata(&cur).map_err(|_| {
+            IpcError::new(
+                ErrorCode::NotFound,
+                format!("{path} n'existait pas dans l'instantané du {date}"),
+            )
+        })?;
+        if i + 1 < comps.len() && !md.is_dir() {
+            return Err(IpcError::new(
+                ErrorCode::BadRequest,
+                format!("{path} : un dossier du chemin est un lien dans l'instantané"),
+            ));
+        }
+    }
+    let src = cur;
+    std::fs::create_dir(staging).map_err(|e| internal(format!("dossier de transit : {e}")))?;
+    std::fs::set_permissions(staging, std::fs::Permissions::from_mode(0o700))
+        .map_err(|e| internal(format!("dossier de transit : {e}")))?;
+    let name = rel
+        .file_name()
+        .map(|n| n.to_os_string())
+        .unwrap_or_else(|| "item".into());
+    let staged = staging.join(&name);
+    let staged_s = staged.to_string_lossy().to_string();
+    let src_s = src.to_string_lossy().to_string();
+    let copy = run_command(DITTO, &[&src_s, &staged_s], Duration::from_secs(1800))
+        .await
+        .map_err(|e| internal(format!("ditto : {e}")))?;
+    if !copy.success() {
+        return Err(internal(format!("ditto : {}", copy.stderr.trim())));
+    }
+    let owner = format!("{}:{gid}", user.uid);
+    let chown = run_command(CHOWN, &["-R", "-h", &owner, &staged_s], CMD_TIMEOUT)
+        .await
+        .map_err(|e| internal(format!("chown : {e}")))?;
+    if !chown.success() {
+        return Err(internal(format!("chown : {}", chown.stderr.trim())));
+    }
+    std::fs::set_permissions(staging, std::fs::Permissions::from_mode(0o711))
+        .map_err(|e| internal(format!("dossier de transit : {e}")))?;
+    let dest = user.home.join(RESTORE_DIR).join(date).join(rel);
+    let mut cmd = tokio::process::Command::new(DITTO);
+    cmd.arg(&staged)
+        .arg(&dest)
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin")
+        .env("HOME", &user.home)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .uid(user.uid)
+        .gid(gid);
+    match tokio::time::timeout(Duration::from_secs(1800), cmd.output()).await {
+        Ok(Ok(o)) if o.status.success() => Ok(dest.to_string_lossy().to_string()),
+        Ok(Ok(o)) => Err(internal(format!(
+            "ditto : {}",
+            String::from_utf8_lossy(&o.stderr).trim()
+        ))),
+        Ok(Err(e)) => Err(internal(format!("ditto : {e}"))),
+        Err(_) => Err(internal("ditto : délai dépassé".into())),
+    }
 }
 
 #[cfg(test)]

@@ -69,7 +69,25 @@ fn secrets_mut(c: &mut Config) -> [&mut Option<String>; 5] {
     ]
 }
 
-/// Hide secrets.
+/// `q.m@example.com` -> `q***1a2b@example.com` (first character, `***`, 4 hex digits of the SHA-256 of the
+/// value so two masked values never collide, domain); without `@`: `q***1a2b`. Empty stays empty.
+pub fn mask_identifier(s: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let Some(first) = s.chars().next() else {
+        return String::new();
+    };
+    let tag: String = hex::encode(Sha256::digest(s.as_bytes()))
+        .chars()
+        .take(4)
+        .collect();
+    match s.rsplit_once('@') {
+        Some((_, domain)) => format!("{first}***{tag}@{domain}"),
+        None => format!("{first}***{tag}"),
+    }
+}
+
+/// Hide secrets and mask personal identifiers (monitored addresses, SMTP sender and login), like the GDPR
+/// identity: shown in clear only with administrator approval.
 pub fn redact(cfg: &Config) -> Config {
     let mut c = cfg.clone();
     for s in secrets_mut(&mut c) {
@@ -77,16 +95,45 @@ pub fn redact(cfg: &Config) -> Config {
             *s = Some(REDACTED.into());
         }
     }
+    for e in &mut c.breach.emails {
+        *e = mask_identifier(e);
+    }
+    c.data_removal.from_address = mask_identifier(&c.data_removal.from_address);
+    c.data_removal.smtp_username = mask_identifier(&c.data_removal.smtp_username);
     c
 }
 
-/// A client sending back a redacted config keeps the stored secrets.
+/// Original of a masked value sent back (masks are unique per value).
+fn unmask(value: &str, originals: &[String]) -> Option<String> {
+    if !value.contains("***") {
+        return None;
+    }
+    originals
+        .iter()
+        .find(|o| mask_identifier(o) == value)
+        .cloned()
+}
+
+/// A client sending back a redacted config keeps the stored secrets and identifiers.
 pub fn unredact(new: &mut Config, old: &Config) {
-    let mut old = old.clone();
-    for (n, o) in secrets_mut(new).into_iter().zip(secrets_mut(&mut old)) {
+    let mut old_c = old.clone();
+    for (n, o) in secrets_mut(new).into_iter().zip(secrets_mut(&mut old_c)) {
         if n.as_deref() == Some(REDACTED) {
             *n = o.clone();
         }
+    }
+    for e in &mut new.breach.emails {
+        if let Some(o) = unmask(e, &old.breach.emails) {
+            *e = o;
+        }
+    }
+    let from = std::slice::from_ref(&old.data_removal.from_address);
+    if let Some(o) = unmask(&new.data_removal.from_address, from) {
+        new.data_removal.from_address = o;
+    }
+    let user = std::slice::from_ref(&old.data_removal.smtp_username);
+    if let Some(o) = unmask(&new.data_removal.smtp_username, user) {
+        new.data_removal.smtp_username = o;
     }
 }
 
@@ -617,6 +664,35 @@ mod tests {
         let mut back = r;
         unredact(&mut back, &cfg);
         assert_eq!(back, cfg);
+    }
+
+    #[test]
+    fn identifiers_are_masked_and_restored() {
+        let mut cfg = Config::default();
+        cfg.breach.emails = vec!["c.m@example.com".into(), "c.n@example.com".into()];
+        cfg.data_removal.from_address = "c.m@example.com".into();
+        cfg.data_removal.smtp_username = "cm".into();
+        let r = redact(&cfg);
+        assert!(
+            r.breach.emails[0].starts_with("c***") && r.breach.emails[0].ends_with("@example.com")
+        );
+        assert_ne!(r.breach.emails[0], r.breach.emails[1]);
+        assert!(!r.breach.emails[0].contains("c.m"));
+        assert_eq!(r.data_removal.from_address, r.breach.emails[0]);
+        assert!(r.data_removal.smtp_username.starts_with("c***"));
+        assert_eq!(mask_identifier(""), "");
+        let mut back = r.clone();
+        unredact(&mut back, &cfg);
+        assert_eq!(back, cfg);
+        // Removing one masked address and adding a new one keeps the right originals.
+        let mut edited = r.clone();
+        edited.breach.emails.remove(0);
+        edited.breach.emails.push("new@example.org".into());
+        unredact(&mut edited, &cfg);
+        assert_eq!(
+            edited.breach.emails,
+            vec!["c.n@example.com", "new@example.org"]
+        );
     }
 
     #[test]

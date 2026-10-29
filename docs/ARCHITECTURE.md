@@ -83,6 +83,20 @@
   s'arrête ou quand le VPN n'est plus voulu.
 - **Réseaux identifiés par la MAC de leur box** (`gw:<MAC>`) : marche en Ethernet et sans autorisation de localisation
   (que macOS 14+ exige pour lire le nom du Wi-Fi). Base du mode « réseaux non fiables » et de la détection d'ARP spoofing.
+  Limite connue : une MAC se copie. Un point d'accès hostile qui reprendrait la MAC LAN de ta box serait pris pour
+  ton réseau de confiance (VPN non forcé). Pour les lieux sensibles, préférer le mode « toujours connecté ».
+- **VPN déclaré connecté seulement si le trafic passe** : après l'apparition de l'interface TUN, le daemon fait une
+  requête HTTPS qui traverse le tunnel ; sans réponse en 30 s, la tentative échoue (pas de faux « connecté » avec un
+  mauvais mot de passe ou un serveur éteint) et le kill switch se retire au bout de 45 s s'il n'a jamais été armé.
+  Contrôle de santé chaque minute ensuite. Si sing-box plante 5 fois de suite (problème local, pas réseau), le
+  kill switch est relâché pour que le Mac et les mises à jour de Parabellum gardent Internet.
+- **Actions sur un processus identifiées par pid + heure de démarrage** : arrêter ou reprendre depuis une alerte
+  vérifie que le pid désigne encore exactement le même processus (pas de signal à un autre programme qui aurait
+  récupéré le pid). Les interpréteurs (python3, node, bash…) ne sont jamais mis en quarantaine, seul le processus
+  fautif est arrêté.
+- **Instantanés montés hors de portée des utilisateurs** : le snapshot APFS est monté dans le `tmp/` privé du
+  daemon (0700), root copie seulement l'élément demandé (aucun lien symbolique suivi) vers une zone de transit, puis
+  la copie finale est faite avec les droits de l'utilisateur.
 - **Garde comportementale** : événements `eslogger` (exec, open, create, rename) filtrés par chemins sensibles et
   programmes approuvés (binaires Apple, Team ID de la base ou des réglages). Arrêt sur détection sûre ; rançongiciel
   suspendu (SIGSTOP) jusqu'à la décision de l'utilisateur.

@@ -233,6 +233,43 @@ impl Correlator {
 
 /// Paths of interactive programs: an indicator whose ancestry reaches one of them was typed by a person
 /// (alert, never kill).
+/// Script interpreters and shells: the process running a malicious script may be killed, but the
+/// interpreter binary itself (Homebrew `python3`, `node`, `bash`…) is shared by every script and is never
+/// quarantined.
+pub fn is_interpreter(path: &str) -> bool {
+    let name = path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase();
+    let base = name.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.');
+    matches!(
+        base,
+        "python"
+            | "pypy"
+            | "perl"
+            | "ruby"
+            | "node"
+            | "nodejs"
+            | "deno"
+            | "bun"
+            | "php"
+            | "lua"
+            | "luajit"
+            | "tclsh"
+            | "wish"
+            | "rscript"
+            | "java"
+            | "pwsh"
+            | "osascript"
+            | "bash"
+            | "zsh"
+            | "sh"
+            | "dash"
+            | "ksh"
+            | "fish"
+            | "tcsh"
+            | "csh"
+            | "nu"
+    )
+}
+
 pub fn is_interactive_host(path: &str) -> bool {
     const HOSTS: &[&str] = &[
         "/System/Applications/Utilities/Terminal.app/",
@@ -270,6 +307,26 @@ pub fn is_system_path(path: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn interpreters() {
+        for p in [
+            "/opt/homebrew/bin/python3",
+            "/opt/homebrew/Cellar/python@3.13/3.13.1/bin/python3.13",
+            "/usr/local/bin/node",
+            "/bin/bash",
+            "/opt/homebrew/bin/ruby",
+        ] {
+            assert!(is_interpreter(p), "{p}");
+        }
+        for p in [
+            "/private/tmp/locker",
+            "/Applications/Stealer.app/Contents/MacOS/Stealer",
+            "/usr/bin/curl",
+        ] {
+            assert!(!is_interpreter(p), "{p}");
+        }
+    }
 
     fn v(a: &[&str]) -> Vec<String> {
         a.iter().map(|s| s.to_string()).collect()
