@@ -38,6 +38,8 @@
 | `crates/pb-monitor` | Surveillance temps réel, persistance, périphériques, osquery | Rust |
 | `crates/pb-updater` | MAJ de la base (minisign, bascule atomique, rollback), freshclam, gestion des composants tiers, auto-MAJ de l'app | Rust |
 | `crates/pb-dns` | Blocage DNS global (dnscrypt-proxy), bascule sûre des DNS système | Rust |
+| `crates/pb-vpn` | VPN (sing-box ou VPN de macOS), kill switch pf, tests de fuite, garde réseau (ARP spoofing, faux point d'accès) | Rust |
+| `crates/pb-privacy` | Demandes RGPD aux courtiers (courriers, délais, relances, plainte CNIL), fuites, Pwned Passwords, alias, métadonnées | Rust |
 | `crates/pb-daemon` | `parabellumd` : orchestration, serveur IPC, SQLite, planificateur | Rust |
 | `crates/pb-cli` | `parabellum` : client en ligne de commande | Rust |
 | `app/` | App SwiftUI (barre de menus + fenêtre), paquet SwiftPM | Swift |
@@ -70,6 +72,24 @@
   partage d'écran vérifiés chaque jour (outils système, chemins absolus, délais) ; alerte dédupliquée par réglage
   à corriger, résolue automatiquement une fois corrigé (`parabellum posture`, carte « Sécurité de macOS »).
 - **DNS en mode fail-open** : si dnscrypt-proxy tombe, le daemon restaure les DNS d'origine pour ne jamais couper Internet.
+- **VPN open source plutôt que Shadowrocket** : Shadowrocket n'a ni API ni CLI. Le daemon fait tourner sing-box
+  (GPL-3.0, mêmes protocoles) avec une interface TUN et une route stricte, depuis un profil importé (lien de partage,
+  abonnement, `.conf` WireGuard) ; les noms d'hôte des serveurs sont résolus à l'avance pour que le kill switch les
+  autorise par IP. Un VPN déjà configuré dans macOS (Shadowrocket compris) reste pilotable par `scutil --nc`.
+  sing-box ne publie pas de signature vérifiable sur le Mac : la CI vérifie l'attestation de provenance GitHub de la
+  release (`gh attestation verify`) et épingle son SHA-256 dans la base signée (`components/pins.json`).
+- **Kill switch pf sans toucher à `/etc/pf.conf`** : règles dans l'ancre `com.apple/250.Parabellum` (évaluée par la
+  configuration d'Apple), pf activé par jeton (`pfctl -E` / `-X`). Fail-open : l'ancre est vidée quand le daemon
+  s'arrête ou quand le VPN n'est plus voulu.
+- **Réseaux identifiés par la MAC de leur box** (`gw:<MAC>`) : marche en Ethernet et sans autorisation de localisation
+  (que macOS 14+ exige pour lire le nom du Wi-Fi). Base du mode « réseaux non fiables » et de la détection d'ARP spoofing.
+- **Garde comportementale** : événements `eslogger` (exec, open, create, rename) filtrés par chemins sensibles et
+  programmes approuvés (binaires Apple, Team ID de la base ou des réglages). Arrêt sur détection sûre ; rançongiciel
+  suspendu (SIGSTOP) jusqu'à la décision de l'utilisateur.
+- **RGPD sans tiers** : le daemon compose les courriers (FR/EN) et suit les délais ; en mode brouillons, l'app écrit les
+  `.eml` dans Téléchargements et Mail les envoie ; en mode SMTP, le daemon envoie avec un quota quotidien.
+- **Outils locaux exécutés par l'utilisateur** : nettoyage des métadonnées et vérification d'un export de mots de passe
+  passent par la CLI lancée par l'app, avec les droits de l'utilisateur, jamais par le daemon root.
 
 Voir aussi : `crates/pb-core/src/ipc.rs` (protocole), `crates/pb-core/src/db.rs` (format de la base),
 `docs/INSTALL.md` (build et installation).

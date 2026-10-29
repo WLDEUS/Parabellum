@@ -1,0 +1,26 @@
+[
+  {
+    "current": true,
+    "first_seen": 1792900000,
+    "gateway_ip": "192.168.1.254",
+    "gateway_mac": "00:24:d4:a1:b2:c3",
+    "id": "gw:00:24:d4:a1:b2:c3",
+    "interface": "en0",
+    "last_seen": 1793000000,
+    "name": "Livebox-1234",
+    "security": "WPA2 Personal",
+    "ssid": "Livebox-1234",
+    "trusted": true
+  },
+  {
+    "current": false,
+    "first_seen": 1792900000,
+    "gateway_mac": "00:24:d4:a1:b2:c3",
+    "id": "gw:12:34:56:78:9a:bc",
+    "interface": "en0",
+    "last_seen": 1793000000,
+    "name": "Gare-WiFi",
+    "ssid": "Gare-WiFi",
+    "trusted": false
+  }
+]

@@ -3,7 +3,7 @@
 //!
 //! `cargo run -p pb-core --example gen_fixtures -- app/Tests/ParabellumKitTests/Fixtures`
 
-use pb_core::config::Config;
+use pb_core::config::{AliasProvider, Config, VpnBackend, VpnMode};
 use pb_core::ipc::*;
 use pb_core::model::*;
 use std::collections::BTreeMap;
@@ -207,6 +207,87 @@ fn status() -> StatusInfo {
     }
 }
 
+fn network(current: bool) -> NetworkInfo {
+    NetworkInfo {
+        id: "gw:00:24:d4:a1:b2:c3".into(),
+        name: "Livebox-1234".into(),
+        interface: "en0".into(),
+        gateway_ip: Some("192.168.1.254".into()),
+        gateway_mac: Some("00:24:d4:a1:b2:c3".into()),
+        ssid: Some("Livebox-1234".into()),
+        security: Some("WPA2 Personal".into()),
+        trusted: true,
+        first_seen: 1_792_900_000,
+        last_seen: 1_793_000_000,
+        current,
+    }
+}
+
+fn vpn_status() -> VpnStatus {
+    VpnStatus {
+        mode: VpnMode::UntrustedNetworks,
+        backend: VpnBackend::SingBox,
+        state: VpnState::Connected,
+        wanted: true,
+        manual_override: Some(true),
+        profile: Some(VpnProfileInfo {
+            name: "Paris".into(),
+            protocol: "vless".into(),
+            server: "203.0.113.9".into(),
+            port: 443,
+            transport: Some("reality".into()),
+            imported_at: 1_792_950_000,
+        }),
+        external_service: None,
+        connected_since: Some(1_793_000_000),
+        interface: Some("utun5".into()),
+        kill_switch: KillSwitchState::Armed,
+        network: Some(network(true)),
+        last_leak_test: Some(LeakTestResult {
+            ts: 1_793_000_200,
+            ok: false,
+            vpn_connected: true,
+            public_ipv4: Some("203.0.113.9".into()),
+            public_ipv6: None,
+            home_ipv4: Some("198.51.100.20".into()),
+            dns_servers: vec!["127.0.0.1".into()],
+            checks: vec![
+                LeakCheck {
+                    id: "ipv4".into(),
+                    ok: true,
+                    detail: "IP publique du serveur VPN".into(),
+                },
+                LeakCheck {
+                    id: "ipv6".into(),
+                    ok: false,
+                    detail: "IPv6 joignable hors du tunnel".into(),
+                },
+            ],
+        }),
+        engine_installed: true,
+        message: None,
+    }
+}
+
+fn removal_request(status: RemovalStatus) -> RemovalRequest {
+    RemovalRequest {
+        id: "2f1c8a4e-0000-4000-8000-000000000002".into(),
+        broker_id: "acxiom".into(),
+        broker_name: "Acxiom".into(),
+        broker_email: Some("privacy@acxiom.example".into()),
+        status,
+        created_at: 1_792_000_000,
+        sent_at: Some(1_792_100_000),
+        due_at: Some(1_794_692_000),
+        reminded_at: None,
+        closed_at: None,
+        opt_out_url: None,
+        draft_path: None,
+        note: None,
+        last_error: None,
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dir = PathBuf::from(std::env::args().nth(1).unwrap_or_else(|| "fixtures".into()));
     std::fs::create_dir_all(&dir)?;
@@ -329,6 +410,176 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })?,
     )?;
 
+    // VPN, behaviour guard, privacy payloads.
+    w("vpn_status", serde_json::to_value(vpn_status())?)?;
+    w(
+        "vpn_status_default",
+        serde_json::to_value(VpnStatus::default())?,
+    )?;
+    w(
+        "networks",
+        serde_json::to_value(vec![network(true), {
+            let mut n = network(false);
+            n.id = "gw:12:34:56:78:9a:bc".into();
+            n.name = "Gare-WiFi".into();
+            n.ssid = Some("Gare-WiFi".into());
+            n.security = None;
+            n.gateway_ip = None;
+            n.trusted = false;
+            n
+        }])?,
+    )?;
+    w(
+        "vpn_services",
+        serde_json::to_value(vec![ExternalVpnService {
+            name: "Shadowrocket".into(),
+            provider: Some("com.liguangming.Shadowrocket".into()),
+            state: VpnState::Disconnected,
+        }])?,
+    )?;
+    w(
+        "guard_status",
+        serde_json::to_value(GuardStatus {
+            stealer_detection: true,
+            ransomware_detection: true,
+            canaries: vec!["/Users/q/Documents/.~0000-budget.xlsx".into()],
+            snapshots_enabled: true,
+            last_snapshot: Some(1_793_000_000),
+            snapshot_error: None,
+            suspended: vec![SuspendedProcess {
+                pid: 4242,
+                path: "/private/tmp/locker".into(),
+                since: 1_793_000_300,
+                alert_id: Some(31),
+            }],
+            detections_7d: 2,
+        })?,
+    )?;
+    w(
+        "snapshots",
+        serde_json::to_value(vec![
+            SnapshotInfo {
+                name: "com.apple.TimeMachine.2026-10-29-120000.local".into(),
+                created_at: Some(1_793_012_400),
+                ours: true,
+            },
+            SnapshotInfo {
+                name: "com.apple.os.update-ABCDEF".into(),
+                created_at: None,
+                ours: false,
+            },
+        ])?,
+    )?;
+    w(
+        "identity",
+        serde_json::to_value(IdentityProfile {
+            full_name: "C****** M*****".into(),
+            emails: vec!["c***@example.com".into()],
+            phones: vec![],
+            postal_address: String::new(),
+            previous_addresses: vec![],
+            birth_date: String::new(),
+            country: "FR".into(),
+        })?,
+    )?;
+    w(
+        "brokers",
+        serde_json::to_value(vec![BrokerInfo {
+            id: "acxiom".into(),
+            name: "Acxiom".into(),
+            email: Some("privacy@acxiom.example".into()),
+            website: Some("https://www.acxiom.com".into()),
+            opt_out_url: None,
+            region: "global".into(),
+            category: "marketing".into(),
+            source: "eraser".into(),
+        }])?,
+    )?;
+    w(
+        "removal_requests",
+        serde_json::to_value(vec![removal_request(RemovalStatus::Sent), {
+            let mut r = removal_request(RemovalStatus::NeedsForm);
+            r.id = "2f1c8a4e-0000-4000-8000-000000000003".into();
+            r.broker_email = None;
+            r.sent_at = None;
+            r.due_at = None;
+            r.opt_out_url = Some("https://example.com/opt-out".into());
+            r
+        }])?,
+    )?;
+    w(
+        "removal_summary",
+        serde_json::to_value(RemovalSummary {
+            total: 120,
+            queued: 80,
+            waiting_answer: 30,
+            overdue: 2,
+            completed: 6,
+            needs_action: 4,
+            next_send_at: Some(1_793_050_000),
+        })?,
+    )?;
+    w(
+        "mail_draft",
+        serde_json::to_value(MailDraft {
+            request_id: "2f1c8a4e-0000-4000-8000-000000000002".into(),
+            to: "privacy@acxiom.example".into(),
+            subject: "Demande d'effacement (article 17 du RGPD)".into(),
+            body: "Madame, Monsieur,\n\nJe vous demande d'effacer mes données.\n".into(),
+        })?,
+    )?;
+    w(
+        "complaint",
+        serde_json::to_value(ComplaintDraft {
+            authority: "CNIL".into(),
+            url: "https://www.cnil.fr/fr/plaintes".into(),
+            text: "Plainte".into(),
+        })?,
+    )?;
+    w(
+        "breaches",
+        serde_json::to_value(vec![BreachFinding {
+            email: "c.m@example.com".into(),
+            breach: "ExampleShop".into(),
+            breach_date: Some("2024-05-01".into()),
+            data_classes: vec!["Email addresses".into(), "Passwords".into()],
+            first_seen: 1_793_000_000,
+            new: true,
+        }])?,
+    )?;
+    w(
+        "aliases",
+        serde_json::to_value(vec![EmailAlias {
+            id: "42".into(),
+            email: "shop.x7k2@addy.example".into(),
+            label: "boutique".into(),
+            provider: AliasProvider::Addy,
+            created_at: 1_793_000_000,
+            active: true,
+        }])?,
+    )?;
+    w(
+        "behavior_alert",
+        serde_json::to_value({
+            let mut a = alert();
+            a.id = 31;
+            a.kind = AlertKind::Behavior;
+            a.title = "Rançongiciel suspendu".into();
+            a.path = None;
+            a.sha256 = None;
+            a.quarantine_id = None;
+            a.process_pid = Some(4242);
+            a.process_path = Some("/private/tmp/locker".into());
+            a.network_id = Some("gw:00:24:d4:a1:b2:c3".into());
+            a.actions = vec![
+                AlertAction::KillProcess,
+                AlertAction::ResumeProcess,
+                AlertAction::TrustNetwork,
+            ];
+            a
+        })?,
+    )?;
+
     // Whole server lines (response + every event kind) as JSON-lines.
     let mut lines = Vec::new();
     lines.push(serde_json::to_string(&ResponseEnvelope::ok(1, &status()))?);
@@ -367,6 +618,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             mode: 0o644,
             reason: "auto".into(),
         }),
+        DaemonEvent::Vpn(vpn_status()),
     ];
     for e in &events {
         lines.push(serde_json::to_string(e)?);
@@ -445,6 +697,73 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Request::SpywareScan,
         Request::Posture { refresh: true },
         Request::Subscribe,
+        Request::VpnStatus,
+        Request::VpnConnect,
+        Request::VpnDisconnect,
+        Request::VpnImportProfile {
+            profile: "trojan://pw@203.0.113.9:443#Paris".into(),
+        },
+        Request::VpnRemoveProfile,
+        Request::VpnLeakTest,
+        Request::VpnListServices,
+        Request::ListNetworks,
+        Request::SetNetworkTrust {
+            network_id: "gw:00:24:d4:a1:b2:c3".into(),
+            trusted: true,
+        },
+        Request::SetNetworkTrust {
+            network_id: "gw:00:24:d4:a1:b2:c3".into(),
+            trusted: false,
+        },
+        Request::GuardStatus,
+        Request::ListSnapshots,
+        Request::CreateSnapshot,
+        Request::RestoreFromSnapshot {
+            snapshot: "com.apple.TimeMachine.2026-10-29-120000.local".into(),
+            path: "/Users/q/Documents/budget.xlsx".into(),
+        },
+        Request::PrivacyGetProfile { reveal: false },
+        Request::PrivacyGetProfile { reveal: true },
+        Request::PrivacySetProfile {
+            profile: IdentityProfile {
+                full_name: "Camille Martin".into(),
+                emails: vec!["c.m@example.com".into()],
+                country: "FR".into(),
+                ..Default::default()
+            },
+        },
+        Request::PrivacyListBrokers,
+        Request::PrivacyListRequests,
+        Request::PrivacySummary,
+        Request::PrivacyStartRemoval { broker_ids: None },
+        Request::PrivacyStartRemoval {
+            broker_ids: Some(vec!["acxiom".into()]),
+        },
+        Request::PrivacyUpdateRequest {
+            request_id: "r".into(),
+            status: RemovalStatus::Completed,
+            note: Some("confirmé".into()),
+        },
+        Request::PrivacyDraft {
+            request_id: "r".into(),
+        },
+        Request::PrivacyComplaint {
+            request_id: "r".into(),
+        },
+        Request::BreachList,
+        Request::BreachCheckNow,
+        Request::AliasList,
+        Request::AliasCreate {
+            label: "boutique".into(),
+        },
+        Request::ResolveAlert {
+            alert_id: 31,
+            action: AlertAction::KillProcess,
+        },
+        Request::ResolveAlert {
+            alert_id: 31,
+            action: AlertAction::ResumeProcess,
+        },
     ];
     // Which commands need administrator approval (`auth` or root), same order/ids as requests.jsonl.
     let admin: Vec<String> = reqs

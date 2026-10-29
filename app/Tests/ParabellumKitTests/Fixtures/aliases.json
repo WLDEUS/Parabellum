@@ -1,0 +1,10 @@
+[
+  {
+    "active": true,
+    "created_at": 1793000000,
+    "email": "shop.x7k2@addy.example",
+    "id": "42",
+    "label": "boutique",
+    "provider": "addy"
+  }
+]

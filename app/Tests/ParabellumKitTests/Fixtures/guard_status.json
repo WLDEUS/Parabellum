@@ -1,0 +1,18 @@
+{
+  "canaries": [
+    "/Users/q/Documents/.~0000-budget.xlsx"
+  ],
+  "detections_7d": 2,
+  "last_snapshot": 1793000000,
+  "ransomware_detection": true,
+  "snapshots_enabled": true,
+  "stealer_detection": true,
+  "suspended": [
+    {
+      "alert_id": 31,
+      "path": "/private/tmp/locker",
+      "pid": 4242,
+      "since": 1793000300
+    }
+  ]
+}

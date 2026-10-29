@@ -202,6 +202,12 @@ private struct AlertDetailView: View {
             if let quarantineId = alert.quarantineId {
                 InfoRow(label: "Quarantaine", value: quarantineId, monospaced: true)
             }
+            if let processPath = alert.processPath {
+                InfoRow(label: "Processus", value: alert.processPid.map { "\(processPath) (PID \($0))" } ?? processPath, monospaced: true)
+            }
+            if let networkId = alert.networkId {
+                InfoRow(label: "Réseau", value: networkId, monospaced: true)
+            }
         }
     }
 
@@ -257,6 +263,21 @@ private struct AlertDetailView: View {
             if alert.deviceId != nil {
                 Button("Voir les périphériques") {
                     model.section = .devices
+                }
+            }
+            if alert.networkId != nil {
+                Button("Voir le VPN et les réseaux") {
+                    model.section = .vpn
+                }
+            }
+            if alert.kind == .behavior {
+                Button("Voir la protection anti-vol") {
+                    model.section = .behavior
+                }
+            }
+            if alert.kind == .privacy {
+                Button("Voir la vie privée") {
+                    model.section = .privacy
                 }
             }
         }

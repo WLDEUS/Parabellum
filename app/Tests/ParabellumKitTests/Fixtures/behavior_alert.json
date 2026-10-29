@@ -1,0 +1,17 @@
+{
+  "actions": [
+    "kill_process",
+    "resume_process",
+    "trust_network"
+  ],
+  "id": 31,
+  "kind": "behavior",
+  "message": "MacOS.Stealer.AMOS détecté dans Installer.dmg",
+  "network_id": "gw:00:24:d4:a1:b2:c3",
+  "process_path": "/private/tmp/locker",
+  "process_pid": 4242,
+  "severity": "critical",
+  "status": "open",
+  "title": "Rançongiciel suspendu",
+  "ts": 1793000100
+}

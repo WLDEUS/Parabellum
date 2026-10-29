@@ -1,0 +1,54 @@
+{
+  "backend": "sing_box",
+  "connected_since": 1793000000,
+  "engine_installed": true,
+  "interface": "utun5",
+  "kill_switch": "armed",
+  "last_leak_test": {
+    "checks": [
+      {
+        "detail": "IP publique du serveur VPN",
+        "id": "ipv4",
+        "ok": true
+      },
+      {
+        "detail": "IPv6 joignable hors du tunnel",
+        "id": "ipv6",
+        "ok": false
+      }
+    ],
+    "dns_servers": [
+      "127.0.0.1"
+    ],
+    "home_ipv4": "198.51.100.20",
+    "ok": false,
+    "public_ipv4": "203.0.113.9",
+    "ts": 1793000200,
+    "vpn_connected": true
+  },
+  "manual_override": true,
+  "mode": "untrusted_networks",
+  "network": {
+    "current": true,
+    "first_seen": 1792900000,
+    "gateway_ip": "192.168.1.254",
+    "gateway_mac": "00:24:d4:a1:b2:c3",
+    "id": "gw:00:24:d4:a1:b2:c3",
+    "interface": "en0",
+    "last_seen": 1793000000,
+    "name": "Livebox-1234",
+    "security": "WPA2 Personal",
+    "ssid": "Livebox-1234",
+    "trusted": true
+  },
+  "profile": {
+    "imported_at": 1792950000,
+    "name": "Paris",
+    "port": 443,
+    "protocol": "vless",
+    "server": "203.0.113.9",
+    "transport": "reality"
+  },
+  "state": "connected",
+  "wanted": true
+}

@@ -4,7 +4,7 @@ Menu bar app + main window for `parabellumd`. SwiftPM package, no `.xcodeproj`. 
 
 | Target | Type | Contents |
 |---|---|---|
-| `ParabellumKit` | library (Foundation only) | Models mirroring `pb-core` (`Models.swift`, `Config.swift`), `Request` encoding, `DaemonClient` (Unix socket, JSON lines), French labels and formatting |
+| `ParabellumKit` | library (Foundation + CryptoKit) | Models mirroring `pb-core` (`Models.swift`, `ProtectionModels.swift`, `Config.swift`, `ProtectionConfig.swift`), `Request` encoding, `DaemonClient` (Unix socket, JSON lines), French labels and formatting, local tools (`LocalTools.swift`: Pwned Passwords range API, CLI runner for metadata cleaning / password exports) |
 | `Parabellum` | executable (SwiftUI + AppKit + UserNotifications + Charts) | `@main` app, `AppModel`, notifications, BadUSB panel, one view per file in `Views/` |
 | `ParabellumKitTests` | XCTest | Decodes the fixtures emitted by the Rust types, checks request encoding, runs the client against a local fake daemon |
 

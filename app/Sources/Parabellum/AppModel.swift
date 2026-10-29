@@ -20,7 +20,8 @@ struct Banner: Identifiable, Equatable {
 
 /// Sidebar sections of the main window.
 enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
-    case dashboard, scan, alerts, quarantine, persistence, devices, network, components, report, settings
+    case dashboard, scan, alerts, quarantine, persistence, devices, network, vpn, behavior, privacy, components, report
+    case settings
 
     var id: String { rawValue }
 
@@ -33,6 +34,9 @@ enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
         case .persistence: return "Persistance"
         case .devices: return "Périphériques"
         case .network: return "Réseau & pubs"
+        case .vpn: return "VPN"
+        case .behavior: return "Vols & rançongiciels"
+        case .privacy: return "Vie privée"
         case .components: return "Composants"
         case .report: return "Rapport"
         case .settings: return "Réglages"
@@ -48,6 +52,9 @@ enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
         case .persistence: return "arrow.triangle.2.circlepath"
         case .devices: return "cable.connector"
         case .network: return "network.badge.shield.half.filled"
+        case .vpn: return "lock.shield"
+        case .behavior: return "eye.trianglebadge.exclamationmark"
+        case .privacy: return "hand.raised"
         case .components: return "puzzlepiece.extension"
         case .report: return "chart.bar.xaxis"
         case .settings: return "gearshape"
@@ -97,6 +104,23 @@ final class AppModel: ObservableObject {
     /// macOS security settings (`posture`), shown on the dashboard.
     @Published private(set) var posture: [PostureCheck] = []
     @Published var reportWeekOffset = 0
+
+    // VPN & networks
+    @Published var vpnStatus: VpnStatus?
+    @Published var networks: [NetworkInfo] = []
+    @Published var externalVpnServices: [ExternalVpnService] = []
+
+    // Behaviour guard & snapshots
+    @Published var guardStatus: GuardStatus?
+    @Published var snapshots: [SnapshotInfo] = []
+
+    // Privacy
+    @Published var identity: IdentityProfile?
+    @Published var brokers: [BrokerInfo] = []
+    @Published var removalRequests: [RemovalRequest] = []
+    @Published var removalSummary: RemovalSummary?
+    @Published var breaches: [BreachFinding] = []
+    @Published var emailAliases: [EmailAlias] = []
 
     // Config (+ raw JSON to preserve unknown keys on save)
     @Published private(set) var config: Config?
@@ -265,6 +289,15 @@ final class AppModel: ObservableObject {
             return status?.componentsNeedingAttention ?? 0
         case .persistence:
             return persistence.filter { $0.status == .new }.count
+        case .behavior:
+            return guardStatus?.suspended.count ?? 0
+        case .privacy:
+            return (removalSummary?.overdue ?? 0) + breaches.filter { $0.new }.count
+        case .vpn:
+            if let vpnStatus, vpnStatus.isBlocking || vpnStatus.state == .error {
+                return 1
+            }
+            return 0
         default:
             return 0
         }
@@ -317,6 +350,8 @@ final class AppModel: ObservableObject {
             }
         case .quarantined(let entry):
             upsert(entry, into: &quarantine)
+        case .vpn(let newStatus):
+            vpnStatus = newStatus
         case .unknown:
             break
         }
@@ -360,7 +395,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func upsert<T: Identifiable>(_ item: T, into list: inout [T], atTop: Bool = true) {
+    func upsert<T: Identifiable>(_ item: T, into list: inout [T], atTop: Bool = true) {
         if let index = list.firstIndex(where: { $0.id == item.id }) {
             list[index] = item
         } else if atTop {
@@ -374,6 +409,7 @@ final class AppModel: ObservableObject {
         await refreshStatus()
         await loadConfig()
         await loadAlerts()
+        await loadVpnStatus()
         if let section, section != .dashboard, section != .alerts, section != .settings {
             await refresh(section: section)
         }
@@ -383,7 +419,7 @@ final class AppModel: ObservableObject {
 
     /// Runs one request; errors become a banner (unless `quiet`). Returns nil on failure.
     @discardableResult
-    private func perform<T>(_ key: String, quiet: Bool = false, _ operation: () async throws -> T) async -> T? {
+    func perform<T>(_ key: String, quiet: Bool = false, _ operation: () async throws -> T) async -> T? {
         inFlight.insert(key)
         defer { inFlight.remove(key) }
         do {
@@ -401,15 +437,20 @@ final class AppModel: ObservableObject {
     /// Every request goes through here: `requiresAdmin` commands get `auth` (system prompt, reused for
     /// ~5 min); an `auth_required` answer (expired authorization, newer daemon) is retried once with a
     /// fresh one. User cancellation throws `AdminAuthorizationError.cancelled` and nothing is sent.
-    private func call<T: Decodable>(_ request: Request, as type: T.Type, forceAuth: Bool = false) async throws -> T {
+    func call<T: Decodable>(
+        _ request: Request,
+        as type: T.Type,
+        forceAuth: Bool = false,
+        timeout: TimeInterval = DaemonClient.defaultTimeout
+    ) async throws -> T {
         try await withAdminAuth(request, forceAuth: forceAuth) { auth in
-            try await self.client.call(request, as: T.self, auth: auth)
+            try await self.client.call(request, as: T.self, auth: auth, timeout: timeout)
         }
     }
 
-    private func callVoid(_ request: Request) async throws {
+    func callVoid(_ request: Request, timeout: TimeInterval = DaemonClient.defaultTimeout) async throws {
         try await withAdminAuth(request, forceAuth: false) { auth in
-            try await self.client.callVoid(request, auth: auth)
+            try await self.client.callVoid(request, auth: auth, timeout: timeout)
         }
     }
 
@@ -465,6 +506,9 @@ final class AppModel: ObservableObject {
         case .persistence: await loadPersistence()
         case .devices: await loadDevices()
         case .network: await loadAdblock()
+        case .vpn: await loadVpn()
+        case .behavior: await loadGuard()
+        case .privacy: await loadPrivacy()
         case .components: await loadComponents()
         case .report: await loadReport()
         case .settings: await loadConfig()

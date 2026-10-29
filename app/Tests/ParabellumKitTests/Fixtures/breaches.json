@@ -1,0 +1,13 @@
+[
+  {
+    "breach": "ExampleShop",
+    "breach_date": "2024-05-01",
+    "data_classes": [
+      "Email addresses",
+      "Passwords"
+    ],
+    "email": "c.m@example.com",
+    "first_seen": 1793000000,
+    "new": true
+  }
+]

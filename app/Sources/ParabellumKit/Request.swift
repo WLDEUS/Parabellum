@@ -73,6 +73,67 @@ public enum Request: Sendable, Equatable {
     /// Start receiving events on this connection. → `null`
     case subscribe
 
+    // VPN & networks
+    /// → `VpnStatus`
+    case vpnStatus
+    /// Tunnel up now (manual override). → `VpnStatus`
+    case vpnConnect
+    /// Tunnel down (manual override until the next network change). Admin. → `VpnStatus`
+    case vpnDisconnect
+    /// Share link (`ss://`, `vless://`, `vmess://`, `trojan://`, `hysteria2://`, `tuic://`, `wireguard://`),
+    /// subscription or WireGuard `.conf` text. Admin. → `VpnProfileInfo`
+    case vpnImportProfile(profile: String)
+    /// Admin. → `null`
+    case vpnRemoveProfile
+    /// → `LeakTestResult`
+    case vpnLeakTest
+    /// VPNs configured in macOS. → `[ExternalVpnService]`
+    case vpnListServices
+    /// Networks seen, current first. → `[NetworkInfo]`
+    case listNetworks
+    /// Trusting needs admin. → `NetworkInfo`
+    case setNetworkTrust(networkId: String, trusted: Bool)
+
+    // Behaviour guard & snapshots
+    /// → `GuardStatus`
+    case guardStatus
+    /// Newest first. → `[SnapshotInfo]`
+    case listSnapshots
+    /// → `SnapshotInfo`
+    case createSnapshot
+    /// Copy `path` (in the console user's home) as it was in `snapshot` to `~/Parabellum-Restauration/…`.
+    /// Admin. → `RestoredTo`
+    case restoreFromSnapshot(snapshot: String, path: String)
+
+    // Privacy
+    /// Masked unless `reveal` (admin). → `IdentityProfile`
+    case privacyGetProfile(reveal: Bool = false)
+    /// Admin. → `IdentityProfile` (masked)
+    case privacySetProfile(IdentityProfile)
+    /// → `[BrokerInfo]`
+    case privacyListBrokers
+    /// → `[RemovalRequest]`
+    case privacyListRequests
+    /// → `RemovalSummary`
+    case privacySummary
+    /// Every broker of the configured regions without an open request, or only `brokerIds`. Admin.
+    /// → `RemovalSummary`
+    case privacyStartRemoval(brokerIds: [String]? = nil)
+    /// → `RemovalRequest`
+    case privacyUpdateRequest(requestId: String, status: RemovalStatus, note: String? = nil)
+    /// Admin (contains your identity). → `MailDraft`
+    case privacyDraft(requestId: String)
+    /// Admin. → `ComplaintDraft`
+    case privacyComplaint(requestId: String)
+    /// → `[BreachFinding]`
+    case breachList
+    /// → `[BreachFinding]`
+    case breachCheckNow
+    /// → `[EmailAlias]`
+    case aliasList
+    /// → `EmailAlias`
+    case aliasCreate(label: String)
+
     /// Wire name (`cmd`).
     public var command: String {
         switch self {
@@ -108,6 +169,32 @@ public enum Request: Sendable, Equatable {
         case .spywareScan: return "spyware_scan"
         case .posture: return "posture"
         case .subscribe: return "subscribe"
+        case .vpnStatus: return "vpn_status"
+        case .vpnConnect: return "vpn_connect"
+        case .vpnDisconnect: return "vpn_disconnect"
+        case .vpnImportProfile: return "vpn_import_profile"
+        case .vpnRemoveProfile: return "vpn_remove_profile"
+        case .vpnLeakTest: return "vpn_leak_test"
+        case .vpnListServices: return "vpn_list_services"
+        case .listNetworks: return "list_networks"
+        case .setNetworkTrust: return "set_network_trust"
+        case .guardStatus: return "guard_status"
+        case .listSnapshots: return "list_snapshots"
+        case .createSnapshot: return "create_snapshot"
+        case .restoreFromSnapshot: return "restore_from_snapshot"
+        case .privacyGetProfile: return "privacy_get_profile"
+        case .privacySetProfile: return "privacy_set_profile"
+        case .privacyListBrokers: return "privacy_list_brokers"
+        case .privacyListRequests: return "privacy_list_requests"
+        case .privacySummary: return "privacy_summary"
+        case .privacyStartRemoval: return "privacy_start_removal"
+        case .privacyUpdateRequest: return "privacy_update_request"
+        case .privacyDraft: return "privacy_draft"
+        case .privacyComplaint: return "privacy_complaint"
+        case .breachList: return "breach_list"
+        case .breachCheckNow: return "breach_check_now"
+        case .aliasList: return "alias_list"
+        case .aliasCreate: return "alias_create"
         }
     }
 
@@ -118,6 +205,11 @@ public enum Request: Sendable, Equatable {
              .listDevices, .listComponents, .getDns, .adblockStatus, .getConfig, .weeklyReport, .posture,
              .subscribe:
             return false
+        case .vpnStatus, .vpnListServices, .listNetworks, .guardStatus, .listSnapshots, .privacyListBrokers,
+             .privacyListRequests, .privacySummary, .breachList, .aliasList:
+            return false
+        case let .privacyGetProfile(reveal):
+            return reveal
         default:
             return true
         }
@@ -130,6 +222,13 @@ public enum Request: Sendable, Equatable {
         switch self {
         case .restore, .deleteQuarantined, .reportFalsePositive, .setConfig, .quarantinePath, .setPersistenceStatus:
             return true
+        case .vpnDisconnect, .vpnImportProfile, .vpnRemoveProfile, .restoreFromSnapshot, .privacySetProfile,
+             .privacyDraft, .privacyComplaint, .privacyStartRemoval:
+            return true
+        case let .setNetworkTrust(_, trusted):
+            return trusted
+        case let .privacyGetProfile(reveal):
+            return reveal
         case let .setDns(enabled):
             return !enabled
         case let .setProtection(pausedMinutes):
@@ -140,7 +239,8 @@ public enum Request: Sendable, Equatable {
             return !autoUpdate
         case let .resolveAlert(_, action):
             switch action {
-            case .allow, .restore, .trustDevice, .approvePersistence, .removePersistence, .reportFalsePositive:
+            case .allow, .restore, .trustDevice, .approvePersistence, .removePersistence, .reportFalsePositive,
+                 .resumeProcess, .trustNetwork:
                 return true
             default:
                 return false
@@ -163,6 +263,38 @@ public enum Request: Sendable, Equatable {
         case .ping, .status, .listQuarantine, .listComponents, .getDns, .adblockStatus, .getConfig, .spywareScan,
              .subscribe:
             break
+        case .vpnStatus, .vpnConnect, .vpnDisconnect, .vpnRemoveProfile, .vpnLeakTest, .vpnListServices,
+             .listNetworks, .guardStatus, .listSnapshots, .createSnapshot, .privacyListBrokers, .privacyListRequests,
+             .privacySummary, .breachList, .breachCheckNow, .aliasList:
+            break
+        case let .vpnImportProfile(profile):
+            o["profile"] = .string(profile)
+        case let .setNetworkTrust(networkId, trusted):
+            o["network_id"] = .string(networkId)
+            o["trusted"] = .bool(trusted)
+        case let .restoreFromSnapshot(snapshot, path):
+            o["snapshot"] = .string(snapshot)
+            o["path"] = .string(path)
+        case let .privacyGetProfile(reveal):
+            o["reveal"] = .bool(reveal)
+        case let .privacySetProfile(profile):
+            o["profile"] = try JSONValue(encoding: profile)
+        case let .privacyStartRemoval(brokerIds):
+            if let brokerIds {
+                o["broker_ids"] = .array(brokerIds.map { JSONValue.string($0) })
+            }
+        case let .privacyUpdateRequest(requestId, status, note):
+            o["request_id"] = .string(requestId)
+            o["status"] = .string(status.rawValue)
+            if let note {
+                o["note"] = .string(note)
+            }
+        case let .privacyDraft(requestId):
+            o["request_id"] = .string(requestId)
+        case let .privacyComplaint(requestId):
+            o["request_id"] = .string(requestId)
+        case let .aliasCreate(label):
+            o["label"] = .string(label)
         case let .scan(paths, recursive, useClamav):
             o["paths"] = .array(paths.map { JSONValue.string($0) })
             o["recursive"] = .bool(recursive)

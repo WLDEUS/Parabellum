@@ -160,6 +160,16 @@ extension Request {
         case .setDeviceTrust: return "faire confiance à un périphérique"
         case .setComponentAutoUpdate: return "désactiver la mise à jour automatique d'un composant"
         case .resolveAlert: return "appliquer cette action sur l'alerte"
+        case .vpnDisconnect: return "couper le VPN"
+        case .vpnImportProfile: return "changer le serveur VPN (tout le trafic passera par lui)"
+        case .vpnRemoveProfile: return "supprimer le profil VPN"
+        case .setNetworkTrust: return "faire confiance à ce réseau (le VPN automatique ne s'y activera plus)"
+        case .restoreFromSnapshot: return "restaurer un fichier depuis un instantané"
+        case .privacyGetProfile: return "afficher ton identité enregistrée"
+        case .privacySetProfile: return "modifier l'identité utilisée pour les demandes RGPD"
+        case .privacyStartRemoval: return "envoyer des demandes d'effacement en ton nom"
+        case .privacyDraft: return "préparer un e-mail de demande d'effacement (il contient ton identité)"
+        case .privacyComplaint: return "préparer une plainte CNIL (elle contient ton identité)"
         default: return "réduire la protection"
         }
     }

@@ -109,6 +109,8 @@ extension AlertKind {
         case .network: return "network"
         case .update: return "arrow.down.circle"
         case .system: return "gearshape"
+        case .behavior: return "eye.trianglebadge.exclamationmark"
+        case .privacy: return "hand.raised.fill"
         case .unknown: return "bell"
         }
     }
@@ -198,5 +200,49 @@ extension SigningInfo {
 
     var isTrustworthy: Bool {
         signed && valid && !adhoc && (apple || notarized == true)
+    }
+}
+
+extension VpnState {
+    var color: Color {
+        switch self {
+        case .connected: return .green
+        case .connecting, .disconnecting: return .blue
+        case .error: return .red
+        case .disconnected, .unknown: return .gray
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .connected: return "lock.shield.fill"
+        case .connecting, .disconnecting: return "arrow.triangle.2.circlepath"
+        case .error: return "exclamationmark.shield.fill"
+        case .disconnected, .unknown: return "shield.slash"
+        }
+    }
+}
+
+extension KillSwitchState {
+    var color: Color {
+        switch self {
+        case .armed: return .green
+        case .blocking: return .orange
+        case .error: return .red
+        case .off, .unknown: return .gray
+        }
+    }
+}
+
+extension RemovalStatus {
+    var color: Color {
+        switch self {
+        case .completed: return .green
+        case .sent, .reminded: return .blue
+        case .queued, .draftReady: return .secondary
+        case .needsForm: return .orange
+        case .escalated, .failed, .refused: return .red
+        case .unknown: return .gray
+        }
     }
 }

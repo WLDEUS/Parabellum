@@ -18,6 +18,11 @@ Antivirus personnel et open source pour **macOS 14+ sur Apple Silicon**. Un seul
 | Base de menaces | Reconstruite chaque nuit en CI, signée minisign, bascule atomique + rollback ; signatures ClamAV via `freshclam` | GitHub Actions, abuse.ch, règles YARA |
 | ML | Classifieur Mach-O : peut rendre un fichier « suspect », jamais « malveillant », ne met rien en quarantaine | LightGBM (entraîné en CI) |
 | Pubs et trackers | DNS global (malware, pubs, trackers), fail-open ; uBlock Origin Lite dans Chrome et Safari (état vérifié) | dnscrypt-proxy, listes Hagezi/OISD, uBO Lite |
+| VPN | sing-box géré par le daemon (liens ss/vless/vmess/trojan/hysteria2/tuic/wireguard, abonnements, `.conf` WireGuard : les nœuds Shadowrocket s'importent tels quels) ou VPN déjà configuré dans macOS ; connexion auto sur les réseaux non fiables ; kill switch pf ; tests de fuite IPv4/IPv6/DNS | sing-box (épinglé, provenance vérifiée), `pfctl`, `scutil` |
+| Réseau local | Usurpation de la box (ARP spoofing), MAC de la box sur une autre IP, Wi-Fi connu devenu ouvert (faux point d'accès) | Table ARP, routage |
+| Vols de données | Lecture des cookies / mots de passe des navigateurs, du Trousseau ou de portefeuilles crypto par un programme non approuvé, fausse fenêtre de mot de passe, exfiltration : arrêt + alerte | `eslogger`, allowlist Team ID |
+| Rançongiciels | Fichiers leurres, rafales de chiffrement/renommage : programme suspendu jusqu'à décision ; instantanés APFS horaires et restauration de fichiers | `eslogger`, `tmutil` |
+| Vie privée | Demandes d'effacement RGPD (art. 17) aux courtiers en données, délai d'un mois, relances, plainte CNIL ; fuites de données de tes adresses ; Pwned Passwords ; alias e-mail ; nettoyage des métadonnées | Listes Datenanfragen + Eraser, XposedOrNot / HIBP, addy.io / SimpleLogin |
 | Suivi | App de barre de menus, notifications, rapport hebdomadaire, CLI `parabellum` | SwiftUI, Rust |
 | Maintenance | Composants tiers installés depuis leurs releases officielles, signature vérifiée, mis à jour automatiquement | `pb-updater` |
 
@@ -30,6 +35,7 @@ parabellum (CLI)                       ─────────────�
 parabellumd (Rust, LaunchDaemon root) : pb-monitor (FSEvents, eslogger, persistance, périphériques)
                                         pb-engine (hash, YARA-X, ClamAV, DMG/PKG, quarantaine)
                                         pb-ml, pb-updater (base signée, composants), pb-dns, SQLite
+                                        pb-vpn (sing-box, kill switch pf, réseaux), pb-privacy (RGPD, fuites, alias)
 GitHub Actions : base nocturne signée (release db-latest), modèle ML hebdo, .pkg de l'app
 ```
 
@@ -59,6 +65,10 @@ Détails, choix et contrats : [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Buil
 | `make dev-daemon` + `make dev-app` | Daemon sans root sous `.dev-root/` + app branchée dessus |
 | `parabellum status` | État de la protection, de la base et des composants |
 | `parabellum dns off` | Rend les DNS d'origine (secours : `sudo "/Library/Application Support/Parabellum/bin/restore-dns.sh"`) |
+| `parabellum vpn import <lien>` / `vpn connect` / `vpn leak-test` | Importe un nœud (lien Shadowrocket, `.conf` WireGuard), connecte, teste les fuites |
+| `parabellum guard` / `guard snapshots` | État de la garde comportementale, instantanés APFS |
+| `parabellum privacy start` / `privacy requests` | Lance la campagne d'effacement RGPD, suit les demandes |
+| `parabellum privacy clean <fichiers>` | Copie sans métadonnées (GPS, EXIF, auteur) |
 
 ## Couverture du cahier des charges
 
@@ -79,14 +89,21 @@ Détails, choix et contrats : [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Buil
 | F11 | Pubs et trackers dans Chrome (MV3) | Must | Délégué | uBlock Origin Lite (Chrome Web Store), mis à jour par le store |
 | F12 | Blocage DNS global | Should | Couvert | dnscrypt-proxy + listes fusionnées ; désactivé par défaut ; DNS d'origine rendus si le résolveur tombe |
 | F13 | Pubs YouTube (best-effort) | Should | Délégué | Règles YouTube de uBO Lite ; le DNS seul ne suffit pas (mêmes domaines que les vidéos) |
+| F14 | VPN avec kill switch et tests de fuite | Should | Couvert | sing-box (TUN, route stricte) ou VPN macOS via `scutil --nc` ; ancre pf retirée si le daemon s'arrête |
+| F15 | Détection des vols de données (infostealers) | Must | Couvert | Règles sur les événements `eslogger` + LOLBins ; jamais sur un binaire Apple ou un Team ID de confiance |
+| F16 | Anti-rançongiciel | Should | Couvert | Leurres, rafales d'écritures, suspension, instantanés APFS |
+| F17 | Effacement des données chez les courtiers (type Incogni) | Should | Couvert | Courriers RGPD en brouillons Mail ou par SMTP, suivi des délais, plainte CNIL |
+| F18 | Fuites, mots de passe compromis, alias, métadonnées | Could | Couvert | XposedOrNot/HIBP, Pwned Passwords (k-anonymat), addy.io/SimpleLogin, nettoyage natif + exiftool |
 
 ## Sécurité et vie privée
 
 - Aucun fichier ne quitte le Mac. Recherche de hash VirusTotal en option (opt-in), jamais le fichier.
+- Profil VPN, identité RGPD et secrets (mot de passe SMTP, clés API) stockés par le daemon, lisibles par root seulement, masqués dans l'app ; les afficher ou les modifier demande une autorisation administrateur.
+- Fuites : seule l'adresse e-mail est envoyée au service ; Pwned Passwords ne reçoit que 5 caractères de l'empreinte SHA-1.
 - Binaires signés avec hardened runtime, par un certificat local auto-signé (`make codesign-cert`) ou ad hoc ; seule exception : mémoire exécutable pour YARA-X dans `parabellumd`.
 - Base de menaces et composants tiers vérifiés par signature avant usage.
 - Le daemon tourne en root : appels d'outils système par chemin absolu, entrées bornées, socket réservé au groupe admin.
 
 ## Licence
 
-MIT (voir `Cargo.toml`). Les composants tiers gardent leur licence (ClamAV GPL-2.0, osquery Apache-2.0/GPL-2.0, dnscrypt-proxy ISC, LuLu et uBlock Origin Lite GPL-3.0, autres outils Objective-See : voir leur dépôt) et les listes de blocage leurs conditions d'usage : à relire avant toute diffusion.
+MIT (voir `Cargo.toml`). Les composants tiers gardent leur licence (ClamAV GPL-2.0, osquery Apache-2.0/GPL-2.0, dnscrypt-proxy ISC, sing-box GPL-3.0, LuLu et uBlock Origin Lite GPL-3.0, autres outils Objective-See : voir leur dépôt) les listes de courtiers leurs licences (Datenanfragen CC0, Eraser MIT) et les listes de blocage leurs conditions d'usage : à relire avant toute diffusion.

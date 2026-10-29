@@ -250,7 +250,12 @@ public struct RestoredPath: Codable, Sendable, Hashable {
 // MARK: - Alerts
 
 public enum AlertKind: String, TolerantEnum {
-    case malware, suspicious, persistence, device, network, update, system, unknown
+    case malware, suspicious, persistence, device, network, update, system
+    /// Info-stealer / ransomware behaviour.
+    case behavior
+    /// Data breaches, GDPR request follow-up.
+    case privacy
+    case unknown
     public static let fallback: AlertKind = .unknown
     public init(from decoder: Decoder) throws { self = try Self.decodeTolerantly(from: decoder) }
 }
@@ -269,6 +274,12 @@ public enum AlertAction: String, TolerantEnum {
     case removePersistence = "remove_persistence"
     case reportFalsePositive = "report_false_positive"
     case dismiss
+    /// Kill the process named in the alert (`processPid` + `processPath`, re-checked by the daemon).
+    case killProcess = "kill_process"
+    /// Resume a process Parabellum suspended.
+    case resumeProcess = "resume_process"
+    /// Trust the network named in the alert (`networkId`).
+    case trustNetwork = "trust_network"
     case unknown
     public static let fallback: AlertAction = .unknown
     public init(from decoder: Decoder) throws { self = try Self.decodeTolerantly(from: decoder) }
@@ -287,6 +298,11 @@ public struct SecurityAlert: Codable, Sendable, Hashable, Identifiable {
     public let deviceId: String?
     public let persistenceId: String?
     public let quarantineId: String?
+    /// Behaviour alerts: process at detection time.
+    public let processPid: Int?
+    public let processPath: String?
+    /// Network / VPN alerts: `gw:<router MAC>`.
+    public let networkId: String?
     public let status: AlertStatus
     /// Actions the UI should offer for this alert.
     public let actions: [AlertAction]
@@ -300,6 +316,9 @@ public struct SecurityAlert: Codable, Sendable, Hashable, Identifiable {
         case deviceId = "device_id"
         case persistenceId = "persistence_id"
         case quarantineId = "quarantine_id"
+        case processPid = "process_pid"
+        case processPath = "process_path"
+        case networkId = "network_id"
         case status, actions
     }
 }

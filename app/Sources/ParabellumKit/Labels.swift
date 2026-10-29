@@ -95,6 +95,8 @@ extension AlertKind {
         case .network: return "Réseau"
         case .update: return "Mise à jour"
         case .system: return "Système"
+        case .behavior: return "Comportement"
+        case .privacy: return "Vie privée"
         case .unknown: return "Autre"
         }
     }
@@ -124,6 +126,9 @@ extension AlertAction {
         case .removePersistence: return "Supprimer l'élément"
         case .reportFalsePositive: return "Signaler un faux positif"
         case .dismiss: return "Ignorer"
+        case .killProcess: return "Arrêter le processus"
+        case .resumeProcess: return "Reprendre le processus"
+        case .trustNetwork: return "Faire confiance à ce réseau"
         case .unknown: return "Action inconnue"
         }
     }
@@ -131,7 +136,7 @@ extension AlertAction {
     /// Changes something irreversible-looking: ask for confirmation in the UI.
     public var isDestructive: Bool {
         switch self {
-        case .quarantine, .removePersistence, .blockDevice:
+        case .quarantine, .removePersistence, .blockDevice, .killProcess:
             return true
         default:
             return false
@@ -269,6 +274,121 @@ extension ErrorCode {
         case .unavailable: return "Indisponible"
         case .internalError: return "Erreur interne"
         case .unknown: return "Erreur"
+        }
+    }
+}
+
+// MARK: - VPN, behaviour guard, privacy
+
+extension VpnState {
+    public var label: String {
+        switch self {
+        case .disconnected: return "Déconnecté"
+        case .connecting: return "Connexion…"
+        case .connected: return "Connecté"
+        case .disconnecting: return "Déconnexion…"
+        case .error: return "Erreur"
+        case .unknown: return "État inconnu"
+        }
+    }
+}
+
+extension KillSwitchState {
+    public var label: String {
+        switch self {
+        case .off: return "Désactivé"
+        case .armed: return "Armé"
+        case .blocking: return "Internet bloqué (tunnel coupé)"
+        case .error: return "Erreur"
+        case .unknown: return "État inconnu"
+        }
+    }
+}
+
+extension VpnMode {
+    public var label: String {
+        switch self {
+        case .off: return "Manuel"
+        case .always: return "Toujours connecté"
+        case .untrustedNetworks: return "Sur les réseaux non fiables"
+        }
+    }
+}
+
+extension VpnBackend {
+    public var label: String {
+        switch self {
+        case .singBox: return "sing-box (géré par Parabellum)"
+        case .external: return "VPN déjà configuré dans macOS"
+        }
+    }
+}
+
+extension SendMode {
+    public var label: String {
+        switch self {
+        case .drafts: return "Brouillons ouverts dans Mail (tu envoies)"
+        case .smtp: return "Envoi automatique par SMTP"
+        }
+    }
+}
+
+extension BreachProvider {
+    public var label: String {
+        switch self {
+        case .xposedOrNot: return "XposedOrNot (gratuit)"
+        case .hibp: return "Have I Been Pwned (clé payante)"
+        }
+    }
+}
+
+extension AliasProvider {
+    public var label: String {
+        switch self {
+        case .disabled: return "Aucun"
+        case .addy: return "addy.io"
+        case .simpleLogin: return "SimpleLogin"
+        }
+    }
+}
+
+extension RemovalStatus {
+    public var label: String {
+        switch self {
+        case .queued: return "En file d'attente"
+        case .draftReady: return "Brouillon prêt"
+        case .sent: return "Envoyée"
+        case .reminded: return "Relancée"
+        case .escalated: return "Sans réponse (CNIL)"
+        case .completed: return "Effacement confirmé"
+        case .refused: return "Refusée"
+        case .needsForm: return "Formulaire web"
+        case .failed: return "Échec d'envoi"
+        case .unknown: return "Inconnu"
+        }
+    }
+}
+
+public enum PrivacyLabels {
+    /// Broker region code → French label.
+    public static func region(_ code: String) -> String {
+        switch code {
+        case "eu": return "Europe"
+        case "global": return "International"
+        case "us": return "États-Unis"
+        default: return code
+        }
+    }
+
+    /// Leak-test check id → French label.
+    public static func leakCheck(_ id: String) -> String {
+        switch id {
+        case "tunnel": return "Tunnel"
+        case "ipv4": return "IPv4"
+        case "ipv6": return "IPv6"
+        case "dns": return "DNS"
+        case "kill_switch": return "Kill switch"
+        default: return id
         }
     }
 }

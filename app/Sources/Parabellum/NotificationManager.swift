@@ -46,7 +46,7 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate, @u
 final class NotificationManager {
     /// Actions that make sense straight from a notification (others need the app).
     private static let notificationActions: [AlertAction] = [
-        .quarantine, .allow, .approvePersistence, .trustDevice, .blockDevice, .removePersistence,
+        .killProcess, .quarantine, .allow, .approvePersistence, .trustDevice, .blockDevice, .removePersistence,
     ]
 
     private weak var model: AppModel?
@@ -121,7 +121,7 @@ final class NotificationManager {
                 UNNotificationAction(
                     identifier: NotificationKeys.resolvePrefix + action.rawValue,
                     title: Self.buttonTitle(for: action),
-                    options: action == .removePersistence ? [.destructive] : []
+                    options: action == .removePersistence || action == .killProcess ? [.destructive] : []
                 )
             }
             buttons.append(UNNotificationAction(identifier: NotificationKeys.viewActionIdentifier, title: "Voir", options: [.foreground]))
@@ -143,6 +143,7 @@ final class NotificationManager {
         case .trustDevice: return "Faire confiance"
         case .blockDevice: return "Bloquer"
         case .removePersistence: return "Supprimer"
+        case .killProcess: return "Arrêter le processus"
         default: return action.label
         }
     }
