@@ -13,6 +13,10 @@ struct MainWindowView: View {
             // menu-bar (accessory) app, rows were not clickable on the user's Mac.
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
+                    BrandWordmark()
+                        .padding(.horizontal, 8)
+                        .padding(.top, 4)
+                        .padding(.bottom, 14)
                     ForEach(SidebarSection.allCases) { section in
                         SidebarRow(
                             section: section,
@@ -26,20 +30,23 @@ struct MainWindowView: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 10)
             }
-            .navigationSplitViewColumnWidth(min: 190, ideal: 215)
+            .navigationSplitViewColumnWidth(min: 200, ideal: 228)
         } detail: {
-            VStack(spacing: 0) {
-                if let banner = model.banner {
-                    BannerView(banner: banner) {
-                        model.banner = nil
+            detail
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .scrollContentBackground(.hidden)
+                .auroraBackground()
+                .overlay(alignment: .top) {
+                    if let banner = model.banner {
+                        BannerView(banner: banner) {
+                            withAnimation(.snappy) { model.banner = nil }
+                        }
                     }
-                    Divider()
                 }
-                detail
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+                .animation(.snappy(duration: 0.3), value: model.banner?.message)
         }
-        .frame(minWidth: 860, minHeight: 560)
+        .tint(Brand.accent)
+        .frame(minWidth: 900, minHeight: 600)
         .sheet(isPresented: $model.showOnboarding) {
             OnboardingView()
                 .environmentObject(model)
@@ -93,9 +100,7 @@ struct UnreachableView: View {
     var body: some View {
         VStack(alignment: compact ? .leading : .center, spacing: compact ? 8 : 14) {
             if !compact {
-                Image(systemName: "xmark.shield")
-                    .font(.system(size: 54))
-                    .foregroundStyle(.red)
+                StatusRing(progress: 0.08, color: .red, symbol: "xmark.shield", size: 110)
                 Text("Le service Parabellum ne répond pas")
                     .font(.title2.weight(.semibold))
             } else {
@@ -129,7 +134,7 @@ struct UnreachableView: View {
             } label: {
                 Label("Réessayer", systemImage: "arrow.clockwise")
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.brand)
         }
         .padding(compact ? 0 : 40)
         .frame(maxWidth: compact ? .infinity : 620)
@@ -142,31 +147,45 @@ private struct SidebarRow: View {
     let selected: Bool
     let badge: Int
     let action: () -> Void
+    @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
                 Image(systemName: section.symbol)
-                    .frame(width: 18)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(selected ? AnyShapeStyle(Color.white) : AnyShapeStyle(Brand.gradient))
+                    .frame(width: 20)
                 Text(section.title)
+                    .fontWeight(selected ? .semibold : .regular)
                 Spacer(minLength: 4)
                 if badge > 0 {
                     Text("\(badge)")
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 1)
-                        .background(Capsule().fill(Color.secondary.opacity(0.25)))
+                        .font(.caption2.weight(.bold))
+                        .monospacedDigit()
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(Capsule(style: .continuous).fill(selected ? Color.white.opacity(0.28) : Color.orange))
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
             .frame(maxWidth: .infinity, alignment: .leading)
             .foregroundStyle(selected ? Color.white : Color.primary)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(selected ? Color.accentColor : Color.clear)
-            )
+            .background {
+                if selected {
+                    RoundedRectangle(cornerRadius: Brand.Radius.row, style: .continuous)
+                        .fill(Brand.gradient)
+                        .shadow(color: Brand.indigo.opacity(0.35), radius: 8, y: 3)
+                } else if hovering {
+                    RoundedRectangle(cornerRadius: Brand.Radius.row, style: .continuous)
+                        .fill(Color.primary.opacity(0.06))
+                }
+            }
             .contentShape(Rectangle())
+            .onHover { hovering = $0 }
+            .animation(.snappy(duration: 0.2), value: selected)
         }
         .buttonStyle(.plain)
         .help(section.title)

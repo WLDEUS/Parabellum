@@ -128,6 +128,9 @@ final class AppModel: ObservableObject {
 
     // Updates
     @Published private(set) var updateInProgress = false
+    /// Target of the update this app started ("Tout mettre à jour" reports one event per step, then the
+    /// combined result: only the latter ends the spinner).
+    private var requestedUpdateTarget: UpdateTarget?
     @Published private(set) var lastUpdate: UpdateResult?
 
     // UI
@@ -313,6 +316,10 @@ final class AppModel: ObservableObject {
         case .disconnected(let error):
             connection = .unreachable(error.errorDescription ?? "Service injoignable")
             updateInProgress = false
+            requestedUpdateTarget = nil
+            // A restarting daemon cancels its jobs without reaching us: reloaded on reconnect.
+            liveJobs.removeAll()
+            installingComponents.removeAll()
         case .event(let event):
             handle(event)
         }
@@ -330,7 +337,18 @@ final class AppModel: ObservableObject {
             handleDevice(deviceEvent)
         case .updateFinished(let result):
             lastUpdate = result
+            if let requested = requestedUpdateTarget, result.target != requested {
+                // Intermediate step of a longer update (or a background run): status only.
+                Task { await refreshStatus() }
+                return
+            }
+            let wasOurs = requestedUpdateTarget != nil
+            requestedUpdateTarget = nil
             updateInProgress = false
+            guard wasOurs || !result.ok else {
+                Task { await refreshStatus() }
+                return
+            }
             if result.ok {
                 let version = result.newDbVersion.map { " — base \($0)" } ?? ""
                 banner = Banner(message: "Mise à jour terminée\(version).", isError: false)
@@ -410,6 +428,8 @@ final class AppModel: ObservableObject {
         await loadConfig()
         await loadAlerts()
         await loadVpnStatus()
+        await loadJobs()
+        await loadComponents()
         if let section, section != .dashboard, section != .alerts, section != .settings {
             await refresh(section: section)
         }
@@ -550,9 +570,12 @@ final class AppModel: ObservableObject {
         await perform("jobs", quiet: true) {
             let jobs = try await self.call(.listJobs(limit: 20), as: [ScanJobSummary].self)
             self.recentJobs = jobs
+            // Rebuilt, not merged: a job that ended while we were disconnected must disappear.
+            var live: [String: ScanJobSummary] = [:]
             for job in jobs where job.state.isActive {
-                self.liveJobs[job.jobId] = job
+                live[job.jobId] = job
             }
+            self.liveJobs = live
         }
     }
 
@@ -777,6 +800,7 @@ final class AppModel: ObservableObject {
         }
         if started != nil {
             updateInProgress = true
+            requestedUpdateTarget = target
             banner = Banner(message: "Mise à jour lancée (\(target.label.lowercased()))…", isError: false)
         }
     }

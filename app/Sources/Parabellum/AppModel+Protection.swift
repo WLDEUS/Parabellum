@@ -163,7 +163,7 @@ extension AppModel {
 
     func restore(path: String, from snapshot: SnapshotInfo) async {
         let restored = await perform("snapshot-restore") {
-            try await self.call(.restoreFromSnapshot(snapshot: snapshot.name, path: path), as: RestoredTo.self, timeout: 600)
+            try await self.call(.restoreFromSnapshot(snapshot: snapshot.name, path: path), as: RestoredTo.self, timeout: 1900)
         }
         if let restored {
             banner = Banner(message: "Copie restaurée : \(restored.restoredTo)", isError: false)

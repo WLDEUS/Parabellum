@@ -232,17 +232,12 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
             json(&crate::devices::set_device_trust(ctx, &device_id, trust).await?)
         }
         Request::UpdateNow { target } => {
-            if ctx.update_running.load(std::sync::atomic::Ordering::SeqCst) {
-                return Err(IpcError::new(
-                    ErrorCode::Busy,
-                    "une mise à jour est déjà en cours",
-                ));
-            }
+            // Claimed before answering: a scheduled run racing this request yields `Busy` here
+            // instead of a started job that never reports.
+            scheduler::claim_update(ctx)?;
             let ctx2 = ctx.clone();
             tokio::spawn(async move {
-                if let Err(e) = scheduler::run_updates(&ctx2, target).await {
-                    tracing::warn!(error = %e.message, "update request failed");
-                }
+                scheduler::run_claimed_updates(&ctx2, target).await;
             });
             json(&JobStarted {
                 job_id: uuid::Uuid::new_v4().to_string(),
