@@ -17,13 +17,22 @@ struct MainWindowView: View {
                         .padding(.horizontal, 8)
                         .padding(.top, 4)
                         .padding(.bottom, 14)
-                    ForEach(SidebarSection.allCases) { section in
-                        SidebarRow(
-                            section: section,
-                            selected: (model.section ?? .dashboard) == section,
-                            badge: model.badgeCount(for: section)
-                        ) {
-                            model.section = section
+                    ForEach(SidebarGroup.allCases) { group in
+                        Text(group.title.uppercased())
+                            .font(.system(size: 10, weight: .bold))
+                            .tracking(1.2)
+                            .foregroundStyle(.tertiary)
+                            .padding(.horizontal, 10)
+                            .padding(.top, group == .protection ? 0 : 12)
+                            .padding(.bottom, 2)
+                        ForEach(group.sections) { section in
+                            SidebarRow(
+                                section: section,
+                                selected: (model.section ?? .dashboard) == section,
+                                badge: model.badgeCount(for: section)
+                            ) {
+                                model.section = section
+                            }
                         }
                     }
                 }
@@ -86,6 +95,11 @@ struct MainWindowView: View {
             case .components: ComponentsView()
             case .report: ReportView()
             case .settings: SettingsView()
+            case .intelligence: IntelligenceView(store: model.intelligence)
+            case .lan: LanView(store: model.lan)
+            case .permissions: PermissionsView(store: model.permissionsAudit)
+            case .cleaning: CleaningView(store: model.cleaning)
+            case .vault: VaultView(store: model.vault)
             }
         }
     }

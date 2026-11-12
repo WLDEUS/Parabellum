@@ -20,10 +20,24 @@ struct Banner: Identifiable, Equatable {
 
 /// Sidebar sections of the main window.
 enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
-    case dashboard, scan, alerts, quarantine, persistence, devices, network, vpn, behavior, privacy, components, report
-    case settings
+    case dashboard, scan, alerts, quarantine, behavior, intelligence
+    case network, vpn, lan
+    case persistence, devices, permissions, cleaning
+    case privacy, vault
+    case components, report, settings
 
     var id: String { rawValue }
+
+    /// Sidebar group (order of `allCases` inside each group).
+    var group: SidebarGroup {
+        switch self {
+        case .dashboard, .scan, .alerts, .quarantine, .behavior, .intelligence: return .protection
+        case .network, .vpn, .lan: return .network
+        case .persistence, .devices, .permissions, .cleaning: return .system
+        case .privacy, .vault: return .privacy
+        case .components, .report, .settings: return .maintenance
+        }
+    }
 
     var title: String {
         switch self {
@@ -40,6 +54,11 @@ enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
         case .components: return "Composants"
         case .report: return "Rapport"
         case .settings: return "Réglages"
+        case .intelligence: return "Intelligence"
+        case .lan: return "Réseau local"
+        case .permissions: return "Permissions"
+        case .cleaning: return "Nettoyage"
+        case .vault: return "Coffre"
         }
     }
 
@@ -58,8 +77,31 @@ enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
         case .components: return "puzzlepiece.extension"
         case .report: return "chart.bar.xaxis"
         case .settings: return "gearshape"
+        case .intelligence: return "brain.head.profile"
+        case .lan: return "wifi.router"
+        case .permissions: return "checklist.checked"
+        case .cleaning: return "sparkles"
+        case .vault: return "lock.rectangle.stack"
         }
     }
+}
+
+enum SidebarGroup: String, CaseIterable, Identifiable {
+    case protection, network, system, privacy, maintenance
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .protection: return "Protection"
+        case .network: return "Réseau"
+        case .system: return "Système"
+        case .privacy: return "Vie privée"
+        case .maintenance: return "Maintenance"
+        }
+    }
+
+    var sections: [SidebarSection] { SidebarSection.allCases.filter { $0.group == self } }
 }
 
 /// Owns the daemon client and every piece of state shown by the UI. Views stay thin and call these methods.
@@ -149,6 +191,15 @@ final class AppModel: ObservableObject {
     private var started = false
     private var notifiedAlertIds: Set<Int64> = []
     private static let maxRecentJobs = 50
+
+    // Feature stores: one ObservableObject per feature, kept here so their data survives section switches.
+    // Views observe them directly (`@ObservedObject var store: XStore`), passing `model.x`.
+    private(set) lazy var lan = LanStore(model: self)
+    private(set) lazy var permissionsAudit = PermissionsStore(model: self)
+    private(set) lazy var vault = VaultStore(model: self)
+    private(set) lazy var cleaning = CleaningStore(model: self)
+    private(set) lazy var intelligence = IntelligenceStore(model: self)
+    private(set) lazy var travel = TravelStore(model: self)
 
     init(client: DaemonClient = DaemonClient()) {
         self.client = client
@@ -532,6 +583,11 @@ final class AppModel: ObservableObject {
         case .components: await loadComponents()
         case .report: await loadReport()
         case .settings: await loadConfig()
+        case .intelligence: await intelligence.load()
+        case .lan: await lan.load()
+        case .permissions: await permissionsAudit.load()
+        case .cleaning: await cleaning.load()
+        case .vault: await vault.load()
         }
     }
 
