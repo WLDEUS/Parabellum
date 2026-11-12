@@ -29,7 +29,41 @@ readonly DAEMON_PLIST="/Library/LaunchDaemons/$DAEMON_LABEL.plist"
 readonly AGENT_PLIST="/Library/LaunchAgents/$UI_LABEL.plist"
 readonly SELF_UPDATE_MARKER="$ROOT/state/self-update.marker"
 
+readonly DAEMON_BIN="$BIN/parabellumd"
+
 log() { printf 'parabellum postinstall: %s\n' "$*"; }
+
+# Stop every parabellumd running from the installed path except launchd's current instance ($1, may be
+# empty): copies orphaned by an earlier `bootout` that timed out, or started by hand. They hold the instance
+# lock and would keep running the old binary next to the new one. SIGTERM, 20 s grace, then SIGKILL.
+stop_orphan_daemons() {
+    local keep="${1:-}" pids pid waited
+    pids="$(/usr/bin/pgrep -f "^$DAEMON_BIN( |\$)" 2>/dev/null || true)"
+    for pid in $pids; do
+        [[ "$pid" == "$keep" ]] && continue
+        log "parabellumd orphelin (pid $pid) : arrêt"
+        /bin/kill -TERM "$pid" 2>/dev/null || true
+    done
+    waited=0
+    while ((waited < 80)); do
+        local left=""
+        for pid in $pids; do
+            [[ "$pid" == "$keep" ]] && continue
+            /bin/kill -0 "$pid" 2>/dev/null && left="$left $pid"
+        done
+        [[ -z "$left" ]] && return 0
+        /bin/sleep 0.25
+        waited=$((waited + 1))
+    done
+    for pid in $pids; do
+        [[ "$pid" == "$keep" ]] && continue
+        if /bin/kill -0 "$pid" 2>/dev/null; then
+            log "parabellumd (pid $pid) n'a pas quitté : SIGKILL"
+            /bin/kill -KILL "$pid" 2>/dev/null || true
+        fi
+    done
+    return 0
+}
 
 # Run a non-critical command; log and continue on failure.
 run() {
@@ -107,6 +141,8 @@ if [[ -f "$SELF_UPDATE_MARKER" || -L "$SELF_UPDATE_MARKER" ]]; then
     run /bin/rm -f "$SELF_UPDATE_MARKER"
     log "mise à jour lancée par le daemon (marqueur supprimé)"
 fi
+# Orphans (not launchd's instance) hold the instance lock: the new daemon would exit and retry forever.
+stop_orphan_daemons "$(daemon_pid)"
 for attempt in 1 2 3; do
     if ((self_update == 1)) && /bin/launchctl print "system/$DAEMON_LABEL" >/dev/null 2>&1; then
         break # still running the old binary: restarted below with kickstart -k

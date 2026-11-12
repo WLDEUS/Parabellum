@@ -105,6 +105,77 @@ fn detach_mount(path: &Path) {
     let _ = path;
 }
 
+/// Instance lock for the daemon started by launchd. When an older `parabellumd` still holds the lock —
+/// typically one orphaned by a reinstall whose `launchctl bootout` timed out, which launchd no longer
+/// tracks — the launchd-managed instance is the authoritative one: the holder is asked to stop (SIGTERM,
+/// it releases the lock at the end of its shutdown), then killed after `grace`. Anything else (a manual
+/// run, a second launchd attempt racing a live instance of another binary name) keeps the plain error.
+pub fn acquire_lock_or_take_over(
+    paths: &Paths,
+    launched_by_launchd: bool,
+    grace: std::time::Duration,
+) -> std::io::Result<File> {
+    let first = match acquire_lock(paths) {
+        Ok(f) => return Ok(f),
+        Err(e) => e,
+    };
+    if !launched_by_launchd {
+        return Err(first);
+    }
+    let holder = std::fs::read_to_string(paths.state_dir().join("daemon.lock"))
+        .ok()
+        .and_then(|s| s.trim().parse::<i32>().ok())
+        .filter(|pid| *pid > 1 && *pid != std::process::id() as i32);
+    let Some(pid) = holder else {
+        return Err(first);
+    };
+    let is_daemon = crate::system::pid_path(pid)
+        .and_then(|p| p.file_name().map(|n| n == "parabellumd"))
+        .unwrap_or(false);
+    if !is_daemon {
+        return Err(first);
+    }
+    tracing::warn!(
+        pid,
+        "an orphaned parabellumd holds the instance lock: asking it to stop"
+    );
+    // SAFETY: plain signal to a pid we just checked is a parabellumd.
+    unsafe {
+        libc::kill(pid, libc::SIGTERM);
+    }
+    let step = std::time::Duration::from_millis(250);
+    let deadline = std::time::Instant::now() + grace;
+    let mut killed = false;
+    loop {
+        std::thread::sleep(step);
+        if let Ok(f) = acquire_lock(paths) {
+            tracing::info!(pid, "instance lock taken over from the orphaned daemon");
+            return Ok(f);
+        }
+        if !killed && std::time::Instant::now() >= deadline {
+            let still_daemon = crate::system::pid_path(pid)
+                .and_then(|p| p.file_name().map(|n| n == "parabellumd"))
+                .unwrap_or(false);
+            if still_daemon {
+                tracing::warn!(pid, "orphaned parabellumd ignored SIGTERM: killing it");
+                // SAFETY: as above.
+                unsafe {
+                    libc::kill(pid, libc::SIGKILL);
+                }
+            }
+            killed = true;
+        }
+        if killed && std::time::Instant::now() >= deadline + std::time::Duration::from_secs(5) {
+            return acquire_lock(paths);
+        }
+    }
+}
+
+/// launchd sets `XPC_SERVICE_NAME` to the job label of the processes it starts.
+pub fn launched_by_launchd() -> bool {
+    std::env::var("XPC_SERVICE_NAME").ok().as_deref() == Some(pb_core::DAEMON_LABEL)
+}
+
 /// Exclusive, non-blocking `flock` on `state/daemon.lock`. Keep the returned file alive.
 pub fn acquire_lock(paths: &Paths) -> std::io::Result<File> {
     use std::os::fd::AsRawFd;
@@ -326,6 +397,10 @@ mod tests {
         prepare_dirs(&paths, false).unwrap();
         let l = acquire_lock(&paths).unwrap();
         assert!(acquire_lock(&paths).is_err());
+        // Not started by launchd: never takes over.
+        assert!(acquire_lock_or_take_over(&paths, false, std::time::Duration::ZERO).is_err());
+        // Holder is this test process (not a `parabellumd`): left alone.
+        assert!(acquire_lock_or_take_over(&paths, true, std::time::Duration::ZERO).is_err());
         drop(l);
         assert!(acquire_lock(&paths).is_ok());
     }

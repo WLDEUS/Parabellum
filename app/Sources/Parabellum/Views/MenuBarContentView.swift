@@ -29,23 +29,38 @@ struct MenuBarContentView: View {
         }
         .padding(14)
         .frame(width: 340)
+        .tint(Brand.accent)
         .onAppear {
             model.registerOpenWindow(openWindow)
         }
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
-            Image(systemName: model.menuBarSymbol)
-                .font(.title)
-                .foregroundStyle(headerColor)
+        HStack(spacing: 12) {
+            StatusRing(progress: headerProgress, color: headerColor, symbol: model.menuBarSymbol, size: 46)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Parabellum").font(.headline)
+                HStack(spacing: 6) {
+                    BrandMark(size: 13)
+                    Text("Parabellum")
+                        .font(.system(.headline, design: .rounded).weight(.bold))
+                }
                 Text(headerSubtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
             Spacer()
+        }
+        .padding(12)
+        .glassSurface(cornerRadius: 18, tint: headerColor)
+    }
+
+    private var headerProgress: Double {
+        guard case .connected = model.connection, let status = model.status else { return 0.1 }
+        switch status.protection {
+        case .active: return status.issues.isEmpty ? 1 : 0.85
+        case .degraded: return 0.6
+        case .paused: return 0.35
+        case .unknown: return 0.1
         }
     }
 

@@ -134,6 +134,18 @@ category = "malware"
 format = "domains"
 min_entries = 10000
 
+[[source]]
+# malware-filter "phishing-filter": phishing domains aggregated from OpenPhish, PhishTank and IPThreat,
+# rebuilt twice a day. Complements URLhaus (malware delivery) for credential-phishing sites.
+name = "phishing-filter"
+kind = "domains"
+fetcher = "domain_list"
+url = "https://malware-filter.gitlab.io/malware-filter/phishing-filter-domains.txt"
+license = "MIT (malware-filter/phishing-filter; upstream feeds: OpenPhish community, PhishTank)"
+category = "malware"
+format = "domains"
+min_entries = 1000
+
 # ------------------------------------------------------------------------------------------------
 # Ads -> dns/ads.txt
 

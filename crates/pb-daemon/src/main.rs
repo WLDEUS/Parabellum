@@ -85,7 +85,11 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
     let _log = setup::init_logging(&paths);
-    let _lock = match setup::acquire_lock(&paths) {
+    let _lock = match setup::acquire_lock_or_take_over(
+        &paths,
+        !dev_mode && setup::launched_by_launchd(),
+        std::time::Duration::from_secs(20),
+    ) {
         Ok(l) => l,
         Err(e) => {
             tracing::error!(error = %e, "cannot acquire the instance lock");

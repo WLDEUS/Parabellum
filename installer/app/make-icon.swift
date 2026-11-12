@@ -1,5 +1,6 @@
-// Draws the Parabellum app icon as a 1024x1024 PNG: the SF Symbol `shield.lefthalf.filled` in white on a
-// blue-to-teal gradient rounded square, following the macOS 11+ icon grid (824 px tile, 100 px margin).
+// Draws the Parabellum app icon as a 1024x1024 PNG, following the macOS 11+ icon grid (824 px tile,
+// 100 px margin): a midnight tile lit by indigo / violet / cyan aurora glows, a glass shield in the brand
+// gradient with a specular highlight, and a white bolt.
 //
 // Usage: swift installer/app/make-icon.swift <out.png>
 //
@@ -49,56 +50,89 @@ tileShadow.shadowColor = NSColor.black.withAlphaComponent(0.30)
 tileShadow.shadowBlurRadius = 28
 tileShadow.shadowOffset = NSSize(width: 0, height: -12)
 tileShadow.set()
-NSColor(srgbRed: 0.06, green: 0.16, blue: 0.36, alpha: 1).setFill()
+NSColor(srgbRed: 0.035, green: 0.045, blue: 0.10, alpha: 1).setFill()
 tile.fill()
 NSGraphicsContext.restoreGraphicsState()
 
-let topColor = NSColor(srgbRed: 0.11, green: 0.28, blue: 0.62, alpha: 1)
-let bottomColor = NSColor(srgbRed: 0.02, green: 0.52, blue: 0.56, alpha: 1)
-guard let gradient = NSGradient(starting: topColor, ending: bottomColor) else { fail("cannot create the gradient") }
-// -90 degrees: starting color at the top, ending color at the bottom.
-gradient.draw(in: tile, angle: -90)
+let midnight = NSColor(srgbRed: 0.035, green: 0.045, blue: 0.10, alpha: 1)
+let indigo = NSColor(srgbRed: 0.36, green: 0.36, blue: 1.00, alpha: 1)
+let violet = NSColor(srgbRed: 0.55, green: 0.30, blue: 0.95, alpha: 1)
+let cyan = NSColor(srgbRed: 0.13, green: 0.83, blue: 0.93, alpha: 1)
 
-NSColor.white.withAlphaComponent(0.10).setStroke()
-tile.lineWidth = 6
+// Aurora glows, clipped to the tile.
+NSGraphicsContext.saveGraphicsState()
+tile.addClip()
+midnight.setFill()
+tile.fill()
+func glow(_ color: NSColor, center: NSPoint, radius: CGFloat, alpha: CGFloat) {
+    guard let g = NSGradient(colors: [color.withAlphaComponent(alpha), color.withAlphaComponent(0)]) else { return }
+    g.draw(fromCenter: center, radius: 0, toCenter: center, radius: radius, options: [])
+}
+glow(indigo, center: NSPoint(x: 260, y: 820), radius: 620, alpha: 0.85)
+glow(violet, center: NSPoint(x: 820, y: 760), radius: 480, alpha: 0.55)
+glow(cyan, center: NSPoint(x: 760, y: 200), radius: 560, alpha: 0.70)
+NSGraphicsContext.restoreGraphicsState()
+
+NSColor.white.withAlphaComponent(0.16).setStroke()
+tile.lineWidth = 5
 tile.stroke()
 
-// Shield glyph.
-let symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 520, weight: .semibold)
-guard
-    let baseSymbol = NSImage(systemSymbolName: "shield.lefthalf.filled", accessibilityDescription: "Parabellum"),
-    let symbol = baseSymbol.withSymbolConfiguration(symbolConfiguration)
-else { fail("SF Symbol shield.lefthalf.filled is unavailable") }
+// Glass shield: brand gradient inside the glyph, specular sheen on its upper half.
+func glyph(_ name: String, pointSize: CGFloat, weight: NSFont.Weight) -> NSImage {
+    let config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: weight)
+    guard let base = NSImage(systemSymbolName: name, accessibilityDescription: "Parabellum"),
+          let image = base.withSymbolConfiguration(config), image.size.width > 0
+    else { fail("SF Symbol \(name) is unavailable") }
+    return image
+}
 
-let symbolSize = symbol.size
-guard symbolSize.width > 0, symbolSize.height > 0 else { fail("empty SF Symbol") }
+func fitted(_ size: NSSize, maxWidth: CGFloat, maxHeight: CGFloat, centerY: CGFloat) -> NSRect {
+    let scale = min(maxWidth / size.width, maxHeight / size.height)
+    let w = size.width * scale
+    let h = size.height * scale
+    return NSRect(x: (sideF - w) / 2, y: centerY - h / 2, width: w, height: h)
+}
 
-// Symbols are template images: draw the glyph, then paint white over its opaque pixels only.
-let whiteSymbol = NSImage(size: symbolSize, flipped: false) { rect in
-    symbol.draw(in: rect)
+let shield = glyph("shield.fill", pointSize: 520, weight: .semibold)
+let shieldRect = fitted(shield.size, maxWidth: 520, maxHeight: 590, centerY: sideF / 2)
+let glassShield = NSImage(size: shield.size, flipped: false) { rect in
+    shield.draw(in: rect)
+    if let g = NSGradient(colors: [indigo, violet, cyan]) {
+        NSGraphicsContext.current?.compositingOperation = .sourceAtop
+        g.draw(in: rect, angle: -55)
+    }
+    // Sheen: white fading down over the top half.
+    if let sheen = NSGradient(colors: [NSColor.white.withAlphaComponent(0.42), NSColor.white.withAlphaComponent(0)]) {
+        NSGraphicsContext.current?.compositingOperation = .sourceAtop
+        sheen.draw(in: NSRect(x: rect.minX, y: rect.midY, width: rect.width, height: rect.height / 2), angle: -90)
+    }
+    return true
+}
+
+NSGraphicsContext.saveGraphicsState()
+let shieldGlow = NSShadow()
+shieldGlow.shadowColor = indigo.withAlphaComponent(0.75)
+shieldGlow.shadowBlurRadius = 60
+shieldGlow.shadowOffset = NSSize(width: 0, height: -10)
+shieldGlow.set()
+glassShield.draw(in: shieldRect, from: .zero, operation: .sourceOver, fraction: 1.0)
+NSGraphicsContext.restoreGraphicsState()
+
+let bolt = glyph("bolt.fill", pointSize: 260, weight: .heavy)
+let boltRect = fitted(bolt.size, maxWidth: 200, maxHeight: 250, centerY: sideF / 2 + 10)
+let whiteBolt = NSImage(size: bolt.size, flipped: false) { rect in
+    bolt.draw(in: rect)
     NSColor.white.set()
     rect.fill(using: .sourceAtop)
     return true
 }
-
-let maxWidth: CGFloat = 540
-let maxHeight: CGFloat = 580
-let scale = min(maxWidth / symbolSize.width, maxHeight / symbolSize.height)
-let drawSize = NSSize(width: symbolSize.width * scale, height: symbolSize.height * scale)
-let drawRect = NSRect(
-    x: (sideF - drawSize.width) / 2,
-    y: (sideF - drawSize.height) / 2,
-    width: drawSize.width,
-    height: drawSize.height
-)
-
 NSGraphicsContext.saveGraphicsState()
-let glyphShadow = NSShadow()
-glyphShadow.shadowColor = NSColor.black.withAlphaComponent(0.25)
-glyphShadow.shadowBlurRadius = 18
-glyphShadow.shadowOffset = NSSize(width: 0, height: -8)
-glyphShadow.set()
-whiteSymbol.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: 1.0)
+let boltShadow = NSShadow()
+boltShadow.shadowColor = NSColor.black.withAlphaComponent(0.30)
+boltShadow.shadowBlurRadius = 16
+boltShadow.shadowOffset = NSSize(width: 0, height: -6)
+boltShadow.set()
+whiteBolt.draw(in: boltRect, from: .zero, operation: .sourceOver, fraction: 1.0)
 NSGraphicsContext.restoreGraphicsState()
 
 context.flushGraphics()

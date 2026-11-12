@@ -8,8 +8,9 @@ struct DashboardView: View {
     var body: some View {
         ScrollView {
             if let status = model.status {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 18) {
                     protectionCard(status)
+                    statTiles(status)
                     if !status.issues.isEmpty || !status.realtime.fullDiskAccess {
                         issuesCard(status)
                     }
@@ -29,7 +30,9 @@ struct DashboardView: View {
                     }
                     quickActions
                 }
-                .padding(20)
+                .padding(24)
+                .frame(maxWidth: 1180)
+                .frame(maxWidth: .infinity)
             } else {
                 ProgressView("Chargement de l'état…")
                     .padding(40)
@@ -92,42 +95,89 @@ struct DashboardView: View {
         }
     }
 
-    private func protectionCard(_ status: StatusInfo) -> some View {
-        HStack(spacing: 16) {
-            Image(systemName: status.protection.symbol)
-                .font(.system(size: 48))
-                .foregroundStyle(status.protection.color)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(status.protection.label)
-                    .font(.title.weight(.semibold))
-                if status.protection == .paused, let until = status.pausedUntilDate {
-                    Text("Reprise automatique à \(PBFormat.time(until)) (\(PBFormat.relative(until)))")
-                        .foregroundStyle(.secondary)
-                } else if let lastScan = status.lastScanDate {
-                    Text("Dernière analyse \(PBFormat.relative(lastScan))")
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("Aucune analyse manuelle pour l'instant")
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
-            if status.protection == .paused {
-                Button("Reprendre") {
-                    Task { await model.setProtection(pausedMinutes: 0) }
-                }
-                .buttonStyle(.borderedProminent)
-            } else {
-                Menu("Mettre en pause") {
-                    Button("15 minutes") { Task { await model.setProtection(pausedMinutes: 15) } }
-                    Button("1 heure") { Task { await model.setProtection(pausedMinutes: 60) } }
-                    Button("4 heures") { Task { await model.setProtection(pausedMinutes: 240) } }
-                }
-                .fixedSize()
-            }
+    private func protectionScore(_ status: StatusInfo) -> Double {
+        switch status.protection {
+        case .active: return status.issues.isEmpty ? 1 : 0.85
+        case .degraded: return max(0.3, 0.7 - Double(status.issues.count) * 0.08)
+        case .paused: return 0.35
+        case .unknown: return 0.1
         }
-        .padding(16)
-        .background(status.protection.color.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func protectionCard(_ status: StatusInfo) -> some View {
+        HStack(spacing: 24) {
+            StatusRing(
+                progress: protectionScore(status),
+                color: status.protection.color,
+                symbol: status.protection.symbol,
+                size: 120
+            )
+            VStack(alignment: .leading, spacing: 6) {
+                Text("PROTECTION")
+                    .font(.caption.weight(.bold))
+                    .tracking(1.6)
+                    .foregroundStyle(.secondary)
+                Text(status.protection.label)
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                Group {
+                    if status.protection == .paused, let until = status.pausedUntilDate {
+                        Text("Reprise automatique à \(PBFormat.time(until)) (\(PBFormat.relative(until)))")
+                    } else if let lastScan = status.lastScanDate {
+                        Text("Dernière analyse \(PBFormat.relative(lastScan))")
+                    } else {
+                        Text("Aucune analyse manuelle pour l'instant")
+                    }
+                }
+                .foregroundStyle(.secondary)
+                HStack(spacing: 10) {
+                    if status.protection == .paused {
+                        Button("Reprendre la protection") {
+                            Task { await model.setProtection(pausedMinutes: 0) }
+                        }
+                        .buttonStyle(.brand)
+                    } else {
+                        Button {
+                            model.section = .scan
+                            Task { await model.scanDownloads() }
+                        } label: {
+                            Label("Analyse rapide", systemImage: "sparkle.magnifyingglass")
+                        }
+                        .buttonStyle(.brand)
+                        Menu("Mettre en pause") {
+                            Button("15 minutes") { Task { await model.setProtection(pausedMinutes: 15) } }
+                            Button("1 heure") { Task { await model.setProtection(pausedMinutes: 60) } }
+                            Button("4 heures") { Task { await model.setProtection(pausedMinutes: 240) } }
+                        }
+                        .fixedSize()
+                    }
+                }
+                .padding(.top, 6)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassSurface(cornerRadius: 26, tint: status.protection.color)
+    }
+
+    private func statTiles(_ status: StatusInfo) -> some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 14)], spacing: 14) {
+            Button { model.section = .alerts } label: {
+                StatTile(
+                    value: PBFormat.count(status.openAlerts),
+                    caption: "Alertes ouvertes",
+                    symbol: "bell.badge.fill",
+                    tint: status.openAlerts > 0 ? .orange : Brand.accent
+                )
+            }
+            .buttonStyle(.plain)
+            Button { model.section = .quarantine } label: {
+                StatTile(value: PBFormat.count(status.quarantined), caption: "En quarantaine", symbol: "archivebox.fill")
+            }
+            .buttonStyle(.plain)
+            StatTile(value: PBFormat.count(status.db.malwareHashes), caption: "Signatures de malwares", symbol: "cylinder.split.1x2.fill", tint: Brand.violet)
+            StatTile(value: PBFormat.count(status.db.blockedDomains), caption: "Domaines bloqués", symbol: "network.badge.shield.half.filled", tint: Brand.cyan)
+        }
     }
 
     private func issuesCard(_ status: StatusInfo) -> some View {
@@ -310,40 +360,69 @@ struct DashboardView: View {
     }
 
     private var quickActions: some View {
-        Card(title: "Actions rapides", symbol: "bolt") {
-            HStack(spacing: 10) {
-                Button {
+        Card(title: "Actions rapides", symbol: "bolt.fill") {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 10)], spacing: 10) {
+                QuickAction(title: "Analyser les Téléchargements", symbol: "arrow.down.circle.fill") {
                     model.section = .scan
                     Task { await model.scanDownloads() }
-                } label: {
-                    Label("Analyser les Téléchargements", systemImage: "arrow.down.circle")
                 }
-                Button {
+                QuickAction(title: "Analyser un dossier…", symbol: "folder.fill") {
                     model.pickAndScan()
-                } label: {
-                    Label("Analyser un dossier…", systemImage: "folder")
                 }
-                Button {
+                QuickAction(title: "Rétro-chasse (30 j)", symbol: "clock.arrow.circlepath") {
                     Task { await model.retroHunt(days: 30) }
-                } label: {
-                    Label("Rétro-chasse (30 j)", systemImage: "clock.arrow.circlepath")
                 }
                 .help("Ré-analyse les fichiers vus ces 30 derniers jours avec la base actuelle")
-                Button {
+                QuickAction(title: "Analyse anti-spyware", symbol: "eye.trianglebadge.exclamationmark.fill") {
                     model.section = .scan
                     Task { await model.spywareScan() }
-                } label: {
-                    Label("Analyse anti-spyware", systemImage: "eye.trianglebadge.exclamationmark")
                 }
                 .disabled(model.isBusy("spyware"))
                 .help("Recherche des traces de logiciels espions (Pegasus, Predator, Graphite…) avec Zero Breach Toolkit, en lecture seule")
-                Button {
+                QuickAction(title: "Tout mettre à jour", symbol: "arrow.triangle.2.circlepath") {
                     Task { await model.updateNow(.all) }
-                } label: {
-                    Label("Tout mettre à jour", systemImage: "arrow.triangle.2.circlepath")
                 }
                 .disabled(model.updateInProgress)
             }
         }
+    }
+}
+
+/// Glass action tile (icon + title) for the dashboard.
+private struct QuickAction: View {
+    let title: String
+    let symbol: String
+    let action: () -> Void
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: symbol)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Brand.gradient)
+                    .frame(width: 22)
+                Text(title)
+                    .font(.callout.weight(.medium))
+                    .multilineTextAlignment(.leading)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 11)
+            .background(
+                RoundedRectangle(cornerRadius: Brand.Radius.control, style: .continuous)
+                    .fill(Color.primary.opacity(hovering ? 0.09 : 0.05))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Brand.Radius.control, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.6)
+            )
+            .contentShape(Rectangle())
+            .opacity(isEnabled ? 1 : 0.5)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(.snappy(duration: 0.15), value: hovering)
     }
 }
