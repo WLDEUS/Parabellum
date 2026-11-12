@@ -333,6 +333,7 @@ async fn handle_connection(ctx: Arc<Ctx>, stream: UnixStream) {
         let _ = wr.shutdown().await;
     });
     let mut forwarder: Option<tokio::task::JoinHandle<()>> = None;
+    let in_flight = Arc::new(tokio::sync::Semaphore::new(MAX_IN_FLIGHT));
     let mut reader = BufReader::with_capacity(64 * 1024, rd);
     let mut buf = Vec::new();
     let mut shutdown = ctx.shutdown_rx();
@@ -377,16 +378,20 @@ async fn handle_connection(ctx: Arc<Ctx>, stream: UnixStream) {
                             }
                             ResponseEnvelope::ok_empty(id)
                         } else {
-                            match router::handle(&ctx, &peer, env.request).await {
-                                Ok(v) if v.is_null() => ResponseEnvelope::ok_empty(id),
-                                Ok(v) => ResponseEnvelope {
-                                    id,
-                                    ok: true,
-                                    data: Some(v),
-                                    error: None,
-                                },
-                                Err(e) => ResponseEnvelope::err(id, e),
-                            }
+                            // Each request runs on its own task: a slow command (leak test, snapshot,
+                            // breach check…) must not hold up the status / list requests the app sends on
+                            // the same connection. Responses carry their id, so order does not matter.
+                            let Ok(permit) = in_flight.clone().acquire_owned().await else {
+                                break;
+                            };
+                            let ctx = ctx.clone();
+                            let out = out_tx.clone();
+                            tokio::spawn(async move {
+                                let _permit = permit;
+                                let response = respond(&ctx, &peer, id, env.request).await;
+                                let _ = out.send(line_of(&response)).await;
+                            });
+                            continue;
                         }
                     }
                 }
@@ -401,6 +406,22 @@ async fn handle_connection(ctx: Arc<Ctx>, stream: UnixStream) {
     }
     drop(out_tx);
     let _ = writer.await;
+}
+
+/// Requests of one connection handled at the same time.
+const MAX_IN_FLIGHT: usize = 8;
+
+async fn respond(ctx: &Arc<Ctx>, peer: &Peer, id: u64, request: Request) -> ResponseEnvelope {
+    match router::handle(ctx, peer, request).await {
+        Ok(v) if v.is_null() => ResponseEnvelope::ok_empty(id),
+        Ok(v) => ResponseEnvelope {
+            id,
+            ok: true,
+            data: Some(v),
+            error: None,
+        },
+        Err(e) => ResponseEnvelope::err(id, e),
+    }
 }
 
 fn spawn_forwarder(

@@ -101,7 +101,7 @@ final class NotificationManager {
         content.body = alert.message
         content.sound = .default
         content.threadIdentifier = alert.kind.rawValue
-        content.categoryIdentifier = registerCategory(for: alert, in: center)
+        content.categoryIdentifier = await registerCategory(for: alert, in: center)
         content.userInfo = [NotificationKeys.alertId: NSNumber(value: alert.id)]
 
         let request = UNNotificationRequest(identifier: "pb.alert.\(alert.id)", content: content, trigger: nil)
@@ -113,7 +113,9 @@ final class NotificationManager {
     }
 
     /// One category per combination of actions (categories are fixed sets of buttons).
-    private func registerCategory(for alert: SecurityAlert, in center: UNUserNotificationCenter) -> String {
+    /// Registration is asynchronous in macOS: wait until the category is visible before posting, or the first
+    /// notification of a new combination shows no buttons.
+    private func registerCategory(for alert: SecurityAlert, in center: UNUserNotificationCenter) async -> String {
         let actions = alert.knownActions.filter { Self.notificationActions.contains($0) }.prefix(3)
         let identifier = "pb.alert." + (actions.isEmpty ? "view" : actions.map { $0.rawValue }.joined(separator: "+"))
         if categories[identifier] == nil {
@@ -132,6 +134,13 @@ final class NotificationManager {
                 options: []
             )
             center.setNotificationCategories(Set(categories.values))
+            for _ in 0..<20 {
+                let registered = await center.notificationCategories()
+                if registered.contains(where: { $0.identifier == identifier }) {
+                    break
+                }
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
         }
         return identifier
     }
