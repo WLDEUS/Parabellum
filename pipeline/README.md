@@ -1,7 +1,7 @@
 # Threat-DB pipeline
 
 Nightly build of the signed bundle consumed by `pb-updater` / `pb-engine`. Layout and manifest:
-`crates/pb-core/src/db.rs` (contract). Workflow: `.github/workflows/nightly-db.yml` (02:17 UTC).
+`crates/pb-core/src/db.rs` (contract). Workflow: `.github/workflows/nightly-db.yml` (21:17 UTC, published before the daemon's 03:00 local check).
 
 ```sh
 python -m pipeline.build --out dist/db \
@@ -12,7 +12,7 @@ python -m pipeline.build --out dist/db \
 | Exit code | Meaning |
 |---|---|
 | 0 | bundle built (and signed with `--sign`) |
-| 2 | sanity guard refused it (malware hashes or blocked domains dropped > 50 %, or empty bundle); nothing is published, clients keep yesterday's bundle. Override: `--allow-shrink` / workflow input `allow_shrink` |
+| 2 | sanity guard refused it (malware hashes, blocked domains or YARA rules dropped > 50 % or below the `[bundle] min_*` floors, clean corpus < 90 % available or far fewer files scanned than last night, a clean file the FP gate could not scan); nothing is published, clients keep yesterday's bundle. Override: `--allow-shrink` / workflow input `allow_shrink` |
 | 1 | error |
 
 Env: `ABUSECH_AUTH_KEY` (abuse.ch), `MINISIGN_SECRET_KEY` (`--sign`), `MALWARE_CORPUS=1` (detection

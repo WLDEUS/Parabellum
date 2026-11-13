@@ -12,11 +12,14 @@ name: Nightly threat DB
 
 on:
   schedule:
-    - cron: "17 2 * * *" # 02:17 UTC, off the top of the hour
+    # 21:17 UTC (22:17/23:17 Paris): published (30-90 min) well before the daemon's default daily
+    # check (updates.daily_hour = 3 local + up to 20 min jitter = 01:00-02:20 UTC). ml-train.yml runs
+    # Sundays 17:41 UTC so the Sunday night bundle ships the newly promoted model.
+    - cron: "17 21 * * *"
   workflow_dispatch:
     inputs:
       allow_shrink:
-        description: Publish even if hashes/domains dropped by more than 50 % (sanity guard)
+        description: Publish even if the sanity guard objects (drops > 50 %, minimums, incomplete clean corpus)
         type: boolean
         default: false
       malware_corpus:
@@ -76,18 +79,38 @@ jobs:
       - name: Download previous bundle, state and ML model
         run: |
           mkdir -p prev ml-latest
-          gh release download db-latest -D prev --clobber \
-            -p parabellum-db.tar.gz -p parabellum-db.tar.gz.minisig \
-            -p pipeline-state.tar.gz -p pipeline-state.tar.gz.minisig || echo "no previous bundle (first run?)"
+          # Only a 404 means "no release yet". Any other failure fails the job: a transient 502 must
+          # not turn into a first run (no shrink baseline, empty state published, version restart).
+          release_exists() {
+            local err
+            if err="$(gh api "repos/$GH_REPO/releases/tags/$1" --silent 2>&1)"; then return 0; fi
+            [[ "$err" == *"HTTP 404"* ]] && return 1
+            echo "::error::cannot query release $1: $err"
+            exit 1
+          }
+          if release_exists db-latest; then
+            gh release download db-latest -D prev --clobber -p manifest.json \
+              -p parabellum-db.tar.gz -p parabellum-db.tar.gz.minisig \
+              -p pipeline-state.tar.gz -p pipeline-state.tar.gz.minisig
+            for f in manifest.json parabellum-db.tar.gz pipeline-state.tar.gz; do
+              [[ -s "prev/$f" ]] || { echo "::error::db-latest has no $f"; exit 1; }
+            done
+          else
+            echo "::notice::no db-latest release yet (first run)"
+          fi
           if [[ -s keys/parabellum-db.pub ]]; then
             for f in parabellum-db.tar.gz pipeline-state.tar.gz; do
               if [[ -f "prev/$f" ]] && ! minisign -Vq -p keys/parabellum-db.pub -m "prev/$f"; then
-                echo "::warning::prev/$f has an invalid signature: ignored"
+                echo "::warning::prev/$f has an invalid signature: ignored (prev/manifest.json stays the version floor and shrink baseline)"
                 rm -f "prev/$f"
               fi
             done
           fi
-          gh release download ml-latest -D ml-latest --clobber -p macho_model.json -p model_meta.json || echo "no ML model yet"
+          if release_exists ml-latest; then
+            gh release download ml-latest -D ml-latest --clobber -p macho_model.json -p model_meta.json
+          else
+            echo "::notice::no ML model released yet"
+          fi
       - name: Build bundle
         env:
           ABUSECH_AUTH_KEY: ${{ secrets.ABUSECH_AUTH_KEY }}
@@ -102,7 +125,7 @@ jobs:
           [[ -n "$ABUSECH_AUTH_KEY" ]] || echo "::warning::secret ABUSECH_AUTH_KEY is not set: abuse.ch sources are carried over"
           # shellcheck disable=SC2086 # ALLOW_SHRINK is empty or one flag
           python -m pipeline.build --out dist/db \
-            --previous prev/parabellum-db.tar.gz --state prev/pipeline-state.tar.gz \
+            --previous prev/parabellum-db.tar.gz --state prev/pipeline-state.tar.gz --published prev/manifest.json \
             --corpus-cache .cache/corpus --ml-dir ml-latest --pb-features target/release/pb-features \
             --sign $ALLOW_SHRINK
       - name: Verify the signature with the committed public key
