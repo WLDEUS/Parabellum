@@ -347,9 +347,13 @@ pub fn save_config(paths: &Paths, config: &Config) -> Result<(), pb_core::config
 
 fn write_config_file(file: &Path, config: &Config) -> Result<(), pb_core::config::ConfigError> {
     let text = config.to_toml()?;
-    let tmp = file.with_extension("toml.tmp");
+    // Unique temporary name: two writers never share (and truncate) the same file.
+    let tmp = file.with_extension(format!("toml.tmp-{}", uuid::Uuid::new_v4().simple()));
     write_private(&tmp, text.as_bytes())?;
-    std::fs::rename(&tmp, file)?;
+    if let Err(e) = std::fs::rename(&tmp, file) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e.into());
+    }
     Ok(())
 }
 

@@ -73,6 +73,9 @@ pub struct Ctx {
     pub vpn: std::sync::OnceLock<Arc<pb_vpn::VpnService>>,
     /// GDPR requests, breaches, aliases (set at startup).
     pub privacy: std::sync::OnceLock<Arc<pb_privacy::PrivacyService>>,
+    /// Held across every configuration write (read the latest, modify, save, publish) so concurrent
+    /// requests never lose each other's changes.
+    pub config_write: tokio::sync::Mutex<()>,
 }
 
 impl Ctx {
@@ -108,6 +111,7 @@ impl Ctx {
             guard: crate::guard::GuardState::default(),
             vpn: std::sync::OnceLock::new(),
             privacy: std::sync::OnceLock::new(),
+            config_write: tokio::sync::Mutex::new(()),
         }
     }
 

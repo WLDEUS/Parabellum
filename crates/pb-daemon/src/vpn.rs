@@ -109,6 +109,7 @@ impl VpnHooks for DaemonVpnHooks {
             .ctx
             .upgrade()
             .ok_or_else(|| VpnError::Unavailable("arrêt en cours".into()))?;
+        let _write = ctx.config_write.lock().await;
         let mut cfg = (*ctx.config()).clone();
         cfg.vpn.trusted_networks = ids;
         cfg.validate()

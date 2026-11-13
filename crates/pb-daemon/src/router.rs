@@ -542,6 +542,7 @@ async fn scan(
 
 /// Toggle DNS blocking: apply first, then persist the choice.
 pub async fn set_dns(ctx: &Arc<Ctx>, enabled: bool) -> Result<DnsStatus, IpcError> {
+    let write = ctx.config_write.lock().await;
     let mut cfg = (*ctx.config()).clone();
     cfg.dns.enabled = enabled;
     let mut status = if enabled {
@@ -552,6 +553,7 @@ pub async fn set_dns(ctx: &Arc<Ctx>, enabled: bool) -> Result<DnsStatus, IpcErro
     crate::setup::save_config(&ctx.paths, &cfg)
         .map_err(|e| IpcError::new(ErrorCode::Internal, e.to_string()))?;
     ctx.publish_config(cfg.clone());
+    drop(write);
     if enabled {
         // The supervisor starts its proxy and switches the system DNS: report what it achieved.
         for _ in 0..16 {
@@ -568,6 +570,7 @@ pub async fn set_dns(ctx: &Arc<Ctx>, enabled: bool) -> Result<DnsStatus, IpcErro
 
 /// Validate, save and apply a new configuration.
 pub async fn set_config(ctx: &Arc<Ctx>, mut new: Config) -> Result<Config, IpcError> {
+    let _write = ctx.config_write.lock().await;
     let old = ctx.config();
     unredact(&mut new, &old);
     new.validate().map_err(|e| bad(e.to_string()))?;
@@ -689,6 +692,81 @@ mod tests {
             edited.breach.emails,
             vec!["c.n@example.com", "new@example.org"]
         );
+    }
+
+    /// DNS stub whose `disable` takes a while (window for a concurrent config write).
+    struct SlowDns;
+
+    #[async_trait::async_trait]
+    impl crate::backends::Dns for SlowDns {
+        async fn recover_on_startup(&self) {}
+        async fn enable(&self, cfg: &Config) -> Result<DnsStatus, crate::backends::BackendError> {
+            crate::backends::NullDns.enable(cfg).await
+        }
+        async fn disable(&self) -> Result<DnsStatus, crate::backends::BackendError> {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            Ok(DnsStatus::default())
+        }
+        async fn restore_system_dns(&self) -> Result<(), crate::backends::BackendError> {
+            Ok(())
+        }
+        async fn status(&self, cfg: &Config) -> DnsStatus {
+            crate::backends::NullDns.status(cfg).await
+        }
+        async fn rebuild_lists(&self, cfg: &Config) -> Result<u64, crate::backends::BackendError> {
+            crate::backends::NullDns.rebuild_lists(cfg).await
+        }
+        fn start_supervisor(
+            &self,
+            _c: tokio::sync::watch::Receiver<Arc<Config>>,
+            _s: tokio::sync::watch::Receiver<bool>,
+        ) -> Option<tokio::task::JoinHandle<()>> {
+            None
+        }
+    }
+
+    /// A config write that started while another one was waiting on the DNS backend is not lost.
+    #[tokio::test]
+    async fn concurrent_config_writes_are_not_lost() {
+        use pb_vpn::VpnHooks;
+        let d = tempfile::tempdir().unwrap();
+        let paths = pb_core::paths::Paths::with_root(d.path());
+        crate::setup::prepare_dirs(&paths, false).unwrap();
+        let mut backends = crate::backends::Backends::unavailable();
+        backends.dns = Arc::new(SlowDns);
+        let mut initial = Config::default();
+        initial.dns.enabled = true;
+        let ctx = Arc::new(Ctx::new(
+            paths,
+            true,
+            crate::store::Store::open_in_memory().unwrap(),
+            backends,
+            initial,
+        ));
+        let a = tokio::spawn({
+            let ctx = ctx.clone();
+            async move { set_dns(&ctx, false).await }
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let net = "gw:aa:bb:cc:dd:ee:ff".to_string();
+        crate::vpn::DaemonVpnHooks::new(&ctx)
+            .save_trusted_networks(vec![net.clone()])
+            .await
+            .unwrap();
+        a.await.unwrap().unwrap();
+        for cfg in [
+            (*ctx.config()).clone(),
+            Config::load(&ctx.paths.config_file()).unwrap(),
+        ] {
+            assert!(!cfg.dns.enabled);
+            assert_eq!(cfg.vpn.trusted_networks, vec![net.clone()]);
+        }
+        // No temporary file left behind.
+        let dir = ctx.paths.config_file().parent().unwrap().to_path_buf();
+        assert!(!std::fs::read_dir(dir)
+            .unwrap()
+            .flatten()
+            .any(|e| e.file_name().to_string_lossy().contains(".tmp")));
     }
 
     #[test]
