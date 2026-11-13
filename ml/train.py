@@ -125,7 +125,13 @@ def run(args: argparse.Namespace, http: object | None = None) -> int:
     n_neg = n_saved - n_pos
     decision.update({"features_version": fv, "n_pos": n_pos, "n_neg": n_neg, "merge": merge_stats})
     decision.update({"n_rows": n_saved, "prev_rows": prev_rows})
-    problem = dataset.shrink_problem(prev_rows, len(existing), n_saved, merge_stats["conflicts"])
+    prev_fv = dataset.previous_features_version(args.decision_in)
+    if prev_fv is not None and prev_fv != fv:
+        # A deliberate feature-layout change makes the old vectors unusable: dropping them is expected.
+        log.warning("features_version %d -> %d: previous rows are dropped by design", prev_fv, fv)
+        problem = None
+    else:
+        problem = dataset.shrink_problem(prev_rows, len(existing), n_saved, merge_stats["conflicts"])
     if problem and not args.allow_dataset_shrink:
         log.error("%s: refusing to publish (--allow-dataset-shrink overrides)", problem)
         return 1

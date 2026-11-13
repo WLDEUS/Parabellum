@@ -109,6 +109,17 @@ def previous_rows(decision_path: Path | None) -> int | None:
     return None
 
 
+def previous_features_version(decision_path: Path | None) -> int | None:
+    """``features_version`` of the published dataset per its ``decision.json`` (None if unknown)."""
+    if decision_path is None or not decision_path.is_file():
+        return None
+    try:
+        doc = json.loads(decision_path.read_text(encoding="utf-8"))
+        return int(doc["features_version"]) if "features_version" in doc else None
+    except (OSError, ValueError, TypeError, AttributeError, KeyError):
+        return None
+
+
 def shrink_problem(prev_rows: int | None, loaded: int, saved: int, conflicts: int = 0) -> str | None:
     """Why publishing ``saved`` rows would lose accumulated data (None if it would not).
 

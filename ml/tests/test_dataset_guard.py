@@ -134,3 +134,31 @@ def test_shrink_problem_and_previous_rows(tmp_path):
     p.write_text('{"n_rows": ')
     with pytest.raises(ValueError):
         dataset.previous_rows(p)
+
+
+def test_feature_layout_change_drops_old_rows_without_override(tmp_path, week1):
+    # A deliberate FEATURES_VERSION bump: v1 vectors are unusable, so losing them is not a failure.
+    rows = synth_rows(0, 5, seed=11, version=2)
+    new = tmp_path / "v2.jsonl"
+    new.write_text(
+        "".join(
+            json.dumps({"sha256": r.sha256, "label": 0, "features_version": 2, "features": r.features}) + "\n"
+            for r in rows
+        )
+    )
+    rc = _run(
+        tmp_path,
+        "w2",
+        "--dataset-in",
+        str(week1 / "dataset.csv.gz"),
+        "--metrics-in",
+        str(week1 / "metrics.jsonl"),
+        "--decision-in",
+        str(week1 / "decision.json"),
+        "--extra-clean",
+        str(new),
+    )
+    assert rc == 0
+    d = json.loads((tmp_path / "w2" / "decision.json").read_text())
+    assert d["features_version"] == 2 and d["n_rows"] == 5 and d["prev_rows"] == 50
+    assert dataset.previous_features_version(week1 / "decision.json") == 1
