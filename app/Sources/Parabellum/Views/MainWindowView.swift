@@ -73,34 +73,99 @@ struct MainWindowView: View {
         }
     }
 
+    /// Before the first connection: connection screens. Afterwards the current screen stays mounted while
+    /// the service is away (a daemon restart must not discard an unsaved Settings draft or an open sheet):
+    /// a bar at the bottom tells what happens.
     @ViewBuilder
     private var detail: some View {
+        if model.hasConnectedOnce {
+            sectionView
+                .overlay(alignment: .bottom) {
+                    if model.connection != .connected {
+                        DisconnectedBar()
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                }
+                .animation(.snappy(duration: 0.3), value: model.connection == .connected)
+        } else {
+            switch model.connection {
+            case .unreachable(let message):
+                UnreachableView(message: message, compact: false)
+            case .connecting:
+                ProgressView("Connexion au service Parabellum…")
+            case .connected:
+                sectionView
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var sectionView: some View {
+        switch model.section ?? .dashboard {
+        case .dashboard: DashboardView()
+        case .scan: ScanView()
+        case .alerts: AlertsView()
+        case .quarantine: QuarantineView()
+        case .persistence: PersistenceView()
+        case .devices: DevicesView()
+        case .network: NetworkView()
+        case .vpn: VpnView()
+        case .behavior: GuardView()
+        case .privacy: PrivacyView()
+        case .components: ComponentsView()
+        case .report: ReportView()
+        case .settings: SettingsView()
+        case .intelligence: IntelligenceView(store: model.intelligence)
+        case .lan: LanView(store: model.lan)
+        case .permissions: PermissionsView(store: model.permissionsAudit)
+        case .cleaning: CleaningView(store: model.cleaning)
+        case .vault: VaultView(store: model.vault)
+        }
+    }
+}
+
+/// Shown over the current screen while the service is unreachable (it reconnects on its own).
+private struct DisconnectedBar: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: "xmark.shield")
+                .foregroundStyle(.red)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.callout.weight(.semibold))
+                Text("Les données affichées datent d'avant la coupure ; les actions échoueront jusqu'au retour du service. Relance : \(AppModel.kickstartCommand)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Button {
+                model.copyToPasteboard(AppModel.kickstartCommand)
+            } label: {
+                Image(systemName: "doc.on.doc")
+            }
+            .buttonStyle(.borderless)
+            .help("Copier la commande de relance")
+            Button("Réessayer") {
+                model.retryConnection()
+            }
+            .disabled(model.connection == .connecting)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .glassSurface(cornerRadius: 14, tint: .red)
+        .padding(16)
+    }
+
+    private var title: String {
         switch model.connection {
         case .unreachable(let message):
-            UnreachableView(message: message, compact: false)
-        case .connecting:
-            ProgressView("Connexion au service Parabellum…")
-        case .connected:
-            switch model.section ?? .dashboard {
-            case .dashboard: DashboardView()
-            case .scan: ScanView()
-            case .alerts: AlertsView()
-            case .quarantine: QuarantineView()
-            case .persistence: PersistenceView()
-            case .devices: DevicesView()
-            case .network: NetworkView()
-            case .vpn: VpnView()
-            case .behavior: GuardView()
-            case .privacy: PrivacyView()
-            case .components: ComponentsView()
-            case .report: ReportView()
-            case .settings: SettingsView()
-            case .intelligence: IntelligenceView(store: model.intelligence)
-            case .lan: LanView(store: model.lan)
-            case .permissions: PermissionsView(store: model.permissionsAudit)
-            case .cleaning: CleaningView(store: model.cleaning)
-            case .vault: VaultView(store: model.vault)
-            }
+            return "Service Parabellum injoignable — reconnexion automatique (\(message))"
+        case .connecting, .connected:
+            return "Reconnexion au service Parabellum…"
         }
     }
 }

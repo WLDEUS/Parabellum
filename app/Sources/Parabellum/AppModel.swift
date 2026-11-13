@@ -177,7 +177,9 @@ final class AppModel: ObservableObject {
 
     // UI
     @Published var section: SidebarSection? = .dashboard
-    @Published var banner: Banner?
+    @Published var banner: Banner? {
+        didSet { bannerDidChange(oldValue) }
+    }
     @Published var showOnboarding = false
     @Published private(set) var inFlight: Set<String> = []
     @Published private(set) var notificationStatus: UNAuthorizationStatus = .notDetermined
@@ -205,6 +207,15 @@ final class AppModel: ObservableObject {
     // it must never re-render the window.
     var freshness = FreshnessTracker()
     var prefetchTask: Task<Void, Never>?
+
+    // review fixes: banner visibility / expiry, connection history.
+    /// The main window is on screen (set by its appear / disappear hooks).
+    private(set) var mainWindowVisible = false
+    /// The menu bar window is open (set by MenuBarContentView).
+    var menuBarVisible = false
+    private var bannerExpiry: Task<Void, Never>?
+    /// Connected at least once: on a later disconnection the screens stay mounted (unsaved edits kept).
+    @Published private(set) var hasConnectedOnce = false
 
     init(client: DaemonClient = DaemonClient()) {
         self.client = client
@@ -292,11 +303,13 @@ final class AppModel: ObservableObject {
             window.close()
             return
         }
+        mainWindowVisible = true
         NSApp.setActivationPolicy(.regular)
         NSApp.activate()
     }
 
     func mainWindowDisappeared() {
+        mainWindowVisible = false
         NSApp.setActivationPolicy(.accessory)
     }
 
@@ -368,6 +381,9 @@ final class AppModel: ObservableObject {
         switch item {
         case .connected:
             connection = .connected
+            if !hasConnectedOnce {
+                hasConnectedOnce = true
+            }
             Task { await refreshAfterConnect() }
         case .disconnected(let error):
             cancelPrefetch()
@@ -541,26 +557,53 @@ final class AppModel: ObservableObject {
     }
 
     func report(_ error: Error) {
+        if let described = describe(error) {
+            banner = Banner(message: described.message, isError: described.isError)
+        }
+    }
+
+    /// Banners disappear on their own (errors stay longer). An error raised while neither the main window
+    /// nor the menu is on screen (background update, action whose window was closed) is also posted as a
+    /// notification, or nobody would ever see it.
+    private func bannerDidChange(_ previous: Banner?) {
+        guard banner?.id != previous?.id else { return }
+        bannerExpiry?.cancel()
+        bannerExpiry = nil
+        guard let banner else { return }
+        if banner.isError && !menuBarVisible && !(mainWindowVisible && NSApp.isActive) {
+            let notifications = self.notifications
+            Task { await notifications.postMessage(title: "Parabellum", body: banner.message) }
+        }
+        let seconds: UInt64 = banner.isError ? 20 : 6
+        let id = banner.id
+        bannerExpiry = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: seconds * 1_000_000_000)
+            guard !Task.isCancelled, let self, self.banner?.id == id else { return }
+            withAnimation(.snappy) {
+                self.banner = nil
+            }
+        }
+    }
+
+    /// User-facing text of an error (nil for a cancellation, which is not reported).
+    func describe(_ error: Error) -> (message: String, isError: Bool)? {
         if error is CancellationError {
-            return
+            return nil
         }
         if let authError = error as? AdminAuthorizationError {
             // Cancelling the password prompt is a normal choice: discreet, not an error.
-            banner = Banner(message: authError.errorDescription ?? "Action annulée.", isError: authError != .cancelled)
-            return
+            return (authError.errorDescription ?? "Action annulée.", authError != .cancelled)
         }
         if let clientError = error as? DaemonClientError {
             if case .daemon(let ipcError) = clientError, ipcError.code == .permissionDenied {
-                banner = Banner(
-                    message: "\(ipcError.message) — les commandes qui modifient l'état ne sont acceptées que depuis l'app installée dans /Applications.",
-                    isError: true
+                return (
+                    "\(ipcError.message) — les commandes qui modifient l'état ne sont acceptées que depuis l'app installée dans /Applications.",
+                    true
                 )
-                return
             }
-            banner = Banner(message: clientError.errorDescription ?? "Erreur", isError: true)
-            return
+            return (clientError.errorDescription ?? "Erreur", true)
         }
-        banner = Banner(message: error.localizedDescription, isError: true)
+        return (error.localizedDescription, true)
     }
 
     // MARK: - Loading
@@ -840,14 +883,34 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// BadUSB panel: applies the decision and returns nil on success, else the message to show in the
+    /// panel itself (which stays open: the user must not believe a keyboard is blocked when it is not).
+    func decideKeyboardTrust(_ deviceId: String, trust: DeviceTrust) async -> String? {
+        var failure: String?
+        let updated = await perform("device-\(deviceId)", quiet: true) {
+            do {
+                return try await self.call(.setDeviceTrust(deviceId: deviceId, trust: trust), as: DeviceInfo.self)
+            } catch {
+                failure = self.describe(error)?.message ?? "Action annulée."
+                throw error
+            }
+        }
+        guard let updated else { return failure ?? "Échec de l'opération." }
+        upsert(updated, into: &devices, atTop: false)
+        return nil
+    }
+
     // MARK: - Components, updates, protection
 
     func installComponent(_ name: String) async {
+        // Marked before sending: the component event (event connection) can arrive before the response.
+        let wasInstalling = installingComponents.contains(name)
+        installingComponents.insert(name)
         let started = await perform("install-\(name)") {
             try await self.call(.installComponent(name: name), as: JobStarted.self)
         }
-        if started != nil {
-            installingComponents.insert(name)
+        if started == nil && !wasInstalling {
+            installingComponents.remove(name)
         }
     }
 
@@ -861,12 +924,22 @@ final class AppModel: ObservableObject {
     }
 
     func updateNow(_ target: UpdateTarget) async {
+        // Set before sending: the `update_finished` event (event connection) can arrive before the response
+        // and must find the update marked as ours, or the spinner would never stop.
+        let previous = (inProgress: updateInProgress, target: requestedUpdateTarget)
+        updateInProgress = true
+        requestedUpdateTarget = target
         let started = await perform("update") {
             try await self.call(.updateNow(target: target), as: JobStarted.self)
         }
-        if started != nil {
-            updateInProgress = true
-            requestedUpdateTarget = target
+        guard started != nil else {
+            if requestedUpdateTarget == target {
+                updateInProgress = previous.inProgress
+                requestedUpdateTarget = previous.target
+            }
+            return
+        }
+        if updateInProgress && requestedUpdateTarget == target {
             banner = Banner(message: "Mise à jour lancée (\(target.label.lowercased()))…", isError: false)
         }
     }

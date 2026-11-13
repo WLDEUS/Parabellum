@@ -63,6 +63,14 @@ final class TestSocketServer: @unchecked Sendable {
     private let respond: @Sendable (JSONValue) -> [String]
     private let lock = NSLock()
     private var stopped = false
+    private var accepted = 0
+
+    /// Connections accepted so far.
+    var connectionCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return accepted
+    }
 
     init(respond: @escaping @Sendable (JSONValue) -> [String]) throws {
         let socketPath = "/tmp/pbt-\(UUID().uuidString.prefix(8)).sock"
@@ -109,6 +117,9 @@ final class TestSocketServer: @unchecked Sendable {
                 if errno == EINTR { continue }
                 break
             }
+            lock.lock()
+            accepted += 1
+            lock.unlock()
             var one: Int32 = 1
             _ = setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size))
             let thread = Thread { [self] in

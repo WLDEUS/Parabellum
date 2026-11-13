@@ -109,7 +109,9 @@ struct SettingsView: View {
                 saving = true
                 let toSave = draft
                 Task {
-                    _ = await model.saveConfig(toSave)
+                    if await model.saveConfig(toSave) {
+                        resetDraft()
+                    }
                     saving = false
                 }
             } label: {
