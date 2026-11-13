@@ -76,6 +76,16 @@ fn script_kind_names_and_records() {
     assert!(out.status.success());
     let names: Vec<String> = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(names, pb_ml::script_feature_names());
+    for (kind, v) in [
+        ("script", pb_ml::SCRIPT_FEATURES_VERSION),
+        ("macho", pb_ml::FEATURES_VERSION),
+    ] {
+        let out = Command::new(BIN)
+            .args(["--kind", kind, "--features-version"])
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8(out.stdout).unwrap().trim(), v.to_string());
+    }
 
     let dir = tempfile::tempdir().unwrap();
     std::fs::copy(fixtures().join("min_arm64.macho"), dir.path().join("a.sh")).unwrap();

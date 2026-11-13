@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! pb-features [--kind macho|script] [--label <0|1>] [--max-size-mb 100] <paths…>
-//! pb-features [--kind macho|script] --names | --describe
+//! pb-features [--kind macho|script] --names | --describe | --features-version
 //! ```
 //! For every Mach-O (`--kind macho`, default) or script (`--kind script`: magic, shebang, script
 //! extension or script-like text, see `pb_ml::detect_script_kind`) found under `paths` (files or
@@ -40,6 +40,9 @@ struct Args {
     /// Print `{"name","description"}` objects for every feature (JSON array) and exit.
     #[arg(long)]
     describe: bool,
+    /// Print the feature layout version of `--kind` and exit.
+    #[arg(long)]
+    features_version: bool,
     /// Files or directories to scan.
     paths: Vec<PathBuf>,
 }
@@ -73,6 +76,15 @@ fn main() {
     };
     let stdout = std::io::stdout();
     let mut out = std::io::BufWriter::new(stdout.lock());
+    if args.features_version {
+        let v = if script {
+            pb_ml::SCRIPT_FEATURES_VERSION
+        } else {
+            pb_ml::FEATURES_VERSION
+        };
+        let _ = writeln!(out, "{v}");
+        return;
+    }
     if args.names || args.describe {
         let json = if args.names {
             serde_json::to_string(names)
