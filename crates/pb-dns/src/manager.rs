@@ -48,6 +48,8 @@ pub struct DnsManager {
     runtime: std::sync::Mutex<RuntimeInfo>,
     /// Ancestors checked by the trust policy stop here (`/` in production; a temp dir in tests).
     trust_boundary: PathBuf,
+    /// Intelligence: receives every query name logged by the proxy (bounded, lossy).
+    query_tap: std::sync::Mutex<Option<tokio::sync::mpsc::Sender<String>>>,
 }
 
 impl std::fmt::Debug for DnsManager {
@@ -96,6 +98,11 @@ fn rebuild_lists_at(
         }
         b.add_file(&dir.join("dns").join("allowlist.txt"), true)?;
         list_version = bundle_version(dir);
+    }
+    // Intelligence: high-confidence domain-model verdicts (file present only when blocking is opted in).
+    let ml = dns_dir.join(crate::ML_BLOCKED_FILE);
+    if ml.is_file() {
+        b.add_file(&ml, false)?;
     }
     b.add_entries(&cfg.custom_block, false);
     b.add_entries(&cfg.custom_allow, true);
@@ -160,7 +167,21 @@ impl DnsManager {
             switch_lock: tokio::sync::Mutex::new(()),
             runtime: std::sync::Mutex::new(RuntimeInfo::default()),
             trust_boundary: PathBuf::from("/"),
+            query_tap: std::sync::Mutex::new(None),
         }
+    }
+
+    /// Intelligence: send every query name the proxy logs to `tx` (names are dropped, never queued
+    /// without bound, when the receiver is slow: DNS resolution never waits for the consumer).
+    pub fn set_query_tap(&self, tx: tokio::sync::mpsc::Sender<String>) {
+        *self.query_tap.lock().unwrap_or_else(|p| p.into_inner()) = Some(tx);
+    }
+
+    pub(crate) fn query_tap(&self) -> Option<tokio::sync::mpsc::Sender<String>> {
+        self.query_tap
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
     }
 
     #[cfg(test)]
