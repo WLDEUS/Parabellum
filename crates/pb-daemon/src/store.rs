@@ -29,6 +29,32 @@ pub enum StoreError {
 /// Result alias for store operations.
 pub type Result<T> = std::result::Result<T, StoreError>;
 
+/// SQLite says the file is damaged or not a database at all.
+fn is_corruption(e: &StoreError) -> bool {
+    matches!(
+        e,
+        StoreError::Sqlite(rusqlite::Error::SqliteFailure(f, _))
+            if matches!(f.code, rusqlite::ErrorCode::DatabaseCorrupt | rusqlite::ErrorCode::NotADatabase)
+    )
+}
+
+/// Rename `<db>` (and its `-wal`) to `<db>.corrupt-<ts>`, drop its `-shm`. Returns the new path.
+fn quarantine_corrupt_db(path: &Path, ts: i64) -> std::io::Result<std::path::PathBuf> {
+    let with_suffix = |suffix: &str| {
+        let mut s = path.as_os_str().to_owned();
+        s.push(suffix);
+        std::path::PathBuf::from(s)
+    };
+    let aside = with_suffix(&format!(".corrupt-{ts}"));
+    std::fs::rename(path, &aside)?;
+    let _ = std::fs::rename(
+        with_suffix("-wal"),
+        with_suffix(&format!(".corrupt-{ts}-wal")),
+    );
+    let _ = std::fs::remove_file(with_suffix("-shm"));
+    Ok(aside)
+}
+
 /// Max findings returned by [`Store::get_job`] (a scan of a malware corpus could produce many).
 pub const MAX_FINDINGS_RETURNED: u32 = 5_000;
 /// Hard cap on `file_history` rows (oldest `last_seen` pruned first).
@@ -261,8 +287,21 @@ fn from_json<T: DeserializeOwned>(s: &str) -> rusqlite::Result<T> {
 impl Store {
     /// Open (or create) the database file and apply migrations.
     pub fn open(path: &Path) -> Result<Self> {
-        let conn = Connection::open(path)?;
-        Self::init(conn)
+        match Connection::open(path)
+            .map_err(StoreError::from)
+            .and_then(Self::init)
+        {
+            Err(e) if is_corruption(&e) => {
+                // A corrupt database must not crash-loop the daemon: keep it aside and start empty.
+                let aside = quarantine_corrupt_db(path, pb_core::now_ts()).map_err(|io| {
+                    tracing::error!(error = %io, "cannot move the corrupt state database aside");
+                    e
+                })?;
+                tracing::error!(aside = %aside.display(), "state database corrupt: moved aside, starting with an empty one");
+                Self::init(Connection::open(path)?)
+            }
+            r => r,
+        }
     }
 
     /// In-memory database (tests).
@@ -1061,6 +1100,32 @@ pub enum AlertKey<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn corrupt_database_is_moved_aside() {
+        let d = tempfile::tempdir().unwrap();
+        let db = d.path().join("state.db");
+        let junk = vec![b'x'; 8192];
+        std::fs::write(&db, &junk).unwrap();
+        let store = Store::open(&db).unwrap();
+        store.kv_set("k", "v").unwrap();
+        assert_eq!(store.kv_get("k").unwrap().as_deref(), Some("v"));
+        let aside: Vec<_> = std::fs::read_dir(d.path())
+            .unwrap()
+            .flatten()
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with("state.db.corrupt-")
+            })
+            .collect();
+        assert_eq!(aside.len(), 1);
+        assert_eq!(std::fs::read(aside[0].path()).unwrap(), junk);
+        drop(store);
+        // A healthy database is reopened as is.
+        let store = Store::open(&db).unwrap();
+        assert_eq!(store.kv_get("k").unwrap().as_deref(), Some("v"));
+    }
 
     fn alert(path: &str, sha: &str, ts: i64) -> Alert {
         Alert {

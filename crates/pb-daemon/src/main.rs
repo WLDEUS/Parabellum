@@ -81,6 +81,13 @@ fn main() -> ExitCode {
         if !dev_mode {
             // Never leave a VPN kill switch from a previous run blocking the network.
             pb_vpn::flush_kill_switch_blocking();
+            // Nor the system DNS pointing at a local proxy that will not run.
+            if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                rt.block_on(restore_dns_fail_open(&paths));
+            }
         }
         return ExitCode::FAILURE;
     }
@@ -132,6 +139,7 @@ fn main() -> ExitCode {
                 tracing::error!(error = %e, "startup failed");
                 if !dev_mode {
                     pb_vpn::recover_kill_switch(&recovery_paths).await;
+                    restore_dns_fail_open(&recovery_paths).await;
                 }
                 return ExitCode::FAILURE;
             }
@@ -142,6 +150,20 @@ fn main() -> ExitCode {
     });
     rt.shutdown_timeout(std::time::Duration::from_secs(2));
     code
+}
+
+/// Startup failed: put the original system DNS back (the proxy will not run), bounded in time.
+/// `dns.enabled` is left as is, so the next successful start re-applies.
+async fn restore_dns_fail_open(paths: &Paths) {
+    let dns = pb_dns::DnsManager::new(paths.clone());
+    match tokio::time::timeout(std::time::Duration::from_secs(90), dns.restore_system_dns()).await {
+        Ok(Ok(restored)) if !restored.is_empty() => {
+            tracing::warn!(services = ?restored, "startup failed: original system DNS restored");
+        }
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => tracing::error!(error = %e, "startup failed: cannot restore the system DNS"),
+        Err(_) => tracing::error!("startup failed: system DNS restore timed out"),
+    }
 }
 
 async fn wait_for_signal() {
