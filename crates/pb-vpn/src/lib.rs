@@ -136,6 +136,9 @@ pub struct VpnService {
     rt: tokio::sync::Mutex<Runtime>,
     wake: tokio::sync::Notify,
     killswitch: killswitch::KillSwitch,
+    /// speed: last network list computed, served while a tick holds `rt` (probes, tunnel start and leak
+    /// tests keep it for seconds).
+    networks_snapshot: std::sync::Mutex<Option<Vec<NetworkInfo>>>,
 }
 
 impl VpnService {
@@ -162,6 +165,7 @@ impl VpnService {
             cfg: std::sync::Mutex::new(Arc::new(Config::default())),
             status: std::sync::Mutex::new(VpnStatus::default()),
             wake: tokio::sync::Notify::new(),
+            networks_snapshot: std::sync::Mutex::new(None),
         })
     }
 
@@ -218,12 +222,44 @@ impl VpnService {
         scutil::list(self.sys.as_ref()).await
     }
 
-    /// Networks seen, current first.
+    /// Networks seen, current first. Never waits behind a running tick when an earlier list exists: the
+    /// list from the end of the last tick is returned (trust flags from the current configuration).
     pub async fn networks(&self) -> Vec<NetworkInfo> {
         let cfg = self.cfg();
-        let rt = self.rt.lock().await;
-        rt.networks
-            .list(&cfg.vpn.trusted_networks, rt.current_network.as_deref())
+        let rt = match self.rt.try_lock() {
+            Ok(rt) => rt,
+            Err(_) => {
+                if let Some(list) = self.networks_snapshot_with(&cfg.vpn.trusted_networks) {
+                    return list;
+                }
+                self.rt.lock().await
+            }
+        };
+        let list = rt
+            .networks
+            .list(&cfg.vpn.trusted_networks, rt.current_network.as_deref());
+        drop(rt);
+        self.store_networks_snapshot(list.clone());
+        list
+    }
+
+    fn store_networks_snapshot(&self, list: Vec<NetworkInfo>) {
+        *self
+            .networks_snapshot
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Some(list);
+    }
+
+    fn networks_snapshot_with(&self, trusted: &[String]) -> Option<Vec<NetworkInfo>> {
+        let mut list = self
+            .networks_snapshot
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()?;
+        for n in &mut list {
+            n.trusted = trusted.contains(&n.id);
+        }
+        Some(list)
     }
 
     /// Trust / untrust a network (saved through [`VpnHooks::save_trusted_networks`]).
