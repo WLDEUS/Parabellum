@@ -9,8 +9,20 @@
 
 [bundle]
 min_client_version = "0.1.0"
-# Refuse to publish (keep yesterday's release) if malware hashes or blocked domains drop by more.
+# Refuse to publish (keep yesterday's release) if malware hashes, blocked domains or YARA rules drop
+# by more.
 sanity_max_drop = 0.5
+# Absolute floors, enforced even without a previous bundle to compare with (first run, previous bundle
+# unreadable): far below a normal night (~1 M hashes, several 100 k domains, ~130 YARA rules), far
+# above what is left when the feeds fail (0 hashes, 0 domains, the 19 local rules).
+# `allow_shrink` (workflow input) overrides them like the drop guard.
+min_malware_hashes = 1000
+min_blocked_domains = 50000
+min_yara_rules = 50
+# FP gate: refuse to publish when fewer than this share of the clean-corpus entries declared in
+# data/clean_corpus.toml are available, or when far fewer files were scanned than last night (same
+# corpus spec): a rule matching a missing clean binary would otherwise ship.
+corpus_min_available = 0.9
 
 [hashes]
 # Rolling window for all-platform MalwareBazaar hashes, and a hard cap: 2 M x 32 bytes = 64 MB for

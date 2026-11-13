@@ -7,6 +7,7 @@ client and scrubbed from every exception message, so a failing fetch never leaks
 from __future__ import annotations
 
 import hashlib
+import http.client
 import json
 import logging
 import time
@@ -29,6 +30,31 @@ _CHUNK = 1024 * 1024
 
 class FetchError(Exception):
     """A network fetch failed (after retries) or returned an unusable response."""
+
+
+class TruncatedBody(ConnectionError):
+    """The body ended before ``Content-Length`` bytes arrived (retried like a reset connection).
+
+    ``http.client`` only raises ``IncompleteRead`` for ``read()`` without a size; the chunked
+    ``read(n)`` loops used here just see an early EOF, so a cut-off list would otherwise be parsed.
+    """
+
+
+def check_complete(resp: object, received: int, what: str) -> None:
+    """Raise ``TruncatedBody`` when ``received`` differs from the response's ``Content-Length``.
+
+    We send ``Accept-Encoding: identity`` and never decode, so the header counts the bytes we read.
+    """
+    headers = getattr(resp, "headers", None)
+    raw = headers.get("Content-Length") if headers is not None else None
+    if raw is None:
+        return
+    try:
+        expected = int(str(raw).strip())
+    except ValueError:
+        return
+    if expected >= 0 and received != expected:
+        raise TruncatedBody(f"{what}: body truncated ({received} of {expected} bytes)")
 
 
 class Fetcher(Protocol):
@@ -137,7 +163,8 @@ class Http:
                 # 4xx (except 408/429) will not get better by retrying.
                 if 400 <= e.code < 500 and e.code not in (408, 429):
                     break
-            except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
+            except (urllib.error.URLError, TimeoutError, ConnectionError, OSError, http.client.HTTPException) as e:
+                # HTTPException: IncompleteRead (cut chunked body), BadStatusLine, RemoteDisconnected…
                 last = e
             if attempt < self.retries:
                 time.sleep(self.backoff * attempt)
@@ -148,6 +175,7 @@ class Http:
         while True:
             chunk = resp.read(_CHUNK)
             if not chunk:
+                check_complete(resp, len(buf), what)
                 return bytes(buf)
             buf += chunk
             if len(buf) > max_bytes:
@@ -217,6 +245,7 @@ class Http:
                         raise FetchError(f"{what}: larger than {max_bytes} bytes")
                     h.update(chunk)
                     f.write(chunk)
+                check_complete(resp, size, what)
             return h.hexdigest()
 
         try:
