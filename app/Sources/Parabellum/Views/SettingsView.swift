@@ -37,6 +37,11 @@ struct SettingsView: View {
                     }
                     privacySection
                     notificationsSection
+                    // Travel mode & shortcuts
+                    Group {
+                        TravelSettingsSection(travel: $draft.travel)
+                        ShortcutsSettingsSection()
+                    }
                 }
                 .formStyle(.grouped)
                 Divider()

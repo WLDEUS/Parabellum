@@ -223,6 +223,8 @@ final class AppModel: ObservableObject {
             showOnboarding = true
             showMainWindow()
         }
+        // Travel mode: apply / restore the per-user part when the daemon's state changes.
+        travel.activate()
     }
 
     /// Event connection: drives `connection`, keeps state in sync, triggers notifications.

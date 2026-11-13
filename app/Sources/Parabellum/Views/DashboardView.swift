@@ -177,6 +177,8 @@ struct DashboardView: View {
             .buttonStyle(.plain)
             StatTile(value: PBFormat.count(status.db.malwareHashes), caption: "Signatures de malwares", symbol: "cylinder.split.1x2.fill", tint: Brand.violet)
             StatTile(value: PBFormat.count(status.db.blockedDomains), caption: "Domaines bloqués", symbol: "network.badge.shield.half.filled", tint: Brand.cyan)
+            // Travel mode
+            TravelDashboardTile(store: model.travel)
         }
     }
 

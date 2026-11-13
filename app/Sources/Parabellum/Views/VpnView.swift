@@ -9,6 +9,8 @@ struct VpnView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                // Travel mode
+                TravelCard(store: model.travel)
                 if let status = model.vpnStatus {
                     VpnStatusCard(status: status)
                     if status.backend == .singBox {
