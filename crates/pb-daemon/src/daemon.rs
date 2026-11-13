@@ -199,6 +199,8 @@ pub async fn start(opts: DaemonOptions) -> anyhow::Result<Daemon> {
         tasks.push(tokio::spawn(scheduler::dns_stats_loop(ctx.clone())));
         tasks.push(tokio::spawn(crate::spyware::schedule_loop(ctx.clone())));
         tasks.push(tokio::spawn(crate::posture::daily_loop(ctx.clone())));
+        // ----- Local network & permissions audit -----
+        tasks.push(tokio::spawn(crate::lan::run_loop(ctx.clone())));
     }
     let c2 = ctx.clone();
     tokio::spawn(async move {

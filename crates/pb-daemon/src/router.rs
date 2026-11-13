@@ -482,6 +482,28 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
             )
         }
         Request::Subscribe => Ok(Value::Null),
+
+        // ----- Local network (LAN inventory) -----
+        Request::LanStatus { network_id } => {
+            json(&crate::lan::status(ctx, network_id.as_deref()).await?)
+        }
+        Request::LanScan { active } => json(&crate::lan::scan_now(ctx, active).await?),
+        Request::LanSetDevice {
+            network_id,
+            mac,
+            name,
+            trusted,
+        } => json(&crate::lan::set_device(ctx, &network_id, &mac, name, trusted).await?),
+        Request::LanForgetDevice { network_id, mac } => {
+            crate::lan::forget_device(ctx, &network_id, &mac).await?;
+            Ok(Value::Null)
+        }
+        Request::LanPorts { mac } => json(&crate::lan::check_ports(ctx, &mac).await?),
+
+        // ----- Permissions audit -----
+        Request::PermissionsAudit { refresh } => {
+            json(&crate::permissions::get(ctx, refresh).await?)
+        }
     }
 }
 

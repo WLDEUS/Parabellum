@@ -40,3 +40,6 @@ pub mod store;
 pub mod system;
 pub mod virustotal;
 pub mod vpn;
+// ----- Local network & permissions audit -----
+pub mod lan;
+pub mod permissions;
