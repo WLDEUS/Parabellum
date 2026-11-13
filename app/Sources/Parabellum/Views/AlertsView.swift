@@ -18,11 +18,16 @@ struct AlertsView: View {
     }
 
     var body: some View {
-        HSplitView {
+        // Filtered once per render (used twice below).
+        let filteredAlerts = self.filteredAlerts
+        return HSplitView {
             VStack(spacing: 0) {
                 filterBar
                 Divider()
-                if filteredAlerts.isEmpty {
+                if filteredAlerts.isEmpty && model.isFirstLoad("alerts") {
+                    ProgressView("Chargement des alertes…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if filteredAlerts.isEmpty {
                     ContentUnavailableView(
                         model.includeResolvedAlerts ? "Aucune alerte" : "Aucune alerte ouverte",
                         systemImage: "checkmark.shield",
@@ -51,12 +56,12 @@ struct AlertsView: View {
         .toolbar {
             ToolbarItem {
                 RefreshButton(isLoading: model.isBusy("alerts")) {
-                    Task { await model.loadAlerts() }
+                    Task { await model.refresh(section: .alerts, force: true) }
                 }
             }
         }
-        .task {
-            await model.loadAlerts()
+        .onAppear {
+            model.revalidateSection(.alerts)
         }
         .onChange(of: model.includeResolvedAlerts) { _, _ in
             Task { await model.loadAlerts() }

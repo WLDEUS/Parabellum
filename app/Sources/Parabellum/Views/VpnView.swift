@@ -17,7 +17,7 @@ struct VpnView: View {
                         VpnExternalCard(status: status)
                     }
                     LeakTestCard(result: status.lastLeakTest)
-                } else if model.isBusy("vpn-status") {
+                } else if model.isFirstLoad("vpn-status") {
                     ProgressView("Chargement…").padding(40)
                 } else {
                     ContentUnavailableView("État du VPN indisponible", systemImage: "lock.shield")
@@ -30,7 +30,7 @@ struct VpnView: View {
         .toolbar {
             ToolbarItem {
                 RefreshButton(isLoading: model.isBusy("vpn-status") || model.isBusy("networks")) {
-                    Task { await model.loadVpn() }
+                    Task { await model.refresh(section: .vpn, force: true) }
                 }
             }
         }
@@ -38,8 +38,8 @@ struct VpnView: View {
             VpnImportSheet()
                 .environmentObject(model)
         }
-        .task {
-            await model.loadVpn()
+        .onAppear {
+            model.revalidateSection(.vpn)
         }
     }
 }
@@ -254,7 +254,9 @@ private struct VpnExternalCard: View {
             }
         }
         .task {
-            await model.loadExternalVpnServices()
+            if model.needsRefresh("vpn-services"), !model.isBusy("vpn-services") {
+                await model.loadExternalVpnServices()
+            }
         }
     }
 }

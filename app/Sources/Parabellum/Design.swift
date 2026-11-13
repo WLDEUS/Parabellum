@@ -116,7 +116,9 @@ extension View {
 
 // MARK: - Aurora backdrop
 
-/// Soft brand glows on the window background; drifts slowly unless Reduce Motion is on.
+/// Soft brand glows on the window background. They settle once into place when the window opens (unless
+/// Reduce Motion is on), then stay still: a perpetual drift of large blurs behind glass surfaces re-renders
+/// every material on every frame (main-thread work, GPU and battery) for a barely visible effect.
 struct AuroraBackground: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -141,8 +143,11 @@ struct AuroraBackground: View {
         .allowsHitTesting(false)
         .accessibilityHidden(true)
         .onAppear {
-            guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 18).repeatForever(autoreverses: true)) {
+            guard !reduceMotion else {
+                drift = true
+                return
+            }
+            withAnimation(.easeOut(duration: 2.4)) {
                 drift = true
             }
         }
@@ -227,20 +232,19 @@ struct BrandWordmark: View {
 // MARK: - Hero status ring
 
 /// Large protection gauge: a ring filled to `progress` in `color`, with the state symbol in its centre.
+/// The halo is static: an endlessly pulsing blur re-rendered the dashboard and the menu bar window on every
+/// frame while they were open.
 struct StatusRing: View {
     let progress: Double
     let color: Color
     let symbol: String
     var size: CGFloat = 112
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var pulse = false
 
     var body: some View {
         ZStack {
             Circle()
                 .fill(color.opacity(0.18))
                 .blur(radius: size * 0.22)
-                .scaleEffect(pulse ? 1.08 : 0.94)
             Circle()
                 .stroke(color.opacity(0.16), lineWidth: size * 0.075)
             Circle()
@@ -258,12 +262,6 @@ struct StatusRing: View {
         }
         .frame(width: size, height: size)
         .animation(.smooth(duration: 0.8), value: progress)
-        .onAppear {
-            guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true)) {
-                pulse = true
-            }
-        }
         .accessibilityHidden(true)
     }
 }

@@ -90,6 +90,19 @@ final class NotificationManager {
         }
     }
 
+    /// A plain message (an error no window could show). Best effort, like alerts.
+    func postMessage(title: String, body: String) async {
+        guard let center else { return }
+        let status = await authorizationStatus()
+        guard status == .authorized || status == .provisional else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.threadIdentifier = "pb.message"
+        let request = UNNotificationRequest(identifier: "pb.message.\(UUID().uuidString)", content: content, trigger: nil)
+        try? await center.add(request)
+    }
+
     func post(_ alert: SecurityAlert) async {
         guard let center else { return }
         let status = await authorizationStatus()

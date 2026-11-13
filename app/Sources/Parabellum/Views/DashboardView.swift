@@ -33,23 +33,23 @@ struct DashboardView: View {
                 .padding(24)
                 .frame(maxWidth: 1180)
                 .frame(maxWidth: .infinity)
-            } else {
+            } else if model.isFirstLoad("status") {
                 ProgressView("Chargement de l'état…")
                     .padding(40)
+            } else {
+                ContentUnavailableView("État indisponible", systemImage: "shield")
             }
         }
         .navigationTitle("Tableau de bord")
         .toolbar {
             ToolbarItem {
                 RefreshButton(isLoading: model.isBusy("status")) {
-                    Task { await model.refreshStatus() }
+                    Task { await model.refresh(section: .dashboard, force: true) }
                 }
             }
         }
-        .task {
-            await model.refreshStatus()
-            await model.refreshNotificationStatus()
-            await model.loadPosture()
+        .onAppear {
+            model.revalidateSection(.dashboard)
         }
     }
 

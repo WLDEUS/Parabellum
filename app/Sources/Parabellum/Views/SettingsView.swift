@@ -11,7 +11,7 @@ struct SettingsView: View {
 
     private var isDirty: Bool {
         guard let config = model.config else { return false }
-        return draft != config
+        return draft != Self.normalized(config)
     }
 
     var body: some View {
@@ -41,31 +41,53 @@ struct SettingsView: View {
                 .formStyle(.grouped)
                 Divider()
                 bottomBar
-            } else {
+            } else if model.isFirstLoad("config") {
                 ProgressView("Chargement des réglages…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ContentUnavailableView {
+                    Label("Réglages indisponibles", systemImage: "gearshape")
+                } description: {
+                    Text("Le service Parabellum n'a pas renvoyé la configuration.")
+                } actions: {
+                    Button("Réessayer") {
+                        Task { await model.refresh(section: .settings, force: true) }
+                    }
+                    .disabled(model.isBusy("config"))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .navigationTitle("Réglages")
-        .task {
-            await model.loadConfig()
-            resetDraft()
-            await model.loadExternalVpnServices()
+        .onAppear {
+            // The cached configuration shows at once; a stale one is reloaded in the background.
+            if !loaded {
+                resetDraft()
+            }
+            model.revalidateSection(.settings)
         }
-        .onChange(of: model.config) { _, _ in
-            if !isDirty || !loaded {
+        .onChange(of: model.config) { oldValue, _ in
+            // Follow a configuration reloaded in the background unless the user is editing (draft no longer
+            // equal to what was shown).
+            let untouched = oldValue.map { draft == Self.normalized($0) } ?? true
+            if !loaded || untouched {
                 resetDraft()
             }
         }
     }
 
-    private func resetDraft() {
-        guard let config = model.config else { return }
+    /// The draft shown for `config` (an unknown minimum severity is shown as the default).
+    private static func normalized(_ config: Config) -> Config {
         var copy = config
         if copy.notifications.minSeverity == .unknown {
             copy.notifications.minSeverity = .medium
         }
-        draft = copy
+        return copy
+    }
+
+    private func resetDraft() {
+        guard let config = model.config else { return }
+        draft = Self.normalized(config)
         loaded = true
     }
 
@@ -87,7 +109,9 @@ struct SettingsView: View {
                 saving = true
                 let toSave = draft
                 Task {
-                    _ = await model.saveConfig(toSave)
+                    if await model.saveConfig(toSave) {
+                        resetDraft()
+                    }
                     saving = false
                 }
             } label: {

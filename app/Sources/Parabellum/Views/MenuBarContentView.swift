@@ -10,6 +10,12 @@ struct MenuBarContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
+            if let banner = model.banner {
+                // Results of the actions below (pause, DNS, VPN, update, scan) are visible here too.
+                MenuBanner(banner: banner) {
+                    model.banner = nil
+                }
+            }
             Divider()
             switch model.connection {
             case .unreachable(let message):
@@ -32,6 +38,10 @@ struct MenuBarContentView: View {
         .tint(Brand.accent)
         .onAppear {
             model.registerOpenWindow(openWindow)
+            model.menuBarVisible = true
+        }
+        .onDisappear {
+            model.menuBarVisible = false
         }
     }
 
@@ -266,5 +276,30 @@ struct MenuActionButton: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
+    }
+}
+
+/// Compact banner of the menu bar window (errors and confirmations of its actions).
+private struct MenuBanner: View {
+    let banner: Banner
+    let onClose: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: banner.isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(banner.isError ? Color.orange : Color.green)
+            Text(banner.message)
+                .font(.callout)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.borderless)
+            .help("Fermer")
+        }
+        .padding(10)
+        .glassSurface(cornerRadius: 12, tint: banner.isError ? .orange : .green)
     }
 }

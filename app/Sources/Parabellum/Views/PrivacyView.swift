@@ -47,12 +47,12 @@ struct PrivacyView: View {
         .toolbar {
             ToolbarItem {
                 RefreshButton(isLoading: model.isBusy("privacy")) {
-                    Task { await model.loadPrivacy() }
+                    Task { await model.refresh(section: .privacy, force: true) }
                 }
             }
         }
-        .task {
-            await model.loadPrivacy()
+        .onAppear {
+            model.revalidateSection(.privacy)
         }
     }
 }

@@ -385,7 +385,13 @@ pub struct UpdaterAdapter {
     paths: Paths,
     db: Mutex<Option<(UpdatesConfig, Arc<pb_updater::DbUpdater>)>>,
     cm: Mutex<Option<(CmKey, Arc<pb_updater::ComponentManager>)>>,
+    /// speed: uBlock Origin Lite states per console home (parses every Chrome profile's preferences and
+    /// runs `pluginkit` as the user: hundreds of ms), reused for [`EXTENSION_STATES_TTL`].
+    extensions: pb_core::cache::TtlCell<(PathBuf, (ExtensionState, ExtensionState))>,
 }
+
+/// How long the browser extension states answered by `adblock_status` are reused.
+pub const EXTENSION_STATES_TTL: Duration = Duration::from_secs(20);
 
 fn uerr(e: pb_updater::UpdateError) -> BackendError {
     use pb_updater::UpdateError as U;
@@ -404,6 +410,7 @@ impl UpdaterAdapter {
             paths,
             db: Mutex::new(None),
             cm: Mutex::new(None),
+            extensions: pb_core::cache::TtlCell::new(EXTENSION_STATES_TTL),
         }
     }
 
@@ -554,10 +561,20 @@ impl Updater for UpdaterAdapter {
         let Some(home) = console_home else {
             return (ExtensionState::Unknown, ExtensionState::Unknown);
         };
+        if let Some((cached_home, states)) = self.extensions.get() {
+            if cached_home == home {
+                return states;
+            }
+        }
+        let generation = self.extensions.generation();
         let uid = crate::system::console_user().map(|u| u.uid);
-        tokio::task::spawn_blocking(move || pb_updater::adblock_extension_states_for(&home, uid))
-            .await
-            .unwrap_or((ExtensionState::Unknown, ExtensionState::Unknown))
+        let h = home.clone();
+        let states =
+            tokio::task::spawn_blocking(move || pb_updater::adblock_extension_states_for(&h, uid))
+                .await
+                .unwrap_or((ExtensionState::Unknown, ExtensionState::Unknown));
+        self.extensions.put(generation, (home, states));
+        states
     }
 
     fn db_update_status(&self, cfg: &Config) -> DbStatus {
@@ -665,5 +682,45 @@ mod tests {
         let r = e.scan_file(&f, &cfg, &ScanOpts::realtime(&cfg));
         assert_eq!(r.verdict, Verdict::Clean);
         assert!(r.sha256.is_some());
+    }
+
+    // ----- speed: adblock_status cache -----
+
+    #[tokio::test]
+    async fn extension_states_are_cached_per_home() {
+        let d = tempfile::tempdir().unwrap();
+        let u = UpdaterAdapter::new(Paths::with_root(d.path().join("pb")));
+        let home = d.path().join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        let (chrome, _) = u.extension_states(Some(home.clone())).await;
+        assert_eq!(chrome, ExtensionState::NotInstalled);
+        // uBlock Origin Lite appears in Chrome: the cached answer is served until it expires.
+        let profile = home.join("Library/Application Support/Google/Chrome/Default");
+        std::fs::create_dir_all(&profile).unwrap();
+        std::fs::write(
+            profile.join("Preferences"),
+            r#"{"extensions":{"settings":{"ddkjiahejlhfcafbddmgiahcphecmpfh":{"state":1}}}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            u.extension_states(Some(home.clone())).await.0,
+            ExtensionState::NotInstalled
+        );
+        // Another console user (different home) is never answered from the cache.
+        let other = d.path().join("other");
+        std::fs::create_dir_all(&other).unwrap();
+        assert_eq!(
+            u.extension_states(Some(other)).await.0,
+            ExtensionState::NotInstalled
+        );
+        u.extensions.invalidate();
+        assert_eq!(
+            u.extension_states(Some(home)).await.0,
+            ExtensionState::Enabled
+        );
+        assert_eq!(
+            u.extension_states(None).await,
+            (ExtensionState::Unknown, ExtensionState::Unknown)
+        );
     }
 }
