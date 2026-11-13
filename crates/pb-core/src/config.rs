@@ -37,6 +37,8 @@ pub struct Config {
     pub data_removal: DataRemovalConfig,
     pub breach: BreachConfig,
     pub aliases: AliasConfig,
+    // ----- Travel mode -----
+    pub travel: TravelConfig,
 }
 
 impl Config {
@@ -793,6 +795,39 @@ pub struct AliasConfig {
     pub domain: String,
 }
 
+// ---------------------------------------------------------------------------------------------
+// Travel mode
+// ---------------------------------------------------------------------------------------------
+
+/// `[travel]`: one-click hardening for public Wi-Fi ("Mode Voyage").
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TravelConfig {
+    /// On a network that is not in `vpn.trusted_networks`, raise an alert offering travel mode.
+    pub suggest_on_untrusted: bool,
+    /// Enable travel mode by itself on untrusted networks (and restore when back on a trusted one, if it
+    /// was enabled that way).
+    pub auto_enable: bool,
+    /// Also make the application firewall block every incoming connection (AirPlay receiver, sharing…).
+    pub block_all_incoming: bool,
+    /// Turn AirDrop off while travelling (done by the app, as the user).
+    pub airdrop_off: bool,
+    /// Turn Bluetooth off while travelling (done by the app, as the user; disconnects AirPods, keyboards…).
+    pub bluetooth_off: bool,
+}
+
+impl Default for TravelConfig {
+    fn default() -> Self {
+        Self {
+            suggest_on_untrusted: true,
+            auto_enable: false,
+            block_all_incoming: false,
+            airdrop_off: true,
+            bluetooth_off: false,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -849,6 +884,9 @@ mod tests {
         let c = Config::from_toml("[dns]\nenabled = true\n").unwrap();
         assert!(c.dns.enabled);
         assert_eq!(c.scan, ScanConfig::default());
+        assert_eq!(c.travel, TravelConfig::default());
+        let t = Config::from_toml("[travel]\nauto_enable = true\n").unwrap();
+        assert!(t.travel.auto_enable && t.travel.suggest_on_untrusted && !t.travel.bluetooth_off);
     }
 
     #[test]

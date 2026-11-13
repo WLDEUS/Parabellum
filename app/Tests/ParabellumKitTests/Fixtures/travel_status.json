@@ -1,0 +1,20 @@
+{
+  "active": true,
+  "automatic": false,
+  "changes": [
+    {
+      "id": "vpn_mode",
+      "label": "VPN toujours actif"
+    },
+    {
+      "id": "stealth",
+      "label": "Mode furtif du coupe-feu"
+    }
+  ],
+  "network": "Gare-WiFi-Gratuit",
+  "since": 1793000200,
+  "untrusted_network": true,
+  "warnings": [
+    "Blocage DNS indisponible : dnscrypt-proxy absent"
+  ]
+}

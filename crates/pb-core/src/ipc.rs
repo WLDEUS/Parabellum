@@ -246,6 +246,16 @@ pub enum Request {
 
     /// Start receiving [`EventEnvelope`]s on this connection. -> `null`
     Subscribe,
+
+    // ----- Travel mode -----
+    /// -> [`TravelStatus`]
+    TravelStatus,
+    /// Harden for public Wi-Fi: VPN always on + kill switch, DNS blocking, firewall on + stealth (+ block all
+    /// incoming if configured). The previous state is saved and restored by `travel_disable`. -> [`TravelStatus`]
+    TravelEnable,
+    /// Put back what travel mode changed (settings you changed meanwhile are kept). Lowers protection:
+    /// admin. -> [`TravelStatus`]
+    TravelDisable,
 }
 
 fn default_true() -> bool {
@@ -281,6 +291,8 @@ impl Request {
             | Request::PrivacyComplaint { .. }
             | Request::PrivacyStartRemoval { .. } => true,
             Request::SetNetworkTrust { trusted, .. } => *trusted,
+            // ----- Travel mode -----
+            Request::TravelDisable => true,
             Request::PrivacyGetProfile { reveal } => *reveal,
             Request::SetDns { enabled } => !enabled,
             Request::SetProtection { paused_minutes } => *paused_minutes > 0,
@@ -331,6 +343,8 @@ impl Request {
                 | Request::PrivacySummary
                 | Request::BreachList
                 | Request::AliasList
+                // ----- Travel mode -----
+                | Request::TravelStatus
         )
     }
 }
@@ -619,6 +633,27 @@ mod tests {
         let line = String::from_utf8(encode_line(&DaemonEvent::Vpn(VpnStatus::default())).unwrap())
             .unwrap();
         assert!(line.starts_with(r#"{"event":"vpn","data":{"#));
+    }
+
+    #[test]
+    fn travel_requests() {
+        let r: RequestEnvelope = serde_json::from_str(r#"{"id":1,"cmd":"travel_status"}"#).unwrap();
+        assert_eq!(r.request, Request::TravelStatus);
+        assert!(!r.request.is_mutating() && !r.request.requires_admin());
+        let r: RequestEnvelope = serde_json::from_str(r#"{"id":2,"cmd":"travel_enable"}"#).unwrap();
+        assert!(r.request.is_mutating() && !r.request.requires_admin());
+        let r: RequestEnvelope =
+            serde_json::from_str(r#"{"id":3,"cmd":"travel_disable"}"#).unwrap();
+        assert!(r.request.is_mutating() && r.request.requires_admin());
+        assert!(!Request::ResolveAlert {
+            alert_id: 1,
+            action: AlertAction::EnableTravelMode
+        }
+        .requires_admin());
+        assert_eq!(
+            serde_json::to_string(&AlertAction::EnableTravelMode).unwrap(),
+            "\"enable_travel_mode\""
+        );
     }
 
     #[test]

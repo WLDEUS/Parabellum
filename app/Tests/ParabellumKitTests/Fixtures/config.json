@@ -120,6 +120,13 @@
     "spyware_scan_weekday": 3,
     "spyware_scan_weekly": true
   },
+  "travel": {
+    "airdrop_off": true,
+    "auto_enable": false,
+    "block_all_incoming": false,
+    "bluetooth_off": false,
+    "suggest_on_untrusted": true
+  },
   "updates": {
     "app_releases_api": "https://api.github.com/repos/WLDEUS/Parabellum/releases",
     "auto_update_app": false,
