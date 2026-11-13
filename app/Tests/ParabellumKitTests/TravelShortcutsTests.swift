@@ -154,6 +154,23 @@ final class TravelShortcutsTests: XCTestCase {
         rejected("parabellum://resume:8080")
     }
 
+    // MARK: Widget
+
+    func testWidgetSnapshotWireFormatAndPath() throws {
+        var snapshot = WidgetSnapshot.placeholder
+        snapshot.openAlerts = 2
+        snapshot.lastScan = 1_793_000_060
+        let json = try JSONValue(encoding: snapshot)
+        XCTAssertEqual(json["protection_label"]?.stringValue, "Protection active")
+        XCTAssertEqual(json["open_alerts"], .int(2))
+        XCTAssertEqual(json["travel_active"], .bool(false))
+        let back = try JSONDecoder().decode(WidgetSnapshot.self, from: JSONEncoder().encode(snapshot))
+        XCTAssertEqual(back, snapshot)
+        let dir = WidgetSnapshot.containerDataDirectory(home: URL(fileURLWithPath: "/Users/camille"))
+        XCTAssertEqual(dir.path, "/Users/camille/Library/Containers/com.wldeus.parabellum.widget/Data")
+        XCTAssertTrue(WidgetSnapshot.widgetBundleId.hasPrefix("com.wldeus.parabellum."))
+    }
+
     func testURLExamplesAllParse() {
         for example in ParabellumURL.examples {
             XCTAssertNotNil(action(example.url), example.title)

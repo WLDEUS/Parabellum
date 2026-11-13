@@ -225,6 +225,8 @@ final class AppModel: ObservableObject {
         }
         // Travel mode: apply / restore the per-user part when the daemon's state changes.
         travel.activate()
+        // Desktop widget (optional extension): keep its data file fresh.
+        WidgetBridge.shared.start(model: self)
     }
 
     /// Event connection: drives `connection`, keeps state in sync, triggers notifications.
