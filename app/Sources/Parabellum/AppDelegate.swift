@@ -11,6 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // where there is no Info.plist with LSUIElement).
         NSApp.setActivationPolicy(.accessory)
         AppModel.shared.start()
+        // Coffre: auto-lock observers (screen lock, sleep, idle) and first status.
+        AppModel.shared.vault.start()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -23,5 +25,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             AppModel.shared.showMainWindow()
         }
         return true
+    }
+
+    // MARK: Coffre
+
+    /// Lock the vault before quitting (asks before forcing when files are still open).
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let vault = AppModel.shared.vault
+        guard vault.needsLockOnQuit else { return .terminateNow }
+        Task { @MainActor in
+            await vault.lockForQuit()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 }
