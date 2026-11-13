@@ -4,13 +4,15 @@
 //! - [`client`]: synchronous JSON-lines client over the Unix socket,
 //! - [`commands`]: execution + exit codes,
 //! - [`format`]: human-readable tables,
-//! - [`protect`]: `vpn`, `guard` and `privacy` commands.
+//! - [`protect`]: `vpn`, `guard` and `privacy` commands,
+//! - [`vault`]: encrypted vault and secure delete (local, as the user).
 
 pub mod cli;
 pub mod client;
 pub mod commands;
 pub mod format;
 pub mod protect;
+pub mod vault;
 
 pub use cli::Cli;
 pub use commands::{run, Output};

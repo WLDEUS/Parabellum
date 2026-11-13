@@ -27,6 +27,8 @@ thiserror = { workspace = true }
 chrono = { workspace = true }
 toml = { workspace = true }
 libc = { workspace = true }
+# Coffre: hdiutil -plist output.
+plist = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
