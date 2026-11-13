@@ -10,7 +10,7 @@ from ml.features import FeatureRow
 NAMES = [f"feat_{i}" for i in range(8)]
 
 
-def synth_rows(n_pos: int, n_neg: int, seed: int = 0, version: int = 1) -> list[FeatureRow]:
+def synth_rows(n_pos: int, n_neg: int, seed: int = 0, version: int = 1, dated: bool = False) -> list[FeatureRow]:
     """Separable-ish synthetic data; NaN sprinkled in to exercise missing-value handling."""
     rng = np.random.default_rng(seed)
     rows = []
@@ -24,7 +24,12 @@ def synth_rows(n_pos: int, n_neg: int, seed: int = 0, version: int = 1) -> list[
         if i % 11 == 0:
             f[3] = 0.0
         sha = hashlib.sha256(f"{seed}-{i}".encode()).hexdigest()
-        rows.append(FeatureRow(sha, label, version, [float(v) for v in f]))
+        row = FeatureRow(sha, label, version, [float(v) for v in f])
+        if dated:
+            # positives: first seen one hour apart, 12 families; negatives: 40 clean packages
+            row.first_seen = 1_790_000_000 + 3600 * i if label else 0
+            row.family = f"fam{i % 12}" if label else f"clean:pkg{i % 40}"
+        rows.append(row)
     return rows
 
 

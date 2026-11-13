@@ -107,7 +107,13 @@ jobs:
             done
           fi
           if release_exists ml-latest; then
-            gh release download ml-latest -D ml-latest --clobber -p macho_model.json -p model_meta.json
+            assets="$(gh api "repos/$GH_REPO/releases/tags/ml-latest" --jq '.assets[].name')"
+            if grep -qx macho_model.json <<<"$assets"; then
+              gh release download ml-latest -D ml-latest --clobber -p macho_model.json -p model_meta.json
+            fi
+            if grep -qx script_model.json <<<"$assets"; then
+              gh release download ml-latest -D ml-latest --clobber -p script_model.json -p script_model_meta.json
+            fi
           else
             echo "::notice::no ML model released yet"
           fi

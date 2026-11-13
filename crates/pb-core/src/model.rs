@@ -510,6 +510,87 @@ pub struct DbStatus {
     pub clamav_version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ml_model_version: Option<String>,
+    // --- ML model info (ml-files) ---
+    /// The ML classifiers of the threat DB as seen by the engine (Mach-O, scripts). Empty when the
+    /// daemon predates this field or no engine is loaded.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub models: Vec<ModelInfo>,
+}
+
+// --- ML model info (ml-files) ---
+
+/// One ML classifier shipped in the threat DB (`DbStatus.models`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct ModelInfo {
+    /// `macho` | `script`.
+    pub name: String,
+    /// French UI label, e.g. `Classifieur Mach-O`.
+    pub display_name: String,
+    /// Loaded and used by the engine (when `ml.enabled`).
+    pub loaded: bool,
+    /// Model version label (training date `YYYY.MM.DD`, or `sha256:…`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// Feature layout version compiled into the daemon.
+    pub features_version: u32,
+    /// Effective decision threshold on the raw score (max of the model's and `ml.suspicious_threshold`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threshold: Option<f32>,
+    /// Number of trees.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trees: Option<u32>,
+    /// Probability calibration method (`platt`, `isotonic`) when the model ships one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub calibration: Option<String>,
+    /// Unix time of the training run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trained_at: Option<i64>,
+    /// Holdout metrics recorded by the trainer.
+    #[serde(default)]
+    pub metrics: ModelMetrics,
+    /// Why the model is not loaded (French), when it is present but unusable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Holdout evaluation of a model (`ml/*model_meta.json` `metrics`); every field optional.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ModelMetrics {
+    /// ROC AUC (older metadata calls it `auc`).
+    #[serde(alias = "auc", skip_serializing_if = "Option::is_none")]
+    pub roc_auc: Option<f64>,
+    /// Area under the precision-recall curve (average precision).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pr_auc: Option<f64>,
+    /// Detection rate at the shipped threshold.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tpr_at_threshold: Option<f64>,
+    /// False-positive rate at the shipped threshold.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fpr_at_threshold: Option<f64>,
+    /// Best detection rate reachable with at most 0.1 % false positives on the holdout.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tpr_at_fpr_0_1: Option<f64>,
+    /// Brier score of the calibrated probability on the holdout.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub brier: Option<f64>,
+    /// Malicious / clean samples in the whole dataset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub n_pos: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub n_neg: Option<u64>,
+    /// Malicious / clean samples in the holdout.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub holdout_pos: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub holdout_neg: Option<u64>,
+    /// Holdout = malicious samples first seen at or after this Unix time (time split).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub holdout_since: Option<i64>,
+    /// Distinct malware families in the dataset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub families: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

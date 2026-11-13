@@ -1,0 +1,27 @@
+# Extra clean scripts for the script classifier negatives (`python -m ml.train --kind script`), on top
+# of every script of the main clean corpus (pipeline/data/clean_corpus.toml: Homebrew's own pkg with
+# thousands of shell/Ruby scripts, the brew / nvm / rustup / oh-my-zsh installers, the CPython stdlib,
+# the node bottle's npm JavaScript, git's shell/Perl helpers, the ClamAV pkg installer scripts…).
+#
+# Same format and loader as the clean corpus (pipeline/corpus.py). Homebrew bottles are resolved through
+# https://formulae.brew.sh/api/formula/<name>.json and verified against the SHA-256 the API publishes;
+# formulae that disappear are logged and skipped. Licences: each formula's own open-source licence
+# (MIT / BSD / Apache-2.0 / GPL); only feature vectors are kept, nothing is redistributed.
+# Bump `version` when editing (CI cache key).
+
+version = 1
+max_scan_bytes = 104857600
+
+[homebrew]
+bottle_tags = ["all", "arm64_sequoia", "arm64_tahoe", "arm64_sonoma"]
+formulae = [
+  # zsh / bash ecosystems (completions, prompts, plugins: heavy shell, no extension)
+  "zsh-completions", "zsh-syntax-highlighting", "zsh-autosuggestions", "powerlevel10k",
+  "bash-completion@2", "bats-core", "git-extras",
+  # version managers / installers (curl, chmod, eval, PATH edits, shims)
+  "pyenv", "rbenv", "nvm", "asdf",
+  # macOS administration scripts (defaults write, killall, osascript, launchctl, Library paths)
+  "m-cli", "mackup",
+  # Python / JavaScript tooling
+  "ansible", "httpie", "pipx", "pre-commit",
+]

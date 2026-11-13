@@ -166,6 +166,43 @@ fn db_status() -> DbStatus {
         blocked_domains: 402_113,
         clamav_version: Some("ClamAV 1.4.3/27800".into()),
         ml_model_version: Some("2026.10.20".into()),
+        // --- ML model info (ml-files) ---
+        models: vec![
+            ModelInfo {
+                name: "macho".into(),
+                display_name: "Classifieur Mach-O".into(),
+                loaded: true,
+                version: Some("2026.10.20".into()),
+                features_version: 2,
+                threshold: Some(0.9375),
+                trees: Some(214),
+                calibration: Some("isotonic".into()),
+                trained_at: Some(1_792_900_000),
+                metrics: ModelMetrics {
+                    roc_auc: Some(0.9981),
+                    pr_auc: Some(0.9712),
+                    tpr_at_threshold: Some(0.884),
+                    fpr_at_threshold: Some(0.0004),
+                    tpr_at_fpr_0_1: Some(0.902),
+                    brier: Some(0.0213),
+                    n_pos: Some(1830),
+                    n_neg: Some(14_210),
+                    holdout_pos: Some(366),
+                    holdout_neg: Some(2842),
+                    holdout_since: Some(1_790_000_000),
+                    families: Some(41),
+                },
+                error: None,
+            },
+            ModelInfo {
+                name: "script".into(),
+                display_name: "Classifieur de scripts".into(),
+                loaded: false,
+                features_version: 1,
+                error: Some("Modèle incompatible avec cette version de Parabellum : en attente du prochain entraînement.".into()),
+                ..Default::default()
+            },
+        ],
     }
 }
 

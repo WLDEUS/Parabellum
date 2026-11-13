@@ -163,6 +163,7 @@ impl ScanEngine for EngineAdapter {
             yara_rules: s.yara_rules,
             clamav_version: s.clamav_version,
             ml_model_version: s.ml_model_version,
+            models: s.models,
             ..Default::default()
         }
     }
