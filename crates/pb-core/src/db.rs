@@ -20,6 +20,9 @@
 //! ml/macho_model.json                 LightGBM model dump (see pb-ml), optional
 //! ml/model_meta.json                  {"features_version":N,"threshold":f,"version":"YYYY.MM.DD","metrics":{...}}, optional
 //!                                     (`version` optional: defaults to a short SHA-256 of the model file)
+//!                                     + optional "calibration": {"method":"platt"|"isotonic",…} (see pb_ml::Calibration)
+//! ml/script_model.json                script classifier dump (pb_ml script features), optional
+//! ml/script_model_meta.json           same shape as model_meta.json, script feature layout version
 //! osquery/hunting.json                osquery pack (`{"queries":{name:{query,interval,description}}}`), optional
 //! zbt/zero-breach-toolkit.py          Zero Breach Toolkit single-file scanner (Apache-2.0), optional. The pipeline
 //!                                     only ships it after `gpg --verify` of the release's `SHA256SUMS.txt.asc` with

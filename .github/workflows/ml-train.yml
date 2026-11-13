@@ -19,6 +19,16 @@ on:
         description: Do not download samples this run
         type: boolean
         default: false
+      # --- ml-files: script classifier ---
+      kind:
+        description: Which classifier(s) to train
+        type: choice
+        options: [both, macho, script]
+        default: both
+      refeaturize_max:
+        description: Re-download up to N positives stored with an older feature layout (after a FEATURES_VERSION bump)
+        type: number
+        default: 0
 
 permissions:
   contents: write
@@ -76,6 +86,7 @@ jobs:
           gh release download ml-dataset -D prev --clobber -p dataset.csv.gz -p metrics.jsonl || echo "no dataset yet"
           gh release download ml-latest -D current --clobber -p macho_model.json -p model_meta.json || echo "no current model"
       - name: Train
+        if: inputs.kind != 'script'
         env:
           ABUSECH_AUTH_KEY: ${{ secrets.ABUSECH_AUTH_KEY }}
           NO_MALWARE: ${{ (inputs.no_malware || vars.ML_FETCH_MALWARE == '0') && '--no-malware' || '' }}
@@ -84,9 +95,61 @@ jobs:
           # shellcheck disable=SC2086 # NO_MALWARE is empty or one flag
           python -m ml.train --pb-features target/release/pb-features --out out/ml \
             --dataset-in prev/dataset.csv.gz --metrics-in prev/metrics.jsonl --current-model current \
-            --corpus-cache .cache/corpus --max-new-samples "$MAX_NEW" $NO_MALWARE
+            --corpus-cache .cache/corpus --max-new-samples "$MAX_NEW" $NO_MALWARE \
+            --refeaturize-max "${{ inputs.refeaturize_max || 0 }}"
       - name: Publish
+        if: inputs.kind != 'script'
         run: bash ml/publish.sh out/ml
+      # --- ml-files: script classifier (same gate, separate files: script_*) ---
+      - name: Restore script corpus cache
+        if: "!cancelled() && inputs.kind != 'macho'"
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/script-corpus
+          key: script-corpus-v1-${{ hashFiles('ml/data/script_corpus.toml') }}-${{ github.run_id }}
+          restore-keys: |
+            script-corpus-v1-${{ hashFiles('ml/data/script_corpus.toml') }}-
+            script-corpus-v1-
+      - name: Download script dataset and current script model
+        if: "!cancelled() && inputs.kind != 'macho'"
+        run: |
+          mkdir -p prev current
+          gh release download ml-dataset -D prev --clobber -p script_dataset.csv.gz -p script_metrics.jsonl || echo "no script dataset yet"
+          gh release download ml-latest -D current --clobber -p script_model.json -p script_model_meta.json || echo "no current script model"
+      - name: Train scripts
+        if: "!cancelled() && inputs.kind != 'macho'"
+        env:
+          ABUSECH_AUTH_KEY: ${{ secrets.ABUSECH_AUTH_KEY }}
+          NO_MALWARE: ${{ (inputs.no_malware || vars.ML_FETCH_MALWARE == '0') && '--no-malware' || '' }}
+          MAX_NEW: ${{ inputs.max_new_samples || 300 }}
+          REFEATURIZE: ${{ inputs.refeaturize_max || 0 }}
+        run: |
+          # shellcheck disable=SC2086 # NO_MALWARE is empty or one flag
+          python -m ml.train --kind script --pb-features target/release/pb-features --out out/ml-script \
+            --dataset-in prev/script_dataset.csv.gz --metrics-in prev/script_metrics.jsonl --current-model current \
+            --corpus-cache .cache/corpus --script-corpus-cache .cache/script-corpus \
+            --max-new-samples "$MAX_NEW" --refeaturize-max "$REFEATURIZE" $NO_MALWARE
+      - name: Publish scripts
+        if: "!cancelled() && inputs.kind != 'macho'"
+        run: bash ml/publish.sh out/ml-script script
+      - name: Save script corpus cache
+        if: always() && inputs.kind != 'macho' && hashFiles('.cache/script-corpus/**') != ''
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/script-corpus
+          key: script-corpus-v1-${{ hashFiles('ml/data/script_corpus.toml') }}-${{ github.run_id }}
+      - name: Script summary
+        if: always() && inputs.kind != 'macho'
+        run: |
+          [[ -f out/ml-script/script_decision.json ]] || exit 0
+          python - <<'PY'
+          import json, os
+          d = json.load(open("out/ml-script/script_decision.json"))
+          msg = f"ML scripts: trained={d.get('trained')} promoted={d.get('promoted')} pos={d.get('n_pos')} neg={d.get('n_neg')} — {d.get('reason', '')}"
+          print(f"::notice title=ml-train-scripts::{msg}")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("## ML training (scripts)\n```json\n" + json.dumps(d, indent=2) + "\n```\n")
+          PY
       - name: Summary
         if: always()
         run: |

@@ -88,6 +88,7 @@ jobs:
             done
           fi
           gh release download ml-latest -D ml-latest --clobber -p macho_model.json -p model_meta.json || echo "no ML model yet"
+          gh release download ml-latest -D ml-latest --clobber -p script_model.json -p script_model_meta.json || echo "no script ML model yet"
       - name: Build bundle
         env:
           ABUSECH_AUTH_KEY: ${{ secrets.ABUSECH_AUTH_KEY }}

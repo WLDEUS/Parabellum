@@ -5,7 +5,7 @@ Each source is fetched independently. When a fetch fails, its data is carried ov
   state — from the previous bundle's category file;
 * YARA sources from the previous bundle (``yara/<source>__*.yar``);
 * hash sources need no carry-over: the rolling index lives in the state;
-* the ML model from the previous bundle's ``ml/``;
+* the ML models (Mach-O, scripts) from the previous bundle's ``ml/``;
 * Zero Breach Toolkit from the previous bundle's ``zbt/`` (see :mod:`pipeline.zbt`);
 * the broker list and the component pins from the previous bundle's ``privacy/brokers.json`` and
   ``components/pins.json`` (see :mod:`pipeline.privacy`, :mod:`pipeline.pins`).
@@ -246,22 +246,34 @@ def f_local_file(spec: SourceSpec, ctx: Context) -> Fetched:
     return Fetched(files={dest: data}, count=count)
 
 
+#: ML model pairs (model, meta) shipped under ``ml/`` — Mach-O and script classifiers, each optional.
+ML_MODEL_PAIRS = (("macho_model.json", "model_meta.json"), ("script_model.json", "script_model_meta.json"))
+
+
 def f_ml_local(spec: SourceSpec, ctx: Context) -> Fetched:
-    """Latest promoted model (``ml-latest`` release, downloaded by the workflow into ``--ml-dir``)."""
+    """Latest promoted models (``ml-latest`` release, downloaded by the workflow into ``--ml-dir``).
+
+    Each (model, meta) pair is shipped only when both files exist and look valid; at least one pair
+    is required. ``count`` = total trees."""
     if ctx.ml_dir is None:
         raise FetchError("no --ml-dir given")
-    model = ctx.ml_dir / "macho_model.json"
-    meta = ctx.ml_dir / "model_meta.json"
-    if not (model.is_file() and meta.is_file()):
+    files: dict[str, bytes] = {}
+    trees = 0
+    for model_name, meta_name in ML_MODEL_PAIRS:
+        model = ctx.ml_dir / model_name
+        meta = ctx.ml_dir / meta_name
+        if not (model.is_file() and meta.is_file()):
+            continue
+        meta_doc = json.loads(meta.read_text(encoding="utf-8"))
+        model_doc = json.loads(model.read_text(encoding="utf-8"))
+        if "tree_info" not in model_doc or "threshold" not in meta_doc or "features_version" not in meta_doc:
+            raise FetchError(f"ml-latest {model_name} or {meta_name} malformed")
+        files[f"ml/{model_name}"] = model.read_bytes()
+        files[f"ml/{meta_name}"] = meta.read_bytes()
+        trees += len(model_doc.get("tree_info", []))
+    if not files:
         raise FetchError("ml-latest has no model yet")
-    meta_doc = json.loads(meta.read_text(encoding="utf-8"))
-    model_doc = json.loads(model.read_text(encoding="utf-8"))
-    if "tree_info" not in model_doc or "threshold" not in meta_doc or "features_version" not in meta_doc:
-        raise FetchError("ml-latest model or meta malformed")
-    return Fetched(
-        files={"ml/macho_model.json": model.read_bytes(), "ml/model_meta.json": meta.read_bytes()},
-        count=len(model_doc.get("tree_info", [])),
-    )
+    return Fetched(files=files, count=trees)
 
 
 #: Injectable for tests (real GnuPG / real subprocess in CI).
@@ -351,13 +363,11 @@ def carry_over(spec: SourceSpec, state_dir: Path | None, prev_dir: Path | None) 
             out.yara.append(RuleFile(p.name, spec.name, p.read_text(encoding="utf-8")))
         out.count = len(out.yara)
     elif spec.fetcher == "ml_local" and prev_dir is not None:
-        for name in ("macho_model.json", "model_meta.json"):
-            p = prev_dir / "ml" / name
-            if p.is_file():
-                out.files[f"ml/{name}"] = p.read_bytes()
-        out.count = 1 if len(out.files) == 2 else 0
-        if out.count == 0:
-            out.files = {}
+        for pair in ML_MODEL_PAIRS:
+            got = {f"ml/{n}": (prev_dir / "ml" / n) for n in pair}
+            if all(p.is_file() for p in got.values()):
+                out.files.update({k: p.read_bytes() for k, p in got.items()})
+                out.count += 1
     elif spec.fetcher == "zbt_release" and prev_dir is not None:
         out.files = zbt.carry_over(prev_dir)
         prefix = zbt.BUNDLE_INDICATORS + "/"
