@@ -182,6 +182,11 @@ pub enum Command {
         #[command(subcommand)]
         action: PrivacyCmd,
     },
+    /// Intelligence : modèle de domaines (hameçonnage) et anomalies de comportement.
+    Intel {
+        #[command(subcommand)]
+        action: Option<IntelCmd>,
+    },
     /// Afficher les événements du daemon en continu (Ctrl-C pour quitter).
     Watch,
     /// Vérifier que le daemon répond.
@@ -379,6 +384,21 @@ pub enum GuardCmd {
         /// Fichier ou dossier de votre dossier personnel.
         path: PathBuf,
     },
+}
+
+// ----- Intelligence -----
+#[derive(Debug, Subcommand)]
+pub enum IntelCmd {
+    /// État des modèles, apprentissage, anomalies et domaines signalés (défaut).
+    Status,
+    /// Évaluer un nom de domaine avec le modèle (rien n'est enregistré).
+    Score { domain: String },
+    /// Ne plus jamais signaler ni bloquer ce domaine (sudo).
+    AllowDomain { domain: String },
+    /// « C'est normal » : ajouter une anomalie à la référence (sudo).
+    MarkNormal { anomaly_id: String },
+    /// Oublier la référence comportementale et recommencer l'apprentissage (sudo).
+    ResetBaseline,
 }
 
 #[derive(Debug, Subcommand)]
@@ -722,6 +742,16 @@ mod tests {
             Command::Privacy {
                 action: PrivacyCmd::Start { .. }
             }
+        ));
+        assert!(matches!(
+            parse(&["intel", "score", "paypa1.com"]).unwrap().command,
+            Command::Intel {
+                action: Some(IntelCmd::Score { .. })
+            }
+        ));
+        assert!(matches!(
+            parse(&["intel"]).unwrap().command,
+            Command::Intel { action: None }
         ));
         assert!(parse(&["privacy"]).is_err());
         assert!(parse(&["pause"]).is_err());

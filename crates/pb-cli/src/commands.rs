@@ -174,6 +174,7 @@ fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
     match &cli.command {
         Command::Vpn { action } => return crate::protect::vpn(cli, io, &mut c, action),
         Command::Guard { action } => return crate::protect::guard(cli, io, &mut c, action),
+        Command::Intel { action } => return crate::intel::intel(cli, io, &mut c, action),
         Command::Privacy { action } => return crate::protect::privacy(cli, io, &mut c, action),
         Command::Ping => {
             let p: PingResponse = c.call(Request::Ping)?;

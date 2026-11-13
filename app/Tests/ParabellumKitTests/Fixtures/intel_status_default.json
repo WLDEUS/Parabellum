@@ -1,0 +1,28 @@
+{
+  "behavior": {
+    "anomalies_24h": 0,
+    "anomalies_7d": 0,
+    "baseline_bytes": 0,
+    "behaviors": 0,
+    "enabled": false,
+    "events_observed": 0,
+    "learning": false,
+    "learning_progress": 0.0,
+    "profiles": 0,
+    "recent_anomalies": []
+  },
+  "domains": {
+    "alert_threshold": 0.0,
+    "block_enabled": false,
+    "block_threshold": 0.0,
+    "blocked_count": 0,
+    "dns_active": false,
+    "enabled": false,
+    "flagged_total": 0,
+    "model_loaded": false,
+    "scored_24h": 0,
+    "scored_total": 0,
+    "top_flagged": []
+  },
+  "models": []
+}

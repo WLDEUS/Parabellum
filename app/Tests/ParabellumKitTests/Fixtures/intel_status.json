@@ -1,0 +1,79 @@
+{
+  "behavior": {
+    "anomalies_24h": 1,
+    "anomalies_7d": 3,
+    "baseline_bytes": 96512,
+    "behaviors": 3120,
+    "enabled": true,
+    "events_observed": 182345,
+    "learning": false,
+    "learning_progress": 1.0,
+    "learning_started_at": 1761400000,
+    "learning_until": 1762004800,
+    "profiles": 412,
+    "recent_anomalies": [
+      {
+        "alert_id": 42,
+        "details": [
+          "lance un interpréteur inhabituel (zsh)"
+        ],
+        "id": "00ff00ff00ff00ff",
+        "kind": "interpreter",
+        "marked_normal": false,
+        "process": "/Library/Backup/agent",
+        "score": 0.8999999761581421,
+        "summary": "agent lance un interpréteur inhabituel (zsh)",
+        "ts": 1762100000
+      }
+    ]
+  },
+  "domains": {
+    "alert_threshold": 0.9300000071525574,
+    "block_enabled": false,
+    "block_threshold": 0.9900000095367432,
+    "blocked_count": 0,
+    "dns_active": true,
+    "enabled": true,
+    "flagged_total": 2,
+    "model_loaded": true,
+    "scored_24h": 640,
+    "scored_total": 5210,
+    "top_flagged": [
+      {
+        "alert_id": 41,
+        "allowed": false,
+        "blocked": false,
+        "domain": "paypal.com.secure-login.xyz",
+        "first_seen": 1762090000,
+        "hits": 3,
+        "last_seen": 1762090100,
+        "reasons": [
+          "La marque « paypal » apparaît dans un sous-domaine"
+        ],
+        "registrable": "secure-login.xyz",
+        "score": 0.9909999966621399
+      }
+    ]
+  },
+  "models": [
+    {
+      "detail": "LightGBM",
+      "id": "domain",
+      "loaded": true,
+      "metrics": {
+        "auc": 0.995,
+        "fpr_at_threshold": 0.0004
+      },
+      "name": "Domaines (hameçonnage, typosquatting)",
+      "threshold": 0.9300000071525574,
+      "version": "2026.11.13"
+    },
+    {
+      "id": "behavior",
+      "loaded": true,
+      "metrics": {},
+      "name": "Comportement (appris sur ce Mac)",
+      "threshold": 0.75
+    }
+  ]
+}

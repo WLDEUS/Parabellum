@@ -11,6 +11,8 @@ pub mod client;
 pub mod commands;
 pub mod format;
 pub mod protect;
+// Intelligence (domain model + behaviour baseline)
+pub mod intel;
 
 pub use cli::Cli;
 pub use commands::{run, Output};

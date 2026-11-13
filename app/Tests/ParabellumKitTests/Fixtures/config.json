@@ -66,6 +66,16 @@
     "suspend_ransomware": true,
     "trusted_team_ids": []
   },
+  "intelligence": {
+    "anomaly_threshold": 0.75,
+    "behavior_anomaly": true,
+    "block_ml_domains": false,
+    "domain_alerts": true,
+    "domain_allowlist": [],
+    "domain_model": true,
+    "learning_days": 7,
+    "max_anomaly_alerts_per_day": 10
+  },
   "ml": {
     "enabled": true,
     "only_untrusted": true,
