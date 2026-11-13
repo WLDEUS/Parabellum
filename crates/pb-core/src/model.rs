@@ -286,6 +286,11 @@ pub struct Alert {
     /// Network involved (network / VPN alerts), `gw:<router MAC>`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_id: Option<String>,
+    // ----- Monthly report: navigation hint -----
+    /// App section the alert leads to (sidebar id, optionally `?key=value&…`, e.g.
+    /// `report?period=month&offset=1`). Informational nudges set it instead of an action.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open_section: Option<String>,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -988,6 +993,260 @@ pub struct EmailAlias {
     pub provider: crate::config::AliasProvider,
     pub created_at: i64,
     pub active: bool,
+}
+
+// ---------------------------------------------------------------------------------------------
+// Activity report (week / month / custom range)
+// ---------------------------------------------------------------------------------------------
+
+/// Period of an [`ActivityReport`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ReportPeriod {
+    /// Monday 00:00 → next Monday 00:00 (local time).
+    #[default]
+    Week,
+    /// 1st of the month 00:00 → 1st of the next month (local time).
+    Month,
+    /// `from` → `to` inclusive (local dates).
+    Custom,
+}
+
+/// One local day of an [`ActivityReport`] (chart series).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ReportDay {
+    /// `YYYY-MM-DD` (local).
+    pub date: String,
+    pub files_scanned: u64,
+    pub threats: u64,
+    pub quarantined: u64,
+    pub dns_blocked: u64,
+    /// Seconds the VPN tunnel was up that day (sampled every 10 minutes).
+    pub vpn_connected_secs: u64,
+}
+
+/// Everything Parabellum did over a period. -> IPC `report`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct ActivityReport {
+    pub period: ReportPeriod,
+    /// `[start, end)` Unix timestamps (local midnights).
+    pub start: i64,
+    pub end: i64,
+    /// First and last day covered (`YYYY-MM-DD`, inclusive).
+    pub from_date: String,
+    pub to_date: String,
+    /// Seconds of the period already elapsed (the current period is not over yet).
+    pub elapsed_secs: u64,
+    pub generated_at: i64,
+    // Protection
+    pub files_scanned: u64,
+    pub threats_detected: u64,
+    pub quarantined: u64,
+    pub false_positives_reported: u64,
+    pub persistence_new: u64,
+    pub devices_new: u64,
+    /// Scan jobs started in the period (all origins).
+    pub scans: u64,
+    /// Scan jobs per origin (`manual`, `realtime`, `retro_hunt`…).
+    #[serde(default)]
+    pub scans_by_origin: Vec<NamedCount>,
+    #[serde(default)]
+    pub top_detections: Vec<NamedCount>,
+    pub behavior_detections: u64,
+    // Updates
+    pub db_updates: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub db_version: Option<String>,
+    #[serde(default)]
+    pub component_updates: Vec<String>,
+    // Network
+    /// `None` when DNS blocking never ran in the period.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dns_blocked_queries: Option<u64>,
+    /// Most blocked domains (from the dnscrypt-proxy log still on disk; may cover less than the period).
+    #[serde(default)]
+    pub top_blocked_domains: Vec<NamedCount>,
+    pub vpn_connected_secs: u64,
+    pub leak_tests: u64,
+    pub leak_tests_failed: u64,
+    pub network_alerts: u64,
+    // Alerts
+    pub alerts_total: u64,
+    /// Alerts per kind (`malware`, `network`…), most frequent first.
+    #[serde(default)]
+    pub top_alert_kinds: Vec<NamedCount>,
+    // Privacy
+    /// GDPR campaign as it is now (not limited to the period).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub privacy: Option<RemovalSummary>,
+    pub removal_requests_sent: u64,
+    pub removal_requests_completed: u64,
+    pub breaches_found: u64,
+    /// Names of the breaches found in the period.
+    #[serde(default)]
+    pub breach_names: Vec<String>,
+    /// Day-by-day series (charts).
+    #[serde(default)]
+    pub daily: Vec<ReportDay>,
+}
+
+// ---------------------------------------------------------------------------------------------
+// Mac cleaning (`parabellum clean scan|apply --json`, runs as the user, never in the daemon)
+// ---------------------------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CleanCategory {
+    /// `~/Library/Caches/<app>` (Apple / system-critical ones excluded).
+    Caches,
+    /// Chrome, Brave, Edge, Arc, Vivaldi, Firefox, Safari cache folders (never cookies, history, profiles).
+    BrowserCaches,
+    /// Xcode DerivedData / Archives / DeviceSupport, simulator caches, Homebrew, npm, Yarn, pip, cargo, Go…
+    DeveloperCaches,
+    /// `~/Library/Logs` and crash reports older than 30 days.
+    Logs,
+    /// Installers (`.dmg`, `.pkg`, app `.zip`/`.xip`) in Downloads older than 30 days. Never preselected.
+    Downloads,
+    /// Files over 500 MB not used for 6 months in the home folder. Never preselected.
+    LargeFiles,
+    /// Data of applications that are no longer installed.
+    AppLeftovers,
+    /// `~/.Trash` (emptying is always permanent).
+    Trash,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, Default,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum CleanSafety {
+    /// Rebuilt automatically by the app or the system.
+    #[default]
+    Safe,
+    /// Re-downloaded or rebuilt on demand, at a cost (time, bandwidth).
+    Moderate,
+    /// May be user data: listed for review, never preselected.
+    Review,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CleanItem {
+    /// Stable id: 16 hex chars of the SHA-256 of `category|path`.
+    pub id: String,
+    pub path: String,
+    /// Display name (application, project, file name).
+    pub name: String,
+    /// Bytes on disk that cleaning this item would free (only the old files for logs).
+    pub size: u64,
+    pub files: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modified: Option<i64>,
+    /// Last opened (Spotlight `kMDItemLastUsedDate`, else access time), large files only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_used: Option<i64>,
+    pub safety: CleanSafety,
+    /// Preselected in the UI / applied by `clean apply --category`.
+    pub selected: bool,
+    /// An application has files open in it: skipped until it quits.
+    #[serde(default)]
+    pub in_use: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bundle_id: Option<String>,
+    /// Why it is listed / why it is not preselected (French).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CleanCategoryReport {
+    pub category: CleanCategory,
+    pub title: String,
+    pub description: String,
+    pub safety: CleanSafety,
+    /// Sum of the items.
+    pub size: u64,
+    /// Sum of the preselected items.
+    pub selected_size: u64,
+    /// Largest first (at most 1 000).
+    pub items: Vec<CleanItem>,
+    /// More items exist than listed.
+    #[serde(default)]
+    pub truncated: bool,
+    /// Items go to the Trash unless deleted permanently; `false` for the Trash itself.
+    pub trashable: bool,
+    /// Category could not be scanned (permissions…), in French.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CleanScanReport {
+    pub generated_at: i64,
+    pub duration_ms: u64,
+    pub home: String,
+    /// Everything found.
+    pub total_size: u64,
+    /// Preselected items ("X Go récupérables").
+    pub reclaimable_size: u64,
+    pub categories: Vec<CleanCategoryReport>,
+    /// Things skipped (unreadable folders, time budget…), in French.
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CleanPlanItem {
+    pub category: CleanCategory,
+    pub path: String,
+}
+
+/// Input of `clean apply --plan`: paths are re-validated against the category rules before acting.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct CleanPlan {
+    pub items: Vec<CleanPlanItem>,
+    /// Categories deleted permanently instead of moved to the Trash.
+    #[serde(default)]
+    pub permanent: Vec<CleanCategory>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CleanOutcome {
+    MovedToTrash,
+    Deleted,
+    /// Dry run: what would happen.
+    WouldClean,
+    /// Not touched (in use, nothing old enough, vanished).
+    Skipped,
+    /// Refused by the safety rules.
+    Refused,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CleanItemResult {
+    pub category: CleanCategory,
+    pub path: String,
+    pub outcome: CleanOutcome,
+    /// Bytes moved to the Trash or deleted.
+    pub bytes: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trashed_as: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct CleanApplyReport {
+    pub dry_run: bool,
+    /// Freed now (permanent deletions, Trash emptied).
+    pub freed_bytes: u64,
+    /// Moved to the Trash (freed once the Trash is emptied).
+    pub trashed_bytes: u64,
+    pub cleaned: u64,
+    pub skipped: u64,
+    pub failed: u64,
+    pub results: Vec<CleanItemResult>,
 }
 
 #[cfg(test)]

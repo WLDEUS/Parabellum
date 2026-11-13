@@ -61,3 +61,5 @@
 {"id":61,"cmd":"alias_create","label":"boutique"}
 {"id":62,"cmd":"resolve_alert","alert_id":31,"action":"kill_process"}
 {"id":63,"cmd":"resolve_alert","alert_id":31,"action":"resume_process"}
+{"id":64,"cmd":"report","period":"month","offset":1}
+{"id":65,"cmd":"report","period":"custom","offset":0,"from":"2026-10-01","to":"2026-10-15"}

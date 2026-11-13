@@ -176,6 +176,16 @@ async fn basic_commands_and_config() {
     assert_ne!(st.protection, ProtectionState::Paused);
     let r: WeeklyReport = cli_json(&sock, &["report"]).await;
     assert!(r.week_end - r.week_start >= 6 * 86_400);
+    let m: ActivityReport = cli_json(&sock, &["report", "--month", "1"]).await;
+    assert_eq!(m.period, ReportPeriod::Month);
+    assert!(m.from_date.ends_with("-01") && m.end - m.start >= 28 * 86_400);
+    let (code, _, err) = cli(
+        &sock,
+        &["report", "--from", "2026-10-09", "--to", "2026-10-01"],
+    )
+    .await;
+    assert_eq!(code, 2);
+    assert!(err.contains("précède"), "{err}");
     let dns: DnsStatus = cli_json(&sock, &["dns", "status"]).await;
     assert!(!dns.enabled);
     let (code, out, err) = cli(&sock, &["dns", "off"]).await;

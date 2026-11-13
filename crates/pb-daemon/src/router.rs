@@ -482,6 +482,13 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
             )
         }
         Request::Subscribe => Ok(Value::Null),
+        // ----- Activity report -----
+        Request::Report {
+            period,
+            offset,
+            from,
+            to,
+        } => json(&crate::report::build(ctx, period, offset, from, to).await?),
     }
 }
 

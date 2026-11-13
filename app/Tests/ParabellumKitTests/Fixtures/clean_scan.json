@@ -1,0 +1,73 @@
+{
+  "categories": [
+    {
+      "category": "caches",
+      "description": "Recréés automatiquement par les applications.",
+      "items": [
+        {
+          "bundle_id": "com.spotify.client",
+          "files": 1204,
+          "id": "0a1b2c3d4e5f6071",
+          "in_use": false,
+          "modified": 1793400000,
+          "name": "Spotify",
+          "path": "/Users/q/Library/Caches/com.spotify.client",
+          "safety": "safe",
+          "selected": true,
+          "size": 350000000
+        }
+      ],
+      "safety": "safe",
+      "selected_size": 350000000,
+      "size": 350000000,
+      "title": "Caches des applications",
+      "trashable": true,
+      "truncated": false
+    },
+    {
+      "category": "large_files",
+      "description": "Plus de 500 Mo, pas ouverts depuis 6 mois.",
+      "items": [
+        {
+          "files": 1,
+          "id": "1a2b3c4d5e6f7081",
+          "in_use": false,
+          "last_used": 1770000000,
+          "modified": 1770000000,
+          "name": "ubuntu.qcow2",
+          "note": "image de machine virtuelle",
+          "path": "/Users/q/Documents/VM/ubuntu.qcow2",
+          "safety": "review",
+          "selected": false,
+          "size": 5500000000
+        }
+      ],
+      "safety": "review",
+      "selected_size": 0,
+      "size": 5500000000,
+      "title": "Gros fichiers anciens",
+      "trashable": true,
+      "truncated": false
+    },
+    {
+      "category": "trash",
+      "description": "Vider la corbeille est définitif.",
+      "error": "Corbeille illisible : autorise Parabellum dans Accès complet au disque.",
+      "items": [],
+      "safety": "moderate",
+      "selected_size": 0,
+      "size": 0,
+      "title": "Corbeille",
+      "trashable": false,
+      "truncated": false
+    }
+  ],
+  "duration_ms": 8412,
+  "generated_at": 1793500000,
+  "home": "/Users/q",
+  "reclaimable_size": 4350000000,
+  "total_size": 9850000000,
+  "warnings": [
+    "~/Library/Containers : accès refusé"
+  ]
+}

@@ -39,13 +39,62 @@ fn log_files(dir: &Path, base: &str) -> Vec<PathBuf> {
 
 /// Number of blocked queries logged at or after `since` (unix secs). `None` when no log exists.
 pub fn count_blocked_since(dir: &Path, base: &str, since: i64) -> Option<u64> {
+    let mut total = 0u64;
+    let found = for_each_tail(dir, base, |text| {
+        total += text
+            .lines()
+            .filter(|l| line_time(l).is_some_and(|t| t >= since))
+            .count() as u64;
+    });
+    found.then_some(total)
+}
+
+/// Queried name of an LTSV line (lowercase, without the trailing dot).
+pub fn line_qname(line: &str) -> Option<String> {
+    let q = line
+        .split('\t')
+        .find_map(|f| f.strip_prefix("qname:"))?
+        .trim()
+        .trim_end_matches('.');
+    (!q.is_empty()).then(|| q.to_ascii_lowercase())
+}
+
+/// Most blocked names logged in `[from, to)`, most frequent first (ties by name). Covers only what
+/// dnscrypt-proxy still keeps on disk (rotated logs, last 16 MB of each file).
+pub fn top_blocked_between(
+    dir: &Path,
+    base: &str,
+    from: i64,
+    to: i64,
+    limit: usize,
+) -> Vec<(String, u64)> {
+    let mut counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    for_each_tail(dir, base, |text| {
+        for l in text.lines() {
+            if !line_time(l).is_some_and(|t| t >= from && t < to) {
+                continue;
+            }
+            if let Some(q) = line_qname(l) {
+                if counts.len() < 200_000 || counts.contains_key(&q) {
+                    *counts.entry(q).or_default() += 1;
+                }
+            }
+        }
+    });
+    let mut v: Vec<(String, u64)> = counts.into_iter().collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    v.truncate(limit);
+    v
+}
+
+/// Calls `f` with the (tail of the) text of each log file, newest first; `false` when there is none.
+fn for_each_tail(dir: &Path, base: &str, mut f: impl FnMut(&str)) -> bool {
     let files = log_files(dir, base);
     if files.is_empty() {
-        return None;
+        return false;
     }
-    let mut total = 0u64;
-    for f in files {
-        let Ok(mut file) = std::fs::File::open(&f) else {
+    for f_path in files {
+        let Ok(mut file) = std::fs::File::open(&f_path) else {
             continue;
         };
         let len = file.metadata().map(|m| m.len()).unwrap_or(0);
@@ -58,15 +107,15 @@ pub fn count_blocked_since(dir: &Path, base: &str, since: i64) -> Option<u64> {
             continue;
         }
         let text = String::from_utf8_lossy(&buf);
-        let mut lines = text.lines();
-        if start > 0 {
-            lines.next(); // partial first line
-        }
-        total += lines
-            .filter(|l| line_time(l).is_some_and(|t| t >= since))
-            .count() as u64;
+        let text = if start > 0 {
+            // partial first line
+            text.split_once('\n').map(|(_, rest)| rest).unwrap_or("")
+        } else {
+            &text
+        };
+        f(text);
     }
-    Some(total)
+    true
 }
 
 #[cfg(test)]
@@ -97,5 +146,35 @@ mod tests {
             Some(3)
         );
         assert_eq!(line_time("garbage"), None);
+    }
+
+    #[test]
+    fn top_blocked_names() {
+        let d = tempfile::tempdir().unwrap();
+        assert!(top_blocked_between(d.path(), "blocked.log", 0, i64::MAX, 5).is_empty());
+        let line = |t: i64, q: &str| format!("time:{t}\thost:127.0.0.1\tqname:{q}\tmessage:x\n");
+        let text = [
+            line(100, "Ads.Example.com."),
+            line(101, "ads.example.com"),
+            line(102, "t.tracker.net"),
+            line(50, "old.example"),
+            line(300, "late.example"),
+            "garbage\n".to_string(),
+        ]
+        .concat();
+        std::fs::write(d.path().join("blocked.log"), text).unwrap();
+        let top = top_blocked_between(d.path(), "blocked.log", 100, 200, 5);
+        assert_eq!(
+            top,
+            vec![
+                ("ads.example.com".to_string(), 2),
+                ("t.tracker.net".to_string(), 1)
+            ]
+        );
+        assert_eq!(
+            top_blocked_between(d.path(), "blocked.log", 0, 1000, 1).len(),
+            1
+        );
+        assert_eq!(line_qname("time:1\tqname:\tmessage:x"), None);
     }
 }

@@ -1,0 +1,13 @@
+{
+  "actions": [
+    "acknowledge"
+  ],
+  "id": 40,
+  "kind": "system",
+  "message": "15 234 fichiers analysés, 2 menaces, 40 211 requêtes bloquées.",
+  "open_section": "report?period=month&offset=1",
+  "severity": "info",
+  "status": "open",
+  "title": "Ton rapport d'octobre est prêt",
+  "ts": 1793000100
+}

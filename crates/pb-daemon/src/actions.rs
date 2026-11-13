@@ -114,6 +114,7 @@ fn new_alert(
         process_path: None,
         process_started_at: None,
         network_id: None,
+        open_section: None,
         status: AlertStatus::Open,
         actions,
     }
