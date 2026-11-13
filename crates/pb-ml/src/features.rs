@@ -1736,6 +1736,11 @@ fn is_b64(b: u8) -> bool {
 
 impl StructStats {
     pub(crate) fn scan(&mut self, c: &[u8]) {
+        self.scan_with_min(c, MIN_BLOB);
+    }
+
+    /// Like [`StructStats::scan`] with another minimum blob length.
+    pub(crate) fn scan_with_min(&mut self, c: &[u8], min_blob: usize) {
         // base64 run state
         let (mut b64, mut up, mut lo, mut dg) = (0usize, false, false, false);
         let mut hex = 0usize;
@@ -1747,13 +1752,13 @@ impl StructStats {
                 lo |= b.is_ascii_lowercase();
                 dg |= b.is_ascii_digit();
             } else {
-                self.end_b64(b64, up && lo && dg);
+                self.end_b64(b64, up && lo && dg, min_blob);
                 (b64, up, lo, dg) = (0, false, false, false);
             }
             if b.is_ascii_hexdigit() {
                 hex += 1;
             } else {
-                if hex >= MIN_BLOB {
+                if hex >= min_blob {
                     self.hex_blobs += 1;
                 }
                 hex = 0;
@@ -1766,8 +1771,8 @@ impl StructStats {
                 }
             }
         }
-        self.end_b64(b64, up && lo && dg);
-        if hex >= MIN_BLOB {
+        self.end_b64(b64, up && lo && dg, min_blob);
+        if hex >= min_blob {
             self.hex_blobs += 1;
         }
         if let Some(t) = tok_start {
@@ -1777,8 +1782,8 @@ impl StructStats {
         }
     }
 
-    fn end_b64(&mut self, len: usize, mixed: bool) {
-        if len >= MIN_BLOB && mixed {
+    fn end_b64(&mut self, len: usize, mixed: bool, min_blob: usize) {
+        if len >= min_blob && mixed {
             self.b64_blobs += 1;
             self.b64_max = self.b64_max.max(len);
         }
