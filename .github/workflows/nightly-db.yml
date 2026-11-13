@@ -88,6 +88,21 @@ jobs:
             done
           fi
           gh release download ml-latest -D ml-latest --clobber -p macho_model.json -p model_meta.json || echo "no ML model yet"
+      - name: Download domain model
+        # Intelligence: ml-domain-latest (ml-domains.yml) next to the Mach-O model in --ml-dir.
+        # A missing release means "none yet" (the previous bundle's model is carried over); any other
+        # gh error fails the job.
+        run: |
+          mkdir -p ml-latest
+          if err="$(gh release view ml-domain-latest --json tagName 2>&1 >/dev/null)"; then
+            gh release download ml-domain-latest -D ml-latest --clobber \
+              -p domain_model.json -p domain_model_meta.json -p domain_brands.txt -p domain_top.txt
+          elif grep -qi "release not found" <<<"$err"; then
+            echo "no domain model yet"
+          else
+            echo "::error::gh release view ml-domain-latest: $err"
+            exit 1
+          fi
       - name: Build bundle
         env:
           ABUSECH_AUTH_KEY: ${{ secrets.ABUSECH_AUTH_KEY }}
