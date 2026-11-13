@@ -37,6 +37,8 @@ struct SettingsView: View {
                     }
                     privacySection
                     notificationsSection
+                    // Intelligence
+                    intelligenceSection
                 }
                 .formStyle(.grouped)
                 Divider()
@@ -348,6 +350,58 @@ struct SettingsView: View {
             Text("Vols de données et rançongiciels")
         } footer: {
             Text("Les binaires Apple et les applications signées par un Team ID de confiance ne sont jamais arrêtés.")
+        }
+    }
+
+    // MARK: Intelligence
+
+    private var anomalySensitivity: Binding<Double> {
+        Binding(
+            get: { draft.intelligence.anomalyThreshold },
+            set: { draft.intelligence.anomalyThreshold = ($0 * 100).rounded() / 100 }
+        )
+    }
+
+    private var intelligenceSection: some View {
+        Section {
+            Toggle("Analyser les domaines jamais vus (hameçonnage, typosquatting)", isOn: $draft.intelligence.domainModel)
+            Toggle("M'alerter quand un domaine semble malveillant", isOn: $draft.intelligence.domainAlerts)
+                .disabled(!draft.intelligence.domainModel)
+            Toggle("Bloquer les domaines jugés malveillants avec une haute confiance", isOn: $draft.intelligence.blockMlDomains)
+                .disabled(!draft.intelligence.domainModel)
+            StringListEditor(
+                title: "Domaines autorisés (jamais signalés par le modèle)",
+                placeholder: "exemple.fr",
+                items: $draft.intelligence.domainAllowlist
+            )
+            Toggle("Apprendre le fonctionnement normal de ce Mac et signaler les nouveautés", isOn: $draft.intelligence.behaviorAnomaly)
+            Stepper(value: $draft.intelligence.learningDays, in: 1...60) {
+                LabeledContent("Période d'apprentissage", value: "\(draft.intelligence.learningDays) j")
+            }
+            .disabled(!draft.intelligence.behaviorAnomaly)
+            LabeledContent("Seuil d'alerte") {
+                HStack {
+                    Slider(value: anomalySensitivity, in: 0.5...0.95, step: 0.05) {
+                        EmptyView()
+                    } minimumValueLabel: {
+                        Text("Sensible").font(.caption)
+                    } maximumValueLabel: {
+                        Text("Discret").font(.caption)
+                    }
+                    Text(String(format: "%.2f", draft.intelligence.anomalyThreshold))
+                        .monospacedDigit()
+                        .frame(width: 36, alignment: .trailing)
+                }
+            }
+            .disabled(!draft.intelligence.behaviorAnomaly)
+            Stepper(value: $draft.intelligence.maxAnomalyAlertsPerDay, in: 1...100) {
+                LabeledContent("Alertes d'anomalie par jour, au plus", value: "\(draft.intelligence.maxAnomalyAlertsPerDay)")
+            }
+            .disabled(!draft.intelligence.behaviorAnomaly)
+        } header: {
+            Text("Intelligence")
+        } footer: {
+            Text("Les domaines passent par le DNS de Parabellum (blocage DNS activé) et sont évalués en mémoire, jamais enregistrés. La référence comportementale reste sur ce Mac. Le blocage ne s'applique qu'aux verdicts du modèle entraîné, jamais aux règles de secours.")
         }
     }
 
