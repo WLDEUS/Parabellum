@@ -638,6 +638,10 @@ impl Dns for DnsAdapter {
         let sup = pb_dns::DnsSupervisor::new(self.mgr.clone());
         Some(tokio::spawn(sup.run(config, shutdown)))
     }
+
+    fn set_query_tap(&self, tx: tokio::sync::mpsc::Sender<String>) {
+        self.mgr.set_query_tap(tx);
+    }
 }
 
 #[cfg(test)]

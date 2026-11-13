@@ -359,6 +359,8 @@ async fn after_db_change(ctx: &Arc<Ctx>, before: &DbStatus, messages: &mut Vec<S
         hash_retro_check(ctx, 30).await;
     }
     crate::spyware::after_db_update(ctx).await;
+    // Intelligence: the bundle may carry a new domain model.
+    crate::intel::reload_model(ctx).await;
 }
 
 /// Alert when the DB has not been updated successfully for more than 3 days (deduplicated per day).

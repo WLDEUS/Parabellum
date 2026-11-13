@@ -40,3 +40,5 @@ pub mod store;
 pub mod system;
 pub mod virustotal;
 pub mod vpn;
+// Intelligence (domain model + behaviour baseline)
+pub mod intel;

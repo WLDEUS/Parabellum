@@ -1046,6 +1046,19 @@ impl Store {
         let _ = conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()));
         Ok(())
     }
+
+    // ----- Intelligence -----
+
+    /// The `detection` key stored with an alert (intelligence alerts keep their subject there).
+    pub fn alert_detection(&self, id: i64) -> Result<Option<String>> {
+        let conn = self.lock();
+        let v: Option<Option<String>> = conn
+            .query_row("SELECT detection FROM alerts WHERE id = ?1", [id], |r| {
+                r.get(0)
+            })
+            .optional()?;
+        Ok(v.flatten())
+    }
 }
 
 /// Key used to look up alerts linked to an object.

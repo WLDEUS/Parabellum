@@ -2299,6 +2299,7 @@ dependencies = [
  "pb-core",
  "pb-dns",
  "pb-engine",
+ "pb-intel",
  "pb-monitor",
  "pb-privacy",
  "pb-updater",

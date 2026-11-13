@@ -73,6 +73,8 @@ pub struct Ctx {
     pub vpn: std::sync::OnceLock<Arc<pb_vpn::VpnService>>,
     /// GDPR requests, breaches, aliases (set at startup).
     pub privacy: std::sync::OnceLock<Arc<pb_privacy::PrivacyService>>,
+    /// Intelligence: domain model + behaviour baseline state.
+    pub intel: crate::intel::IntelState,
 }
 
 impl Ctx {
@@ -108,6 +110,7 @@ impl Ctx {
             guard: crate::guard::GuardState::default(),
             vpn: std::sync::OnceLock::new(),
             privacy: std::sync::OnceLock::new(),
+            intel: crate::intel::IntelState::default(),
         }
     }
 

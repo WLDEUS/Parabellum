@@ -482,6 +482,26 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
             )
         }
         Request::Subscribe => Ok(Value::Null),
+        // ----- Intelligence -----
+        Request::IntelStatus => json(&crate::intel::status(ctx)),
+        Request::IntelScoreDomain { domain } => json(&crate::intel::score_domain(ctx, &domain)?),
+        Request::IntelAllowDomain { domain } => {
+            crate::intel::allow_domain(ctx, &domain).await?;
+            json(&crate::intel::status(ctx))
+        }
+        Request::IntelMarkNormal { anomaly_id } => {
+            let id = anomaly_id.trim();
+            if id.is_empty() || id.len() > 64 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return Err(bad("identifiant d'anomalie invalide"));
+            }
+            let alert = crate::intel::mark_normal(ctx, id).await?;
+            crate::intel::resolve_linked_alert(ctx, alert).await;
+            json(&crate::intel::status(ctx))
+        }
+        Request::IntelResetBaseline => {
+            crate::intel::reset_baseline(ctx).await;
+            json(&crate::intel::status(ctx))
+        }
     }
 }
 
