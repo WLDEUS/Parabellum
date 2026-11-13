@@ -2,8 +2,9 @@
 //!
 //! Trust chain: the publisher's GPG signature (pinned key [`ZBT_SIGNER_FINGERPRINT`]) is verified by our
 //! nightly CI, which ships the single-file scanner and its indicator cache inside the minisign-signed
-//! threat DB (`zbt/`, see `pb_core::db`). The daemon never runs it as root: the script and a copy of the
-//! indicators go to a fresh private temp directory owned by the console user, and
+//! threat DB (`zbt/`, see `pb_core::db`). The daemon never runs it as root: the script (root-owned,
+//! read-only) and a copy of the indicators (in a `work/` subdirectory, the only part owned by the console
+//! user) go to a fresh temp directory, and
 //! `/usr/bin/python3 -I <script> --no-menu --quick --indicator-cache <copy> --json <out>` runs with that
 //! user's uid/gid (no supplementary groups), a clean environment, background QoS and a 30 min timeout.
 //! ZBT is offline and read-only. Exit codes: 0 clean, 1 error, 2 match, 3 clean but incomplete, 4 no scan.
@@ -471,7 +472,14 @@ pub struct RunOutput {
     pub cancelled: bool,
 }
 
-/// Private work directory owned by `uid:gid`, removed on drop.
+/// Work directory, removed on drop.
+///
+/// Layout (the root-owned parts are never writable by the user, so nothing the daemon later opens as
+/// root can be swapped for a symlink or a hard link):
+/// - `<dir>/` root `0755`
+/// - `<dir>/zero-breach-toolkit.py` root `0644`
+/// - `<dir>/stderr.log` root `0600`, only ever used through the descriptor kept in [`Prepared`]
+/// - `<dir>/work/` user `0700`: cwd, `TMPDIR`, `indicators/` (user `0600` copies) and `report.json`
 struct WorkDir(PathBuf);
 
 impl Drop for WorkDir {
@@ -481,6 +489,18 @@ impl Drop for WorkDir {
     }
 }
 
+/// Output of [`prepare`].
+struct Prepared {
+    wd: WorkDir,
+    /// User-writable subdirectory (`<dir>/work`).
+    work: PathBuf,
+    /// Child's stderr, opened by root before anything is handed to the user.
+    stderr: std::fs::File,
+}
+
+/// Name of the user-writable subdirectory of the work dir.
+const WORK_SUBDIR: &str = "work";
+
 fn work_base() -> PathBuf {
     if cfg!(target_os = "macos") {
         PathBuf::from("/private/tmp")
@@ -489,9 +509,10 @@ fn work_base() -> PathBuf {
     }
 }
 
-/// Copy the script and the indicator cache into a fresh `0700` directory, then hand it to the user.
-fn prepare(db: &Path, meta: &ZbtMeta, uid: u32, gid: u32) -> Result<WorkDir, String> {
-    use std::os::unix::fs::DirBuilderExt;
+/// Copy the script (root-owned, read-only) and the indicator cache (in the user's `work/` subdir) into
+/// a fresh directory under `base`; only `work/` is handed to the user.
+fn prepare(base: &Path, db: &Path, meta: &ZbtMeta, uid: u32, gid: u32) -> Result<Prepared, String> {
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
     let script = read_bounded(&db.join(ZBT_SCRIPT), MAX_SCRIPT_BYTES)
         .map_err(|e| format!("script illisible : {e}"))?;
     let digest = hex::encode(Sha256::digest(&script));
@@ -508,30 +529,42 @@ fn prepare(db: &Path, meta: &ZbtMeta, uid: u32, gid: u32) -> Result<WorkDir, Str
     {
         return Err("signataire inattendu dans zbt/meta.json : exécution refusée".into());
     }
-    let dir = work_base().join(format!("parabellum-zbt-{}", uuid::Uuid::new_v4().simple()));
+    let dir = base.join(format!("parabellum-zbt-{}", uuid::Uuid::new_v4().simple()));
+    // Created 0700 (nothing can be planted while it is being filled), opened up to 0755 at the end.
     std::fs::DirBuilder::new()
         .mode(0o700)
         .create(&dir)
         .map_err(|e| format!("{} : {e}", dir.display()))?;
     let wd = WorkDir(dir.clone());
-    let ind = dir.join("indicators");
-    std::fs::DirBuilder::new()
-        .mode(0o700)
-        .create(&ind)
-        .map_err(|e| e.to_string())?;
-    let write = |p: &Path, data: &[u8]| -> Result<(), String> {
-        use std::io::Write;
-        use std::os::unix::fs::OpenOptionsExt;
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(p)
-            .map_err(|e| format!("{} : {e}", p.display()))?;
-        f.write_all(data).map_err(|e| e.to_string())?;
-        std::os::unix::fs::fchown(&f, Some(uid), Some(gid)).map_err(|e| format!("chown : {e}"))
-    };
-    write(&dir.join("zero-breach-toolkit.py"), &script)?;
+    let work = dir.join(WORK_SUBDIR);
+    let ind = work.join("indicators");
+    for d in [&work, &ind] {
+        std::fs::DirBuilder::new()
+            .mode(0o700)
+            .create(d)
+            .map_err(|e| e.to_string())?;
+    }
+    // `owner`: None = stays root's.
+    let write =
+        |p: &Path, data: &[u8], mode: u32, owner: Option<(u32, u32)>| -> Result<(), String> {
+            use std::io::Write;
+            let mut f = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(mode)
+                .open(p)
+                .map_err(|e| format!("{} : {e}", p.display()))?;
+            f.write_all(data).map_err(|e| e.to_string())?;
+            if let Some((u, g)) = owner {
+                std::os::unix::fs::fchown(&f, Some(u), Some(g))
+                    .map_err(|e| format!("chown : {e}"))?;
+            }
+            // Explicit: the umask must not tighten the script below 0644.
+            use std::os::unix::fs::PermissionsExt;
+            f.set_permissions(std::fs::Permissions::from_mode(mode))
+                .map_err(|e| e.to_string())
+        };
+    write(&dir.join("zero-breach-toolkit.py"), &script, 0o644, None)?;
     let src = db.join(ZBT_INDICATORS_DIR);
     let mut total = 0u64;
     if let Ok(rd) = std::fs::read_dir(&src) {
@@ -548,26 +581,81 @@ fn prepare(db: &Path, meta: &ZbtMeta, uid: u32, gid: u32) -> Result<WorkDir, Str
             if total > MAX_INDICATORS_BYTES {
                 return Err("cache d'indicateurs trop volumineux".into());
             }
-            write(&ind.join(n), &data)?;
+            write(&ind.join(n), &data, 0o600, Some((uid, gid)))?;
         }
     }
-    write(&dir.join("stderr.log"), b"")?;
+    let stderr = std::fs::OpenOptions::new()
+        .read(true)
+        .append(true)
+        .create_new(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(dir.join("stderr.log"))
+        .map_err(|e| format!("stderr.log : {e}"))?;
+    // Hand over `work/` only once it is complete; the parent never leaves root.
     std::os::unix::fs::chown(&ind, Some(uid), Some(gid)).map_err(|e| format!("chown : {e}"))?;
-    std::os::unix::fs::chown(&dir, Some(uid), Some(gid)).map_err(|e| format!("chown : {e}"))?;
-    Ok(wd)
+    std::os::unix::fs::chown(&work, Some(uid), Some(gid)).map_err(|e| format!("chown : {e}"))?;
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(Prepared { wd, work, stderr })
 }
 
-fn tail(path: &Path, n: usize) -> String {
-    match read_bounded(path, 8 * 1024 * 1024) {
-        Ok(d) => {
-            let start = d.len().saturating_sub(n);
-            String::from_utf8_lossy(&d[start..])
-                .chars()
-                .filter(|c| !c.is_control() || *c == '\n')
-                .collect()
-        }
-        Err(_) => String::new(),
+/// Open a file the user's process produced (in its writable `work/` dir) for reading as root:
+/// no symlink (`O_NOFOLLOW`), no blocking on a FIFO (`O_NONBLOCK`), then on the open descriptor a
+/// regular file with a single link owned by `uid` (a hard link to a root-only file is refused).
+fn open_user_output(path: &Path, uid: u32) -> std::io::Result<std::fs::File> {
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+    let f = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
+        .open(path)?;
+    let m = f.metadata()?;
+    if !m.is_file() {
+        return Err(std::io::Error::other("not a regular file"));
     }
+    if m.nlink() != 1 {
+        return Err(std::io::Error::other("hard-linked file refused"));
+    }
+    if m.uid() != uid {
+        return Err(std::io::Error::other("unexpected owner"));
+    }
+    Ok(f)
+}
+
+/// Bounded read of a user-produced file (see [`open_user_output`]).
+fn read_user_output(path: &Path, uid: u32, max: u64) -> std::io::Result<Vec<u8>> {
+    let f = open_user_output(path, uid)?;
+    let mut buf = Vec::new();
+    f.take(max + 1).read_to_end(&mut buf)?;
+    if buf.len() as u64 > max {
+        return Err(std::io::Error::other(format!("larger than {max} bytes")));
+    }
+    Ok(buf)
+}
+
+/// Last `n` bytes written to `f` (positioned read: the shared offset is not touched).
+fn tail(f: &std::fs::File, n: usize) -> String {
+    use std::os::unix::fs::FileExt;
+    let Ok(len) = f.metadata().map(|m| m.len()) else {
+        return String::new();
+    };
+    let start = len.saturating_sub(n as u64);
+    let mut d = vec![0u8; (len - start) as usize];
+    let mut got = 0;
+    while got < d.len() {
+        match f.read_at(&mut d[got..], start + got as u64) {
+            Ok(0) | Err(_) => break,
+            Ok(k) => got += k,
+        }
+    }
+    d.truncate(got);
+    String::from_utf8_lossy(&d)
+        .chars()
+        .filter(|c| !c.is_control() || *c == '\n')
+        .collect()
 }
 
 /// Run ZBT once as the console user.
@@ -597,17 +685,16 @@ pub async fn execute(ctx: &Arc<Ctx>, cancel: &AtomicBool) -> Result<RunOutput, S
         }
     }
     let (db2, meta2, uid) = (db.clone(), meta.clone(), user.uid);
-    let wd = tokio::task::spawn_blocking(move || prepare(&db2, &meta2, uid, gid))
-        .await
-        .map_err(|e| e.to_string())??;
+    let prepared =
+        tokio::task::spawn_blocking(move || prepare(&work_base(), &db2, &meta2, uid, gid))
+            .await
+            .map_err(|e| e.to_string())??;
+    let Prepared { wd, work, stderr } = prepared;
     let dir = wd.0.clone();
     let script = dir.join("zero-breach-toolkit.py");
-    let report = dir.join("report.json");
-    let stderr_path = dir.join("stderr.log");
-    let stderr = std::fs::OpenOptions::new()
-        .append(true)
-        .open(&stderr_path)
-        .map_err(|e| e.to_string())?;
+    let report = work.join("report.json");
+    // The child gets a duplicate of the descriptor root opened; root reads it back through `stderr`.
+    let child_stderr = stderr.try_clone().map_err(|e| e.to_string())?;
     let zbt_args: Vec<std::ffi::OsString> = vec![
         "-I".into(),
         script.into_os_string(),
@@ -615,7 +702,7 @@ pub async fn execute(ctx: &Arc<Ctx>, cancel: &AtomicBool) -> Result<RunOutput, S
         "--no-banner".into(),
         "--quick".into(),
         "--indicator-cache".into(),
-        dir.join("indicators").into_os_string(),
+        work.join("indicators").into_os_string(),
         "--json".into(),
         report.clone().into_os_string(),
     ];
@@ -628,17 +715,17 @@ pub async fn execute(ctx: &Arc<Ctx>, cancel: &AtomicBool) -> Result<RunOutput, S
         tokio::process::Command::new(PYTHON)
     };
     cmd.args(&zbt_args)
-        .current_dir(&dir)
+        .current_dir(&work)
         .env_clear()
         .env("HOME", &user.home)
         .env("USER", &user.name)
         .env("LOGNAME", &user.name)
         .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
-        .env("TMPDIR", &dir)
+        .env("TMPDIR", &work)
         .env("LANG", "en_US.UTF-8")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::from(stderr))
+        .stderr(std::process::Stdio::from(child_stderr))
         .kill_on_drop(true)
         // std drops every supplementary group when switching from root (setgroups(0)).
         .uid(user.uid)
@@ -669,9 +756,12 @@ pub async fn execute(ctx: &Arc<Ctx>, cancel: &AtomicBool) -> Result<RunOutput, S
             }
         }
     }
-    let (rp, sp) = (report.clone(), stderr_path.clone());
+    let rp = report.clone();
     let (rep, err) = tokio::task::spawn_blocking(move || {
-        (read_bounded(&rp, MAX_REPORT_BYTES).ok(), tail(&sp, 2048))
+        (
+            read_user_output(&rp, uid, MAX_REPORT_BYTES).ok(),
+            tail(&stderr, 2048),
+        )
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -1038,23 +1128,115 @@ mod tests {
         let meta = read_meta(d.path()).unwrap();
         let uid = crate::system::euid();
         let gid = unsafe { libc::getegid() };
-        let wd = prepare(d.path(), &meta, uid, gid).unwrap();
-        let dir = wd.0.clone();
+        let base = tempfile::tempdir().unwrap();
+        let p = prepare(base.path(), d.path(), &meta, uid, gid).unwrap();
+        let dir = p.wd.0.clone();
+        assert_eq!(p.work, dir.join(WORK_SUBDIR));
         assert!(dir.join("zero-breach-toolkit.py").is_file());
-        assert!(dir.join("indicators/manifest.json").is_file());
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mode = std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
-            assert_eq!(mode, 0o700);
-        }
-        drop(wd);
+        assert!(p.work.join("indicators/manifest.json").is_file());
+        drop(p);
         assert!(!dir.exists(), "work dir removed");
 
         // Tampered script: refused.
         let d2 = tempfile::tempdir().unwrap();
         write_bundle(d2.path(), b"evil", Some(&"0".repeat(64)));
         let meta = read_meta(d2.path()).unwrap();
-        assert!(prepare(d2.path(), &meta, uid, gid).is_err());
+        assert!(prepare(base.path(), d2.path(), &meta, uid, gid).is_err());
+    }
+
+    /// Only `work/` (and what it holds) belongs to the user; everything root later opens stays root's.
+    #[test]
+    fn prepare_ownership_and_modes() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        if crate::system::euid() != 0 {
+            eprintln!("skipped: needs root to chown");
+            return;
+        }
+        let d = tempfile::tempdir().unwrap();
+        write_bundle(d.path(), b"print('hi')\n", None);
+        let meta = read_meta(d.path()).unwrap();
+        let (uid, gid) = (4242u32, 4243u32);
+        let base = tempfile::tempdir().unwrap();
+        let p = prepare(base.path(), d.path(), &meta, uid, gid).unwrap();
+        let dir = p.wd.0.clone();
+        let check = |path: &Path, owner: u32, mode: u32| {
+            let m = std::fs::symlink_metadata(path).unwrap();
+            assert_eq!(m.uid(), owner, "{} owner", path.display());
+            assert_eq!(
+                m.permissions().mode() & 0o777,
+                mode,
+                "{} mode",
+                path.display()
+            );
+        };
+        check(&dir, 0, 0o755);
+        check(&dir.join("zero-breach-toolkit.py"), 0, 0o644);
+        check(&dir.join("stderr.log"), 0, 0o600);
+        check(&p.work, uid, 0o700);
+        check(&p.work.join("indicators"), uid, 0o700);
+        check(&p.work.join("indicators/manifest.json"), uid, 0o600);
+        assert_eq!(std::fs::metadata(&p.work).unwrap().gid(), gid);
+        // The kept descriptor is the file in the root-owned dir.
+        let a = p.stderr.metadata().unwrap();
+        let b = std::fs::metadata(dir.join("stderr.log")).unwrap();
+        assert_eq!((a.dev(), a.ino()), (b.dev(), b.ino()));
+    }
+
+    #[test]
+    fn stderr_tail_reads_kept_descriptor() {
+        use std::io::Write;
+        let d = tempfile::tempdir().unwrap();
+        let path = d.path().join("stderr.log");
+        let f = std::fs::OpenOptions::new()
+            .read(true)
+            .append(true)
+            .create_new(true)
+            .open(&path)
+            .unwrap();
+        let mut child = f.try_clone().unwrap();
+        child
+            .write_all(b"line one\nTraceback\x1b[0m: boom")
+            .unwrap();
+        // Last 13 bytes, control characters (ESC) dropped.
+        assert_eq!(tail(&f, 13), "ack[0m: boom");
+        assert_eq!(tail(&f, 4096), "line one\nTraceback[0m: boom");
+        // Swapping the path afterwards does not change what is read.
+        std::fs::remove_file(&path).unwrap();
+        std::os::unix::fs::symlink("/etc/hostname", &path).unwrap();
+        assert!(tail(&f, 4096).ends_with("boom"));
+    }
+
+    #[test]
+    fn user_output_open_is_safe() {
+        use std::os::unix::fs::MetadataExt;
+        let d = tempfile::tempdir().unwrap();
+        let me = crate::system::euid();
+        let ok = d.path().join("report.json");
+        std::fs::write(&ok, b"{}").unwrap();
+        assert_eq!(read_user_output(&ok, me, 1024).unwrap(), b"{}");
+        // Too large.
+        assert!(read_user_output(&ok, me, 1).is_err());
+        // Wrong owner (e.g. a root file when the user is someone else).
+        assert!(open_user_output(&ok, me.wrapping_add(1)).is_err());
+        // Symlink to a secret.
+        let secret = d.path().join("secret");
+        std::fs::write(&secret, b"root only").unwrap();
+        let link = d.path().join("link.json");
+        std::os::unix::fs::symlink(&secret, &link).unwrap();
+        assert!(open_user_output(&link, me).is_err());
+        // Hard link to a secret (same owner here, refused on the link count).
+        let hard = d.path().join("hard.json");
+        std::fs::hard_link(&secret, &hard).unwrap();
+        assert_eq!(std::fs::metadata(&hard).unwrap().nlink(), 2);
+        assert!(open_user_output(&hard, me).is_err());
+        // Directory and FIFO: refused without blocking.
+        assert!(open_user_output(d.path(), me).is_err());
+        let fifo = d.path().join("fifo.json");
+        let c = std::ffi::CString::new(fifo.as_os_str().as_encoded_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
+        assert!(open_user_output(&fifo, me).is_err());
+        // Missing.
+        assert!(open_user_output(&d.path().join("none"), me).is_err());
     }
 
     #[test]
