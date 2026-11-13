@@ -1146,10 +1146,13 @@ mod tests {
                 text.chars().take(80).collect::<String>()
             );
         }
-        assert_eq!(priority, 7, "4 exec lines (one minimal) + btm + mount + unmount");
+        assert_eq!(
+            priority, 7,
+            "4 exec lines (one minimal) + btm + mount + unmount"
+        );
         // A quoted key inside an argument string is escaped, so it cannot fake a priority line.
         assert!(!is_priority_line(
-            br#"{"event_type":13,"args":[""event_type":9"]}"#
+            br#"{"args":["\"event_type\":9"],"event_type":13}"#
         ));
         assert!(is_priority_line(br#"{"event_type": 9}"#));
         assert!(!is_priority_line(b"{}"));
