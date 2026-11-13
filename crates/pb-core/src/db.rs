@@ -20,6 +20,11 @@
 //! ml/macho_model.json                 LightGBM model dump (see pb-ml), optional
 //! ml/model_meta.json                  {"features_version":N,"threshold":f,"version":"YYYY.MM.DD","metrics":{...}}, optional
 //!                                     (`version` optional: defaults to a short SHA-256 of the model file)
+//! ml/domain_model.json                phishing / malicious-domain LightGBM dump (see pb-intel), optional
+//! ml/domain_model_meta.json           {"features_version":N,"threshold":f,"block_threshold":f,"version":"…",
+//!                                     "brands_sha256":"…","metrics":{...}}, optional
+//! ml/domain_brands.txt                brand list the domain model was trained with (pipeline/data/brands.txt)
+//! ml/domain_top.txt                   popular registrable domains never scored by the domain model
 //! osquery/hunting.json                osquery pack (`{"queries":{name:{query,interval,description}}}`), optional
 //! zbt/zero-breach-toolkit.py          Zero Breach Toolkit single-file scanner (Apache-2.0), optional. The pipeline
 //!                                     only ships it after `gpg --verify` of the release's `SHA256SUMS.txt.asc` with
