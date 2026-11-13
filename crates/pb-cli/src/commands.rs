@@ -170,6 +170,10 @@ fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
     if crate::protect::is_local(&cli.command) {
         return crate::protect::local(cli, io);
     }
+    // Coffre & effacement sûr: local, never through the daemon.
+    if let Command::Vault(args) = &cli.command {
+        return crate::vault::command::run(cli, io, args);
+    }
     let mut c = connect(cli)?;
     match &cli.command {
         Command::Vpn { action } => return crate::protect::vpn(cli, io, &mut c, action),
@@ -435,6 +439,8 @@ fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
                 io.out.flush()?;
             }
         }
+        // Coffre & effacement sûr (handled above, before connecting).
+        Command::Vault(args) => return crate::vault::command::run(cli, io, args),
     }
     Ok(EXIT_OK)
 }

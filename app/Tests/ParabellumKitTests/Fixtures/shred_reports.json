@@ -1,0 +1,24 @@
+[
+  {
+    "bytes": 52000,
+    "dirs": 0,
+    "files": 1,
+    "not_overwritten": 0,
+    "outcome": "deleted",
+    "overwritten_bytes": 52000,
+    "path": "/Users/camille/Downloads/relevé.pdf",
+    "warnings": [],
+    "zone": "home"
+  },
+  {
+    "bytes": 0,
+    "dirs": 0,
+    "error": "hors de votre dossier personnel et des volumes externes : refusé",
+    "files": 0,
+    "not_overwritten": 0,
+    "outcome": "refused",
+    "overwritten_bytes": 0,
+    "path": "/System/Library",
+    "warnings": []
+  }
+]

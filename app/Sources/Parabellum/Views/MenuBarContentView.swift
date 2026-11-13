@@ -196,6 +196,9 @@ struct MenuBarContentView: View {
                 .disabled(model.isBusy("protection"))
                 .padding(.vertical, 2)
             }
+
+            // Coffre
+            VaultMenuRow(store: model.vault)
         }
     }
 

@@ -186,6 +186,10 @@ pub enum Command {
     Watch,
     /// Vérifier que le daemon répond.
     Ping,
+    // --- Coffre & effacement sûr (local, as the user) ---
+    /// Coffre chiffré (image APFS chiffrée AES-256) et effacement sûr, sans sudo. Les mots de passe
+    /// sont lus sur l'entrée standard (ou demandés sans écho).
+    Vault(crate::vault::command::VaultArgs),
 }
 
 #[derive(Debug, Args)]
