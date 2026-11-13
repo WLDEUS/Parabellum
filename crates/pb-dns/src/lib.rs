@@ -55,6 +55,9 @@ pub const RUNTIME_DIR: &str = "runtime";
 pub const PIDFILE: &str = "dnscrypt-proxy.pid";
 /// Blocked-queries log (LTSV) inside [`RUNTIME_DIR`], rotated by dnscrypt-proxy.
 pub const BLOCKED_LOG_FILE: &str = "blocked.log";
+/// `dns/ml-blocked.txt`: domains blocked by the intelligence domain model (opt-in), written by the
+/// daemon, merged into the blocked names by every list rebuild (absent = none).
+pub const ML_BLOCKED_FILE: &str = "ml-blocked.txt";
 
 /// The managed dnscrypt-proxy binary (installed by pb-updater): `components/dnscrypt-proxy/dnscrypt-proxy`.
 pub fn proxy_binary(paths: &Paths) -> PathBuf {

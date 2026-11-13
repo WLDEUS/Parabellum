@@ -129,6 +129,8 @@ extension AlertAction {
         case .killProcess: return "Arrêter le processus"
         case .resumeProcess: return "Reprendre le processus"
         case .trustNetwork: return "Faire confiance à ce réseau"
+        case .allowDomain: return "Autoriser ce domaine"
+        case .markNormal: return "C'est normal"
         case .unknown: return "Action inconnue"
         }
     }

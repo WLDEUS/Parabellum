@@ -28,6 +28,8 @@ public struct Config: Codable, Sendable, Hashable {
     public var dataRemoval = DataRemovalConfig()
     public var breach = BreachConfig()
     public var aliases = AliasConfig()
+    /// Intelligence: domain model + behavioural anomaly detection (`[intelligence]`).
+    public var intelligence = IntelligenceConfig()
 
     public init() {}
 
@@ -38,6 +40,7 @@ public struct Config: Codable, Sendable, Hashable {
         case networkGuard = "network"
         case dataRemoval = "data_removal"
         case breach, aliases
+        case intelligence
     }
 
     public init(from decoder: Decoder) throws {
@@ -60,6 +63,7 @@ public struct Config: Codable, Sendable, Hashable {
         dataRemoval = try c.decodeOr(.dataRemoval, dataRemoval)
         breach = try c.decodeOr(.breach, breach)
         aliases = try c.decodeOr(.aliases, aliases)
+        intelligence = try c.decodeOr(.intelligence, intelligence)
     }
 
     /// Same rules as `Config::validate` in Rust (messages in French). Empty = valid.
@@ -93,6 +97,7 @@ public struct Config: Codable, Sendable, Hashable {
             errors.append("L'intervalle d'énumération de la persistance ne peut pas être négatif.")
         }
         errors.append(contentsOf: protectionValidationErrors())
+        errors.append(contentsOf: intelligence.validationErrors())
         return errors
     }
 }

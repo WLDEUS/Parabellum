@@ -70,6 +70,14 @@ final class ProtocolTests: XCTestCase {
             .aliasCreate(label: "boutique"),
             .resolveAlert(alertId: 31, action: .killProcess),
             .resolveAlert(alertId: 31, action: .resumeProcess),
+            // Intelligence
+            .intelStatus,
+            .intelScoreDomain(domain: "paypa1-login.xyz"),
+            .intelAllowDomain(domain: "example.org"),
+            .intelMarkNormal(anomalyId: "00ff00ff00ff00ff"),
+            .intelResetBaseline,
+            .resolveAlert(alertId: 41, action: .allowDomain),
+            .resolveAlert(alertId: 42, action: .markNormal),
         ]
     }
 

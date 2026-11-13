@@ -54,6 +54,8 @@ pub struct DnsManager {
     /// Listen address whose last probe answered: a healthy proxy is not re-probed for a few seconds
     /// (failed probes are never cached, so a toggle sees the proxy come up at once).
     probe_ok: TtlCell<String>,
+    /// Intelligence: receives every query name logged by the proxy (bounded, lossy).
+    query_tap: std::sync::Mutex<Option<tokio::sync::mpsc::Sender<String>>>,
 }
 
 /// How long `queries_blocked_24h` is cached.
@@ -107,6 +109,11 @@ fn rebuild_lists_at(
         }
         b.add_file(&dir.join("dns").join("allowlist.txt"), true)?;
         list_version = bundle_version(dir);
+    }
+    // Intelligence: high-confidence domain-model verdicts (file present only when blocking is opted in).
+    let ml = dns_dir.join(crate::ML_BLOCKED_FILE);
+    if ml.is_file() {
+        b.add_file(&ml, false)?;
     }
     b.add_entries(&cfg.custom_block, false);
     b.add_entries(&cfg.custom_allow, true);
@@ -173,7 +180,21 @@ impl DnsManager {
             trust_boundary: PathBuf::from("/"),
             blocked_24h: TtlCell::new(BLOCKED_COUNT_TTL),
             probe_ok: TtlCell::new(PROBE_OK_TTL),
+            query_tap: std::sync::Mutex::new(None),
         }
+    }
+
+    /// Intelligence: send every query name the proxy logs to `tx` (names are dropped, never queued
+    /// without bound, when the receiver is slow: DNS resolution never waits for the consumer).
+    pub fn set_query_tap(&self, tx: tokio::sync::mpsc::Sender<String>) {
+        *self.query_tap.lock().unwrap_or_else(|p| p.into_inner()) = Some(tx);
+    }
+
+    pub(crate) fn query_tap(&self) -> Option<tokio::sync::mpsc::Sender<String>> {
+        self.query_tap
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
     }
 
     #[cfg(test)]

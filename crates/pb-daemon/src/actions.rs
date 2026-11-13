@@ -734,6 +734,10 @@ pub async fn resolve_alert(
             alert.status = AlertStatus::Resolved;
             alert.actions.clear();
         }
+        // Intelligence
+        AlertAction::AllowDomain | AlertAction::MarkNormal => {
+            crate::intel::resolve_alert_action(ctx, &mut alert, action).await?;
+        }
     }
     // Re-read: the sub-actions may have updated this alert (e.g. restore resolves linked alerts).
     let fresh_id = alert.id;

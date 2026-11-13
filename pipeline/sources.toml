@@ -365,3 +365,15 @@ component = "sing-box"
 repo = "SagerNet/sing-box"
 min_version = "1.12.0"
 max_major = 2
+
+# ------------------------------------------------------------------------------------------------
+# Intelligence: phishing / malicious-domain model (ml-domains.yml, daily), downloaded from the
+# `ml-domain-latest` release into --ml-dir. Ships ml/domain_model.json + meta + the brand list it was
+# trained with + the popular-domain skip list (Tranco-derived: no licence stated by Tranco itself;
+# its inputs include Cloudflare Radar CC BY-NC 4.0 and CrUX CC BY-SA 4.0 — fine for personal use).
+[[source]]
+name = "ml-domain"
+kind = "ml"
+fetcher = "ml_domain_local"
+url = "https://github.com/WLDEUS/Parabellum/releases/tag/ml-domain-latest"
+license = "MIT (model); Tranco-derived popular list, see above"

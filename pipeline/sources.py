@@ -14,6 +14,7 @@ The source is then reported with ``fresh: false`` and its last successful ``fetc
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -286,6 +287,31 @@ def f_ml_local(spec: SourceSpec, ctx: Context) -> Fetched:
     return Fetched(files=files, count=trees)
 
 
+#: Domain model files (``ml-domain-latest`` release, see ml/domains/), all under ``ml/`` in the bundle.
+DOMAIN_MODEL_FILES = ("domain_model.json", "domain_model_meta.json", "domain_brands.txt", "domain_top.txt")
+
+
+def f_ml_domain_local(spec: SourceSpec, ctx: Context) -> Fetched:
+    """Latest promoted domain model (downloaded by the workflow into ``--ml-dir`` next to the Mach-O one)."""
+    if ctx.ml_dir is None:
+        raise FetchError("no --ml-dir given")
+    paths = {name: ctx.ml_dir / name for name in DOMAIN_MODEL_FILES}
+    if not all(p.is_file() for p in paths.values()):
+        raise FetchError("ml-domain-latest has no complete domain model yet")
+    meta = json.loads(paths["domain_model_meta.json"].read_text(encoding="utf-8"))
+    model = json.loads(paths["domain_model.json"].read_text(encoding="utf-8"))
+    if "tree_info" not in model or "threshold" not in meta or "features_version" not in meta:
+        raise FetchError("domain model or meta malformed")
+    want = str(meta.get("brands_sha256") or "")
+    have = hashlib.sha256(paths["domain_brands.txt"].read_bytes()).hexdigest()
+    if want and want != have:
+        raise FetchError("domain_brands.txt does not match the model's brands_sha256")
+    return Fetched(
+        files={f"ml/{name}": p.read_bytes() for name, p in paths.items()},
+        count=len(model.get("tree_info", [])),
+    )
+
+
 #: Injectable for tests (real GnuPG / real subprocess in CI).
 ZBT_VERIFIER: Callable[[], zbt.Verifier] = zbt.GpgVerifier
 ZBT_RUNNER: zbt.Runner = zbt.run_update
@@ -346,6 +372,7 @@ FETCHERS: dict[str, Callable[[SourceSpec, Context], Fetched]] = {
     "zbt_release": f_zbt_release,
     "privacy_brokers": f_privacy_brokers,
     "component_pin": f_component_pin,
+    "ml_domain_local": f_ml_domain_local,
 }
 
 
@@ -378,6 +405,14 @@ def carry_over(spec: SourceSpec, state_dir: Path | None, prev_dir: Path | None) 
             if all(p.is_file() for p in got.values()):
                 out.files.update({k: p.read_bytes() for k, p in got.items()})
                 out.count += 1
+    elif spec.fetcher == "ml_domain_local" and prev_dir is not None:
+        for name in DOMAIN_MODEL_FILES:
+            p = prev_dir / "ml" / name
+            if p.is_file():
+                out.files[f"ml/{name}"] = p.read_bytes()
+        out.count = 1 if len(out.files) == len(DOMAIN_MODEL_FILES) else 0
+        if out.count == 0:
+            out.files = {}
     elif spec.fetcher == "zbt_release" and prev_dir is not None:
         out.files = zbt.carry_over(prev_dir)
         prefix = zbt.BUNDLE_INDICATORS + "/"

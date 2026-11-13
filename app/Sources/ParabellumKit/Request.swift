@@ -134,6 +134,18 @@ public enum Request: Sendable, Equatable {
     /// → `EmailAlias`
     case aliasCreate(label: String)
 
+    // MARK: Intelligence
+    /// -> `IntelligenceStatus`
+    case intelStatus
+    /// Score one domain now (read-only). -> `DomainVerdictInfo`
+    case intelScoreDomain(domain: String)
+    /// Never flag / block this domain again. Admin. -> `IntelligenceStatus`
+    case intelAllowDomain(domain: String)
+    /// "C'est normal": add an anomaly to the baseline. Admin. -> `IntelligenceStatus`
+    case intelMarkNormal(anomalyId: String)
+    /// Forget the baseline and learn again. Admin. -> `IntelligenceStatus`
+    case intelResetBaseline
+
     /// Wire name (`cmd`).
     public var command: String {
         switch self {
@@ -195,6 +207,11 @@ public enum Request: Sendable, Equatable {
         case .breachCheckNow: return "breach_check_now"
         case .aliasList: return "alias_list"
         case .aliasCreate: return "alias_create"
+        case .intelStatus: return "intel_status"
+        case .intelScoreDomain: return "intel_score_domain"
+        case .intelAllowDomain: return "intel_allow_domain"
+        case .intelMarkNormal: return "intel_mark_normal"
+        case .intelResetBaseline: return "intel_reset_baseline"
         }
     }
 
@@ -207,6 +224,8 @@ public enum Request: Sendable, Equatable {
             return false
         case .vpnStatus, .vpnListServices, .listNetworks, .guardStatus, .listSnapshots, .privacyListBrokers,
              .privacyListRequests, .privacySummary, .breachList, .aliasList:
+            return false
+        case .intelStatus, .intelScoreDomain:
             return false
         case let .privacyGetProfile(reveal):
             return reveal
@@ -225,6 +244,8 @@ public enum Request: Sendable, Equatable {
         case .vpnDisconnect, .vpnImportProfile, .vpnRemoveProfile, .restoreFromSnapshot, .privacySetProfile,
              .privacyDraft, .privacyComplaint, .privacyStartRemoval:
             return true
+        case .intelAllowDomain, .intelMarkNormal, .intelResetBaseline:
+            return true
         case let .setNetworkTrust(_, trusted):
             return trusted
         case let .privacyGetProfile(reveal):
@@ -240,7 +261,7 @@ public enum Request: Sendable, Equatable {
         case let .resolveAlert(_, action):
             switch action {
             case .allow, .restore, .trustDevice, .approvePersistence, .removePersistence, .reportFalsePositive,
-                 .resumeProcess, .trustNetwork:
+                 .resumeProcess, .trustNetwork, .allowDomain, .markNormal:
                 return true
             default:
                 return false
@@ -295,6 +316,12 @@ public enum Request: Sendable, Equatable {
             o["request_id"] = .string(requestId)
         case let .aliasCreate(label):
             o["label"] = .string(label)
+        case .intelStatus, .intelResetBaseline:
+            break
+        case let .intelScoreDomain(domain), let .intelAllowDomain(domain):
+            o["domain"] = .string(domain)
+        case let .intelMarkNormal(anomalyId):
+            o["anomaly_id"] = .string(anomalyId)
         case let .scan(paths, recursive, useClamav):
             o["paths"] = .array(paths.map { JSONValue.string($0) })
             o["recursive"] = .bool(recursive)

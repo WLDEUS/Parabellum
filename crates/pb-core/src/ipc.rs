@@ -246,6 +246,18 @@ pub enum Request {
 
     /// Start receiving [`EventEnvelope`]s on this connection. -> `null`
     Subscribe,
+
+    // ----- Intelligence -----
+    /// Domain model, behavioural baseline and model inventory. -> [`IntelligenceStatus`]
+    IntelStatus,
+    /// Score one domain now (read-only, nothing recorded). -> [`DomainVerdictInfo`]
+    IntelScoreDomain { domain: String },
+    /// Never flag / block this domain again (removed from the ML blocklist). Admin. -> [`IntelligenceStatus`]
+    IntelAllowDomain { domain: String },
+    /// Add a reported anomaly to the baseline ("C'est normal"). Admin. -> [`IntelligenceStatus`]
+    IntelMarkNormal { anomaly_id: String },
+    /// Forget everything learnt and start a new learning period. Admin. -> [`IntelligenceStatus`]
+    IntelResetBaseline,
 }
 
 fn default_true() -> bool {
@@ -280,6 +292,10 @@ impl Request {
             | Request::PrivacyDraft { .. }
             | Request::PrivacyComplaint { .. }
             | Request::PrivacyStartRemoval { .. } => true,
+            // Intelligence: allow-listing and teaching the baseline weaken detection.
+            Request::IntelAllowDomain { .. }
+            | Request::IntelMarkNormal { .. }
+            | Request::IntelResetBaseline => true,
             Request::SetNetworkTrust { trusted, .. } => *trusted,
             Request::PrivacyGetProfile { reveal } => *reveal,
             Request::SetDns { enabled } => !enabled,
@@ -296,6 +312,8 @@ impl Request {
                     | AlertAction::ReportFalsePositive
                     | AlertAction::ResumeProcess
                     | AlertAction::TrustNetwork
+                    | AlertAction::AllowDomain
+                    | AlertAction::MarkNormal
             ),
             _ => false,
         }
@@ -331,6 +349,8 @@ impl Request {
                 | Request::PrivacySummary
                 | Request::BreachList
                 | Request::AliasList
+                | Request::IntelStatus
+                | Request::IntelScoreDomain { .. }
         )
     }
 }
@@ -619,6 +639,38 @@ mod tests {
         let line = String::from_utf8(encode_line(&DaemonEvent::Vpn(VpnStatus::default())).unwrap())
             .unwrap();
         assert!(line.starts_with(r#"{"event":"vpn","data":{"#));
+    }
+
+    #[test]
+    fn intelligence_requests() {
+        let r: RequestEnvelope = serde_json::from_str(r#"{"id":1,"cmd":"intel_status"}"#).unwrap();
+        assert_eq!(r.request, Request::IntelStatus);
+        assert!(!r.request.is_mutating() && !r.request.requires_admin());
+        let r: RequestEnvelope =
+            serde_json::from_str(r#"{"id":2,"cmd":"intel_score_domain","domain":"a.b"}"#).unwrap();
+        assert!(!r.request.is_mutating() && !r.request.requires_admin());
+        for req in [
+            Request::IntelAllowDomain {
+                domain: "a.b".into(),
+            },
+            Request::IntelMarkNormal {
+                anomaly_id: "x".into(),
+            },
+            Request::IntelResetBaseline,
+        ] {
+            assert!(req.is_mutating() && req.requires_admin(), "{req:?}");
+        }
+        for action in [AlertAction::AllowDomain, AlertAction::MarkNormal] {
+            assert!(Request::ResolveAlert {
+                alert_id: 1,
+                action
+            }
+            .requires_admin());
+        }
+        assert_eq!(
+            serde_json::to_string(&AlertAction::MarkNormal).unwrap(),
+            "\"mark_normal\""
+        );
     }
 
     #[test]

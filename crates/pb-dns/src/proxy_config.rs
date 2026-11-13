@@ -169,6 +169,13 @@ pub fn render(p: &ProxyConfigParams<'_>) -> Result<String, DnsError> {
         qp(p.allowed_names_file)
     ));
 
+    // Intelligence (domain model): every query name is written to the proxy's stdout, which the
+    // supervisor pipes to the daemon (scored in memory, never written to disk).
+    c.push_str("[query_log]\n");
+    c.push_str("file = '/dev/stdout'\n");
+    c.push_str("format = 'ltsv'\n");
+    c.push_str("ignored_qtypes = ['DNSKEY', 'NS', 'PTR', 'SOA', 'DS']\n\n");
+
     c.push_str("[sources]\n\n[sources.public-resolvers]\n");
     let urls: Vec<String> = PUBLIC_RESOLVERS_URLS
         .iter()
@@ -238,6 +245,11 @@ log_format = 'ltsv'
 [allowed_names]
 allowed_names_file = "/Library/Application Support/Parabellum/dns/allowed-names.txt"
 
+[query_log]
+file = '/dev/stdout'
+format = 'ltsv'
+ignored_qtypes = ['DNSKEY', 'NS', 'PTR', 'SOA', 'DS']
+
 [sources]
 
 [sources.public-resolvers]
@@ -280,6 +292,7 @@ prefix = ''
             Some(PUBLIC_RESOLVERS_MINISIGN_KEY)
         );
         assert_eq!(v["ignore_system_dns"].as_bool(), Some(true));
+        assert_eq!(v["query_log"]["file"].as_str(), Some("/dev/stdout"));
     }
 
     #[test]

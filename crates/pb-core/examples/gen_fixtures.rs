@@ -663,6 +663,118 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     std::fs::write(dir.join("server_lines.jsonl"), lines.join("\n") + "\n")?;
 
+    // ----- Intelligence -----
+    w(
+        "intel_status",
+        serde_json::to_value(IntelligenceStatus {
+            behavior: BehaviorStatus {
+                enabled: true,
+                learning: false,
+                learning_progress: 1.0,
+                learning_started_at: Some(1_761_400_000),
+                learning_until: Some(1_762_004_800),
+                events_observed: 182_345,
+                profiles: 412,
+                behaviors: 3_120,
+                anomalies_24h: 1,
+                anomalies_7d: 3,
+                baseline_bytes: 96_512,
+                recent_anomalies: vec![BehaviorAnomaly {
+                    id: "00ff00ff00ff00ff".into(),
+                    ts: 1_762_100_000,
+                    process: "/Library/Backup/agent".into(),
+                    kind: AnomalyKind::Interpreter,
+                    summary: "agent lance un interpréteur inhabituel (zsh)".into(),
+                    details: vec!["lance un interpréteur inhabituel (zsh)".into()],
+                    score: 0.9,
+                    alert_id: Some(42),
+                    marked_normal: false,
+                }],
+                message: None,
+            },
+            domains: DomainIntelStatus {
+                enabled: true,
+                dns_active: true,
+                model_loaded: true,
+                block_enabled: false,
+                alert_threshold: 0.93,
+                block_threshold: 0.99,
+                scored_total: 5_210,
+                scored_24h: 640,
+                flagged_total: 2,
+                blocked_count: 0,
+                top_flagged: vec![FlaggedDomain {
+                    domain: "paypal.com.secure-login.xyz".into(),
+                    registrable: "secure-login.xyz".into(),
+                    score: 0.991,
+                    first_seen: 1_762_090_000,
+                    last_seen: 1_762_090_100,
+                    hits: 3,
+                    reasons: vec!["La marque « paypal » apparaît dans un sous-domaine".into()],
+                    blocked: false,
+                    allowed: false,
+                    alert_id: Some(41),
+                }],
+                message: None,
+            },
+            models: vec![
+                IntelModelInfo {
+                    id: "domain".into(),
+                    name: "Domaines (hameçonnage, typosquatting)".into(),
+                    loaded: true,
+                    version: Some("2026.11.13".into()),
+                    threshold: Some(0.93),
+                    metrics: BTreeMap::from([
+                        ("auc".to_string(), 0.995),
+                        ("fpr_at_threshold".to_string(), 0.0004),
+                    ]),
+                    detail: Some("LightGBM".into()),
+                },
+                IntelModelInfo {
+                    id: "behavior".into(),
+                    name: "Comportement (appris sur ce Mac)".into(),
+                    loaded: true,
+                    version: None,
+                    threshold: Some(0.75),
+                    metrics: BTreeMap::new(),
+                    detail: None,
+                },
+            ],
+        })?,
+    )?;
+    w(
+        "intel_status_default",
+        serde_json::to_value(IntelligenceStatus::default())?,
+    )?;
+    w(
+        "domain_verdict",
+        serde_json::to_value(DomainVerdictInfo {
+            domain: "paypa1-login.xyz".into(),
+            registrable: Some("paypa1-login.xyz".into()),
+            score: Some(0.97),
+            flagged: true,
+            would_block: false,
+            source: Some("model".into()),
+            skipped: None,
+            reasons: vec!["Ressemble à « paypal » (1 faute(s) de frappe)".into()],
+            allowed: false,
+        })?,
+    )?;
+    w(
+        "domain_verdict_skipped",
+        serde_json::to_value(DomainVerdictInfo {
+            domain: "printer.local".into(),
+            registrable: None,
+            score: None,
+            flagged: false,
+            would_block: false,
+            source: None,
+            skipped: Some("nom local".into()),
+            reasons: vec![],
+            allowed: false,
+        })?,
+    )?;
+
     // Every request kind, as the Swift client must encode them (one per line).
     let reqs = vec![
         Request::Ping,
@@ -801,6 +913,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Request::ResolveAlert {
             alert_id: 31,
             action: AlertAction::ResumeProcess,
+        },
+        // ----- Intelligence -----
+        Request::IntelStatus,
+        Request::IntelScoreDomain {
+            domain: "paypa1-login.xyz".into(),
+        },
+        Request::IntelAllowDomain {
+            domain: "example.org".into(),
+        },
+        Request::IntelMarkNormal {
+            anomaly_id: "00ff00ff00ff00ff".into(),
+        },
+        Request::IntelResetBaseline,
+        Request::ResolveAlert {
+            alert_id: 41,
+            action: AlertAction::AllowDomain,
+        },
+        Request::ResolveAlert {
+            alert_id: 42,
+            action: AlertAction::MarkNormal,
         },
     ];
     // Which commands need administrator approval (`auth` or root), same order/ids as requests.jsonl.

@@ -250,6 +250,11 @@ pub enum AlertAction {
     ResumeProcess,
     /// Mark the network named in the alert (`network_id`) as trusted.
     TrustNetwork,
+    // ----- Intelligence -----
+    /// "Autoriser ce domaine": never flag / block the domain of this domain-model alert again.
+    AllowDomain,
+    /// "C'est normal": add the behaviour of this anomaly alert to the baseline.
+    MarkNormal,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1069,6 +1074,166 @@ pub struct EmailAlias {
     pub provider: crate::config::AliasProvider,
     pub created_at: i64,
     pub active: bool,
+}
+
+// ---------------------------------------------------------------------------------------------
+// Intelligence: domain model, behavioural baseline, model inventory
+// ---------------------------------------------------------------------------------------------
+
+/// What an anomaly is about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnomalyKind {
+    /// Launched a program it never launched before.
+    Exec,
+    /// Launched a shell / script interpreter it never launched before.
+    Interpreter,
+    /// Was launched by an unusual parent.
+    LaunchedBy,
+    /// Wrote to a category of location it never wrote to before.
+    File,
+    /// Ran at an unusual time of day.
+    Hour,
+}
+
+/// One behavioural novelty (after the learning period).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BehaviorAnomaly {
+    pub id: String,
+    pub ts: i64,
+    /// Executable (path with the home folder shown as `~`).
+    pub process: String,
+    pub kind: AnomalyKind,
+    /// French one-line description of the main novelty.
+    pub summary: String,
+    /// French descriptions of every novelty of the event.
+    #[serde(default)]
+    pub details: Vec<String>,
+    /// 0..1
+    pub score: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alert_id: Option<i64>,
+    pub marked_normal: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct BehaviorStatus {
+    pub enabled: bool,
+    /// Still learning (nothing reported yet).
+    pub learning: bool,
+    /// 0..1
+    pub learning_progress: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub learning_started_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub learning_until: Option<i64>,
+    pub events_observed: u64,
+    /// Executables with a profile.
+    pub profiles: u32,
+    /// Distinct behaviours known on this Mac.
+    pub behaviors: u32,
+    pub anomalies_24h: u32,
+    pub anomalies_7d: u32,
+    /// Size of the baseline file on disk.
+    pub baseline_bytes: u64,
+    /// Newest first.
+    #[serde(default)]
+    pub recent_anomalies: Vec<BehaviorAnomaly>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+/// A never-seen domain the model found suspicious.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FlaggedDomain {
+    pub domain: String,
+    pub registrable: String,
+    /// 0..1
+    pub score: f32,
+    pub first_seen: i64,
+    pub last_seen: i64,
+    pub hits: u32,
+    /// French explanations (brand imitated, random-looking name, abused TLD…).
+    #[serde(default)]
+    pub reasons: Vec<String>,
+    /// In the ML DNS blocklist.
+    pub blocked: bool,
+    /// Allowed by the user ("Autoriser ce domaine").
+    pub allowed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alert_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct DomainIntelStatus {
+    pub enabled: bool,
+    /// DNS blocking is on: query names go through the local proxy and can be scored.
+    pub dns_active: bool,
+    /// A trained model is loaded (otherwise conservative rules only).
+    pub model_loaded: bool,
+    pub block_enabled: bool,
+    pub alert_threshold: f32,
+    pub block_threshold: f32,
+    /// Distinct names scored since the daemon started / in the last 24 h.
+    pub scored_total: u64,
+    pub scored_24h: u64,
+    pub flagged_total: u64,
+    /// Domains currently in the ML blocklist.
+    pub blocked_count: u32,
+    /// Highest scores first.
+    #[serde(default)]
+    pub top_flagged: Vec<FlaggedDomain>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+/// A predictive model and its evaluation (the Mach-O / script models are added by their owners).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct IntelModelInfo {
+    /// `domain`, `behavior`, `macho`, `script`…
+    pub id: String,
+    /// French display name.
+    pub name: String,
+    pub loaded: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threshold: Option<f32>,
+    /// Evaluation metrics recorded by the trainer (`auc`, `tpr_at_threshold`, `fpr_at_threshold`…).
+    #[serde(default)]
+    pub metrics: BTreeMap<String, f64>,
+    /// French one-liner (what it does, where it runs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct IntelligenceStatus {
+    pub behavior: BehaviorStatus,
+    pub domains: DomainIntelStatus,
+    #[serde(default)]
+    pub models: Vec<IntelModelInfo>,
+}
+
+/// Result of scoring one domain on demand.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DomainVerdictInfo {
+    pub domain: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registrable: Option<String>,
+    /// `None` when the name is not scored (see `skipped`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score: Option<f32>,
+    pub flagged: bool,
+    pub would_block: bool,
+    /// `model` or `heuristic`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skipped: Option<String>,
+    #[serde(default)]
+    pub reasons: Vec<String>,
+    pub allowed: bool,
 }
 
 #[cfg(test)]

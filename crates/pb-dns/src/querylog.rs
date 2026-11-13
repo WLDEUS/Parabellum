@@ -19,6 +19,22 @@ pub fn line_time(line: &str) -> Option<i64> {
         .and_then(|t| t.trim().parse().ok())
 }
 
+/// Query name of a dnscrypt-proxy `[query_log]` LTSV line (`plugin_query_log.go`, master 2026-11:
+/// `time:<t>\thost:<client>\tmessage:<qname>\ttype:<qtype>\treturn:<code>\tcached:<0|1>\t…`).
+/// Lowercased, trailing dot and quotes stripped; `None` for malformed lines.
+pub fn query_name(line: &str) -> Option<String> {
+    let q = line
+        .split('\t')
+        .find_map(|f| f.strip_prefix("message:"))?
+        .trim()
+        .trim_matches('"')
+        .trim_end_matches('.');
+    if q.is_empty() || q.len() > 253 || q.contains(char::is_whitespace) {
+        return None;
+    }
+    Some(q.to_ascii_lowercase())
+}
+
 fn log_files(dir: &Path, base: &str) -> Vec<PathBuf> {
     let stem = base.trim_end_matches(".log");
     let Ok(rd) = std::fs::read_dir(dir) else {
@@ -72,6 +88,18 @@ pub fn count_blocked_since(dir: &Path, base: &str, since: i64) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_query_log_lines() {
+        let l = "time:1762000000\thost:127.0.0.1\tmessage:WWW.Example.COM.\ttype:A\treturn:PASS\tcached:0\tduration:12\tserver:quad9\trelay:-";
+        assert_eq!(query_name(l).as_deref(), Some("www.example.com"));
+        assert_eq!(
+            query_name("time:1\thost:x\tmessage:\"a.b\"").as_deref(),
+            Some("a.b")
+        );
+        assert_eq!(query_name("garbage"), None);
+        assert_eq!(query_name("message:."), None);
+    }
 
     #[test]
     fn counts_recent_lines_across_rotations() {

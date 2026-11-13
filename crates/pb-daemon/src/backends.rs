@@ -262,6 +262,10 @@ pub trait Dns: Send + Sync + 'static {
         config: watch::Receiver<Arc<Config>>,
         shutdown: watch::Receiver<bool>,
     ) -> Option<JoinHandle<()>>;
+    /// Intelligence: receive the query names the proxy logs (lossy). Default: no query log.
+    fn set_query_tap(&self, tx: mpsc::Sender<String>) {
+        let _ = tx;
+    }
 }
 
 /// Hash reputation lookups (VirusTotal API v3).

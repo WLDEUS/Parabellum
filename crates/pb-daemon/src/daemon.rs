@@ -184,6 +184,8 @@ pub async fn start(opts: DaemonOptions) -> anyhow::Result<Daemon> {
     if opts.start_monitors {
         tasks.push(tokio::spawn(crate::guard::run(ctx.clone())));
     }
+    // Intelligence: before the DNS supervisor (the query tap must exist when the proxy starts).
+    tasks.extend(crate::intel::start(&ctx));
     tasks.push(tokio::spawn(dns_startup(ctx.clone())));
     if let Some(h) = ctx
         .backends

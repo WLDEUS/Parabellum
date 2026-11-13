@@ -13,6 +13,8 @@ pub mod commands;
 pub mod format;
 pub mod protect;
 pub mod vault;
+// Intelligence (domain model + behaviour baseline)
+pub mod intel;
 
 pub use cli::Cli;
 pub use commands::{run, Output};

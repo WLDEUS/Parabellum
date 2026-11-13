@@ -280,6 +280,11 @@ public enum AlertAction: String, TolerantEnum {
     case resumeProcess = "resume_process"
     /// Trust the network named in the alert (`networkId`).
     case trustNetwork = "trust_network"
+    // Intelligence
+    /// "Autoriser ce domaine" (domain-model alert).
+    case allowDomain = "allow_domain"
+    /// "C'est normal" (behaviour anomaly alert).
+    case markNormal = "mark_normal"
     case unknown
     public static let fallback: AlertAction = .unknown
     public init(from decoder: Decoder) throws { self = try Self.decodeTolerantly(from: decoder) }

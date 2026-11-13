@@ -37,6 +37,8 @@ pub struct Config {
     pub data_removal: DataRemovalConfig,
     pub breach: BreachConfig,
     pub aliases: AliasConfig,
+    /// Intelligence: domain model + behavioural anomaly detection.
+    pub intelligence: IntelligenceConfig,
 }
 
 impl Config {
@@ -211,6 +213,27 @@ impl Config {
         }
         if !self.aliases.base_url.is_empty() && !self.aliases.base_url.starts_with("https://") {
             return invalid("aliases.base_url must use https");
+        }
+        // ----- Intelligence -----
+        let i = &self.intelligence;
+        if !(1..=60).contains(&i.learning_days) {
+            return invalid("intelligence.learning_days must be 1..60");
+        }
+        if !(0.5..=0.99).contains(&i.anomaly_threshold) {
+            return invalid("intelligence.anomaly_threshold must be within 0.5..0.99");
+        }
+        if !(1..=100).contains(&i.max_anomaly_alerts_per_day) {
+            return invalid("intelligence.max_anomaly_alerts_per_day must be 1..100");
+        }
+        if i.domain_allowlist.len() > 1000 {
+            return invalid("intelligence.domain_allowlist: at most 1000 domains");
+        }
+        for d in &i.domain_allowlist {
+            if !d.contains('.') || !is_host_or_ip(d) || d.chars().any(|c| c.is_ascii_uppercase()) {
+                return Err(ConfigError::Invalid(format!(
+                    "intelligence.domain_allowlist: invalid lowercase domain: {d}"
+                )));
+            }
         }
         Ok(())
     }
@@ -793,9 +816,67 @@ pub struct AliasConfig {
     pub domain: String,
 }
 
+// ----- Intelligence -----
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct IntelligenceConfig {
+    /// Score every never-seen domain with the phishing / malicious-domain model (needs DNS blocking:
+    /// query names come from the local dnscrypt-proxy; scored in memory, never written to disk).
+    pub domain_model: bool,
+    /// Alert when a domain looks malicious.
+    pub domain_alerts: bool,
+    /// Opt-in: add high-confidence model verdicts to the DNS blocklist (never on the model's rules-only
+    /// fallback).
+    pub block_ml_domains: bool,
+    /// Domains (and their subdomains) the model never flags or blocks ("Autoriser ce domaine").
+    pub domain_allowlist: Vec<String>,
+    /// Learn this Mac's normal behaviour (eslogger) and report novelties. Stays on the Mac.
+    pub behavior_anomaly: bool,
+    /// Learning period before anything is reported, days.
+    pub learning_days: u32,
+    /// Minimum anomaly score reported (0.5 = sensitive, 0.9 = quiet).
+    pub anomaly_threshold: f32,
+    /// At most this many anomaly alerts per day.
+    pub max_anomaly_alerts_per_day: u32,
+}
+
+impl Default for IntelligenceConfig {
+    fn default() -> Self {
+        Self {
+            domain_model: true,
+            domain_alerts: true,
+            block_ml_domains: false,
+            domain_allowlist: vec![],
+            behavior_anomaly: true,
+            learning_days: 7,
+            anomaly_threshold: 0.75,
+            max_anomaly_alerts_per_day: 10,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn intelligence_section_validates() {
+        let c = Config::default();
+        assert!(c.intelligence.domain_model && !c.intelligence.block_ml_domains);
+        assert!(Config::from_toml("[intelligence]\nlearning_days = 0\n").is_err());
+        assert!(Config::from_toml("[intelligence]\nanomaly_threshold = 0.2\n").is_err());
+        assert!(Config::from_toml("[intelligence]\nmax_anomaly_alerts_per_day = 0\n").is_err());
+        assert!(
+            Config::from_toml("[intelligence]\ndomain_allowlist = [\"example.com\"]\n").is_ok()
+        );
+        assert!(
+            Config::from_toml("[intelligence]\ndomain_allowlist = [\"Example.com\"]\n").is_err()
+        );
+        assert!(Config::from_toml("[intelligence]\ndomain_allowlist = [\"localhost\"]\n").is_err());
+        let c = Config::from_toml("[intelligence]\nblock_ml_domains = true\n").unwrap();
+        assert!(c.intelligence.block_ml_domains && c.intelligence.learning_days == 7);
+    }
 
     #[test]
     fn protection_sections_validate() {
