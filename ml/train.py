@@ -51,6 +51,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--no-malware", action="store_true", help="do not download samples this run")
     p.add_argument("--min-pos", type=int, default=200)
     p.add_argument("--min-neg", type=int, default=1000)
+    # Dataset shrink guard (a failed download must never wipe the accumulated features).
+    p.add_argument("--decision-in", type=Path, help="previous decision.json (published row count)")
+    p.add_argument("--allow-dataset-shrink", action="store_true", help="publish a smaller dataset anyway")
     p.add_argument("--now", type=int, help=argparse.SUPPRESS)
     return p.parse_args(argv)
 
@@ -89,6 +92,14 @@ def run(args: argparse.Namespace, http: object | None = None) -> int:
         new_rows += extract(args.pb_features, machos, 0)
     new_rows += dataset.load_jsonl(args.extra_clean, 0)
     existing = dataset.load(args.dataset_in) if args.dataset_in else []
+    prev_rows = dataset.previous_rows(args.decision_in)
+    has_metrics = bool(args.metrics_in and args.metrics_in.is_file() and args.metrics_in.stat().st_size)
+    problem = dataset.shrink_problem(prev_rows, len(existing), prev_rows or 0) or (
+        "previous metrics.jsonl is missing" if prev_rows and not has_metrics else None
+    )
+    if problem and not args.allow_dataset_shrink:
+        log.error("%s: refusing to train/publish (--allow-dataset-shrink overrides)", problem)
+        return 1
     versions = [r.features_version for r in new_rows] or [r.features_version for r in existing]
     if not versions:
         log.error("no feature rows at all (empty corpus and dataset)")
@@ -113,6 +124,11 @@ def run(args: argparse.Namespace, http: object | None = None) -> int:
     n_pos = sum(1 for r in rows if r.label == 1)
     n_neg = n_saved - n_pos
     decision.update({"features_version": fv, "n_pos": n_pos, "n_neg": n_neg, "merge": merge_stats})
+    decision.update({"n_rows": n_saved, "prev_rows": prev_rows})
+    problem = dataset.shrink_problem(prev_rows, len(existing), n_saved, merge_stats["conflicts"])
+    if problem and not args.allow_dataset_shrink:
+        log.error("%s: refusing to publish (--allow-dataset-shrink overrides)", problem)
+        return 1
     log.info("dataset: %d rows (%d malicious, %d clean)", n_saved, n_pos, n_neg)
 
     metrics_lines: list[str] = []

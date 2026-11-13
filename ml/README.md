@@ -1,11 +1,11 @@
 # Mach-O classifier (weekly)
 
-`.github/workflows/ml-train.yml` (Sundays 04:41 UTC) runs:
+`.github/workflows/ml-train.yml` (Sundays 17:41 UTC, before that night's DB build) runs:
 
 ```sh
 python -m ml.train --pb-features target/release/pb-features --out out/ml \
   --dataset-in prev/dataset.csv.gz --metrics-in prev/metrics.jsonl --current-model current \
-  --corpus-cache .cache/corpus
+  --decision-in prev/decision.json --corpus-cache .cache/corpus
 bash ml/publish.sh out/ml
 ```
 
@@ -16,6 +16,11 @@ bash ml/publish.sh out/ml
   DMGs). Negatives: Mach-O of the clean corpus (`pipeline/data/clean_corpus.toml`) + optional
   `ml/data/extra_clean_features.jsonl` from the owner's Mac (see `ml/data/README.md`; needed to reach
   the 1000-negative minimum quickly). No sample is ever stored.
+* **Shrink guard**: `decision.json` records `n_rows` and `prev_rows`. Training refuses (exit 1, nothing
+  published) when the downloaded dataset has fewer readable rows than the published `decision.json`
+  says, when `metrics.jsonl` is missing, or when the merge would drop rows (a `features_version`
+  change). A release that exists but cannot be downloaded fails the job. Override after a deliberate
+  layout change: workflow input `allow_dataset_shrink` (`--allow-dataset-shrink`).
 * **Split**: SHA-256 hash buckets — 20 % holdout, 15 % validation, 65 % train — stable week to week.
 * **Model**: LightGBM binary, ≤ 300 trees (early stopping), 31 leaves, `scale_pos_weight`, numerical
   splits only, deterministic. Threshold = smallest value with FPR ≤ 0.1 % on validation (next float32

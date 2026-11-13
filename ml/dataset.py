@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import gzip
+import json
 import logging
 import math
 from collections.abc import Iterable
@@ -88,3 +89,37 @@ def merge(
             continue
         out.append(r)
     return sorted(out, key=lambda r: r.sha256), stats
+
+
+def previous_rows(decision_path: Path | None) -> int | None:
+    """Rows of the published dataset per its ``decision.json`` (``n_rows``, else ``n_pos + n_neg``).
+
+    None when there is no previous decision (first run) or it predates the dataset counts.
+    """
+    if decision_path is None or not decision_path.is_file():
+        return None
+    try:
+        doc = json.loads(decision_path.read_text(encoding="utf-8"))
+        if "n_rows" in doc:
+            return int(doc["n_rows"])
+        if "n_pos" in doc and "n_neg" in doc:
+            return int(doc["n_pos"]) + int(doc["n_neg"])
+    except (OSError, ValueError, TypeError, AttributeError) as e:
+        raise ValueError(f"{decision_path}: unreadable previous decision ({e})") from e
+    return None
+
+
+def shrink_problem(prev_rows: int | None, loaded: int, saved: int, conflicts: int = 0) -> str | None:
+    """Why publishing ``saved`` rows would lose accumulated data (None if it would not).
+
+    ``loaded`` < ``prev_rows``: the downloaded dataset is missing, truncated or unreadable.
+    ``saved`` + ``conflicts`` < ``prev_rows``: the merge dropped rows (``features_version`` change);
+    rows removed as label conflicts (same file seen clean and malicious) are expected.
+    """
+    if not prev_rows:
+        return None
+    if loaded < prev_rows:
+        return f"previous dataset has {loaded} readable rows, {prev_rows} were published"
+    if saved + conflicts < prev_rows:
+        return f"dataset would shrink from {prev_rows} to {saved} rows (feature layout change?)"
+    return None
