@@ -6,7 +6,8 @@ use std::fs::{File, OpenOptions};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
-/// Create every directory of the layout with its permissions and wipe `tmp/`.
+/// Create every directory of the layout with its permissions. Does **not** touch `tmp/`: it may belong
+/// to a live instance until the instance lock is held (see [`wipe_tmp`]).
 ///
 /// Production (root): owned root:wheel, 0755; `quarantine/` and `state/` 0700. Directories outside our
 /// own tree (e.g. `/var/run` holding the socket) are only created if missing, never re-permissioned.
@@ -28,6 +29,12 @@ pub fn prepare_dirs(paths: &Paths, as_root: bool) -> std::io::Result<()> {
             std::os::unix::fs::chown(&dir, Some(0), Some(0))?;
         }
     }
+    Ok(())
+}
+
+/// Wipe what a previous run left in `tmp/` (mounts, staging). Only once the instance lock is held: a
+/// second instance started by hand must not destroy the live one's files.
+pub fn wipe_tmp(paths: &Paths) -> std::io::Result<()> {
     wipe_dir_contents(&paths.tmp_dir())
 }
 
@@ -383,6 +390,9 @@ mod tests {
         std::fs::write(paths.tmp_dir().join("sub/deeper/f"), b"x").unwrap();
         std::fs::write(paths.tmp_dir().join("g"), b"x").unwrap();
         prepare_dirs(&paths, false).unwrap();
+        // Not wiped before the instance lock is held.
+        assert!(paths.tmp_dir().join("g").exists());
+        wipe_tmp(&paths).unwrap();
         for dir in paths.all_dirs() {
             assert!(dir.is_dir(), "{}", dir.display());
         }

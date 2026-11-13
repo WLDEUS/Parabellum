@@ -47,6 +47,8 @@ pub struct Daemon {
 pub async fn start(opts: DaemonOptions) -> anyhow::Result<Daemon> {
     let as_root = !opts.dev_mode && crate::system::is_root();
     setup::prepare_dirs(&opts.paths, as_root)?;
+    // The caller holds the instance lock (main acquires it first).
+    setup::wipe_tmp(&opts.paths)?;
     let loaded = setup::load_config(&opts.paths);
     let store = Store::open(&opts.paths.state_db())?;
     let now = pb_core::now_ts();
