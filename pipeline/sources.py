@@ -66,6 +66,12 @@ class SourceSpec:
 class Settings:
     min_client_version: str = "0.1.0"
     sanity_max_drop: float = 0.5
+    #: Absolute floors of the sanity guard (0 = none), see ``bundle.sanity_problems``.
+    min_malware_hashes: int = 0
+    min_blocked_domains: int = 0
+    min_yara_rules: int = 0
+    #: FP gate: share of declared clean-corpus entries (and of last run's scanned files) required.
+    corpus_min_available: float = 0.9
     hash_window_days: int = 365
     max_malware_hashes: int = 2_000_000
     max_macos_named: int = 200_000
@@ -85,6 +91,10 @@ def load_settings(path: Path) -> Settings:
     st = Settings(
         min_client_version=str(b.get("min_client_version", "0.1.0")),
         sanity_max_drop=float(b.get("sanity_max_drop", 0.5)),
+        min_malware_hashes=int(b.get("min_malware_hashes", 0)),
+        min_blocked_domains=int(b.get("min_blocked_domains", 0)),
+        min_yara_rules=int(b.get("min_yara_rules", 0)),
+        corpus_min_available=float(b.get("corpus_min_available", 0.9)),
         hash_window_days=int(h.get("window_days", 365)),
         max_malware_hashes=int(h.get("max_hashes", 2_000_000)),
         max_macos_named=int(h.get("max_macos_named", 200_000)),

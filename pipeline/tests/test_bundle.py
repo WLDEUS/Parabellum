@@ -7,6 +7,7 @@ from pipeline.bundle import (
     Stats,
     deterministic_tar_gz,
     make_version,
+    newest_version,
     safe_extract,
     sanity_problems,
     sha256_hex,
@@ -86,3 +87,33 @@ def test_sanity_guard():
     probs = sanity_problems(Stats(malware_hashes=400, blocked_domains=1000, yara_rules=5), prev, 0.5)
     assert len(probs) == 1 and "malware_hashes" in probs[0]
     assert sanity_problems(Stats(), None, 0.5) == ["bundle is empty (no hashes, no domains, no YARA rules)"]
+
+
+def test_sanity_guard_minimums_and_yara_drop():
+    mins = {"malware_hashes": 1000, "blocked_domains": 50_000, "yara_rules": 50}
+    good = Stats(malware_hashes=900_000, blocked_domains=400_000, yara_rules=130)
+    assert sanity_problems(good, None, 0.5, mins) == []
+    # No previous bundle and the feeds failed: only local YARA rules left -> refused (M1).
+    gutted = Stats(malware_hashes=0, blocked_domains=0, yara_rules=19)
+    probs = sanity_problems(gutted, None, 0.5, mins)
+    assert len(probs) == 3 and all("below the minimum" in p for p in probs)
+    prev = {"malware_hashes": 900_000, "blocked_domains": 400_000, "yara_rules": 130}
+    probs = sanity_problems(Stats(malware_hashes=900_000, blocked_domains=400_000, yara_rules=60), prev, 0.5)
+    assert probs == ["yara_rules dropped from 130 to 60 (> 50%)"]
+
+
+def test_newest_version():
+    assert newest_version(None, "") is None
+    assert newest_version("2026.10.25.3", None, "garbage") == "2026.10.25.3"
+    assert newest_version("2026.10.25.3", "2026.10.25.12") == "2026.10.25.12"
+    assert newest_version("2026.10.26.1", "2026.10.25.12") == "2026.10.26.1"
+
+
+def test_real_sources_toml_sets_the_floors():
+    from pathlib import Path
+
+    from pipeline.sources import load_settings
+
+    s = load_settings(Path(__file__).resolve().parents[1] / "sources.toml")
+    assert s.min_malware_hashes > 0 and s.min_blocked_domains > 0 and s.min_yara_rules > 0
+    assert 0.5 <= s.corpus_min_available < 1
