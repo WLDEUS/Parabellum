@@ -343,6 +343,7 @@ impl DbUpdater {
             blocked_domains: m.as_ref().map(|m| m.stats.blocked_domains).unwrap_or(0),
             clamav_version: clamav_daily_version(&self.paths.clamav_db_dir()),
             ml_model_version: m.as_ref().and_then(|m| m.stats.ml_model_version.clone()),
+            models: Vec::new(),
         }
     }
 

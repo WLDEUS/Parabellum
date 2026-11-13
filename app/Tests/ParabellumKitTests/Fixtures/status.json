@@ -8,6 +8,41 @@
     "last_success": 1793000500,
     "malware_hashes": 812345,
     "ml_model_version": "2026.10.20",
+    "models": [
+      {
+        "calibration": "isotonic",
+        "display_name": "Classifieur Mach-O",
+        "features_version": 2,
+        "loaded": true,
+        "metrics": {
+          "brier": 0.0213,
+          "families": 41,
+          "fpr_at_threshold": 0.0004,
+          "holdout_neg": 2842,
+          "holdout_pos": 366,
+          "holdout_since": 1790000000,
+          "n_neg": 14210,
+          "n_pos": 1830,
+          "pr_auc": 0.9712,
+          "roc_auc": 0.9981,
+          "tpr_at_fpr_0_1": 0.902,
+          "tpr_at_threshold": 0.884
+        },
+        "name": "macho",
+        "threshold": 0.9375,
+        "trained_at": 1792900000,
+        "trees": 214,
+        "version": "2026.10.20"
+      },
+      {
+        "display_name": "Classifieur de scripts",
+        "error": "Modèle incompatible avec cette version de Parabellum : en attente du prochain entraînement.",
+        "features_version": 1,
+        "loaded": false,
+        "metrics": {},
+        "name": "script"
+      }
+    ],
     "previous_version": "2026.10.24.1",
     "version": "2026.10.25.1",
     "yara_rules": 431

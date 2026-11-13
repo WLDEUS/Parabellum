@@ -586,9 +586,14 @@ public struct DbStatus: Codable, Sendable, Hashable {
     public let blockedDomains: Int
     public let clamavVersion: String?
     public let mlModelVersion: String?
+    // --- ML model info (ml-files) ---
+    /// ML classifiers of the threat DB (Mach-O, scripts); `nil` from daemons predating the field.
+    public let models: [ModelInfo]?
 
     public var builtDate: Date? { builtAt.map(Date.init(unixSeconds:)) }
     public var lastSuccessDate: Date? { lastSuccess.map(Date.init(unixSeconds:)) }
+    /// `models`, empty when absent.
+    public var modelInfos: [ModelInfo] { models ?? [] }
 
     enum CodingKeys: String, CodingKey {
         case version
@@ -602,6 +607,7 @@ public struct DbStatus: Codable, Sendable, Hashable {
         case blockedDomains = "blocked_domains"
         case clamavVersion = "clamav_version"
         case mlModelVersion = "ml_model_version"
+        case models
     }
 }
 
@@ -882,6 +888,121 @@ public struct IpcError: Codable, Sendable, Hashable, Error, LocalizedError {
 
     enum CodingKeys: String, CodingKey {
         case code, message
+    }
+}
+
+// MARK: - ML model info (ml-files)
+
+/// Holdout evaluation of an ML classifier (Rust `ModelMetrics`); every field optional.
+public struct ModelMetrics: Codable, Sendable, Hashable {
+    public let rocAuc: Double?
+    /// Area under the precision-recall curve (average precision).
+    public let prAuc: Double?
+    /// Detection rate at the shipped threshold.
+    public let tprAtThreshold: Double?
+    /// False-positive rate at the shipped threshold.
+    public let fprAtThreshold: Double?
+    /// Best detection rate with at most 0.1 % false positives on the holdout.
+    public let tprAtFpr01: Double?
+    public let brier: Double?
+    public let nPos: Int?
+    public let nNeg: Int?
+    public let holdoutPos: Int?
+    public let holdoutNeg: Int?
+    /// Holdout = malicious samples first seen at or after this Unix time.
+    public let holdoutSince: Int64?
+    public let families: Int?
+
+    public static let empty = ModelMetrics(
+        rocAuc: nil, prAuc: nil, tprAtThreshold: nil, fprAtThreshold: nil, tprAtFpr01: nil,
+        brier: nil, nPos: nil, nNeg: nil, holdoutPos: nil, holdoutNeg: nil, holdoutSince: nil,
+        families: nil
+    )
+
+    public init(
+        rocAuc: Double?, prAuc: Double?, tprAtThreshold: Double?, fprAtThreshold: Double?,
+        tprAtFpr01: Double?, brier: Double?, nPos: Int?, nNeg: Int?, holdoutPos: Int?,
+        holdoutNeg: Int?, holdoutSince: Int64?, families: Int?
+    ) {
+        self.rocAuc = rocAuc
+        self.prAuc = prAuc
+        self.tprAtThreshold = tprAtThreshold
+        self.fprAtThreshold = fprAtThreshold
+        self.tprAtFpr01 = tprAtFpr01
+        self.brier = brier
+        self.nPos = nPos
+        self.nNeg = nNeg
+        self.holdoutPos = holdoutPos
+        self.holdoutNeg = holdoutNeg
+        self.holdoutSince = holdoutSince
+        self.families = families
+    }
+
+    public var holdoutSinceDate: Date? { holdoutSince.map(Date.init(unixSeconds:)) }
+
+    enum CodingKeys: String, CodingKey {
+        case rocAuc = "roc_auc"
+        case prAuc = "pr_auc"
+        case tprAtThreshold = "tpr_at_threshold"
+        case fprAtThreshold = "fpr_at_threshold"
+        case tprAtFpr01 = "tpr_at_fpr_0_1"
+        case brier
+        case nPos = "n_pos"
+        case nNeg = "n_neg"
+        case holdoutPos = "holdout_pos"
+        case holdoutNeg = "holdout_neg"
+        case holdoutSince = "holdout_since"
+        case families
+    }
+}
+
+/// One ML classifier shipped in the threat DB (Rust `ModelInfo`, `DbStatus.models`).
+public struct ModelInfo: Codable, Sendable, Hashable, Identifiable {
+    /// `macho` | `script`.
+    public let name: String
+    /// French label, e.g. « Classifieur Mach-O ».
+    public let displayName: String
+    /// Loaded and used by the engine (when `ml.enabled`).
+    public let loaded: Bool
+    public let version: String?
+    /// Feature layout compiled into the daemon.
+    public let featuresVersion: Int
+    /// Effective decision threshold (raw score).
+    public let threshold: Double?
+    public let trees: Int?
+    /// `platt` | `isotonic` when the model ships a probability calibration.
+    public let calibration: String?
+    public let trainedAt: Int64?
+    public let metrics: ModelMetrics
+    /// Why the model is not loaded (French), when it is present but unusable.
+    public let error: String?
+
+    public var id: String { name }
+    public var trainedDate: Date? { trainedAt.map(Date.init(unixSeconds:)) }
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case displayName = "display_name"
+        case loaded, version
+        case featuresVersion = "features_version"
+        case threshold, trees, calibration
+        case trainedAt = "trained_at"
+        case metrics, error
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        displayName = try c.decodeIfPresent(String.self, forKey: .displayName) ?? name
+        loaded = try c.decodeIfPresent(Bool.self, forKey: .loaded) ?? false
+        version = try c.decodeIfPresent(String.self, forKey: .version)
+        featuresVersion = try c.decodeIfPresent(Int.self, forKey: .featuresVersion) ?? 0
+        threshold = try c.decodeIfPresent(Double.self, forKey: .threshold)
+        trees = try c.decodeIfPresent(Int.self, forKey: .trees)
+        calibration = try c.decodeIfPresent(String.self, forKey: .calibration)
+        trainedAt = try c.decodeIfPresent(Int64.self, forKey: .trainedAt)
+        metrics = try c.decodeIfPresent(ModelMetrics.self, forKey: .metrics) ?? .empty
+        error = try c.decodeIfPresent(String.self, forKey: .error)
     }
 }
 
