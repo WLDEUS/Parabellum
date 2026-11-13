@@ -29,6 +29,27 @@ pub const CLI_EXECUTABLE: &str = "/Library/Application Support/Parabellum/bin/pa
 pub const MAX_CONNECTIONS: usize = 64;
 /// Outgoing lines buffered per connection.
 pub const OUT_BUFFER: usize = 512;
+/// A connection without subscription, request in flight or incoming frame for this long is closed
+/// (clients reconnect on their next request), so abandoned connections do not exhaust the slots.
+pub const IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5 * 60);
+/// A client that does not take one response/event line within this time is disconnected.
+pub const WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+/// Once reading stopped (EOF), how long pending responses may still take to be delivered.
+pub const PENDING_RESPONSES_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+
+/// Timeouts of one connection (constants above; shorter in tests).
+#[derive(Debug, Clone, Copy)]
+struct ConnLimits {
+    idle: std::time::Duration,
+    write: std::time::Duration,
+    pending: std::time::Duration,
+}
+
+const CONN_LIMITS: ConnLimits = ConnLimits {
+    idle: IDLE_TIMEOUT,
+    write: WRITE_TIMEOUT,
+    pending: PENDING_RESPONSES_TIMEOUT,
+};
 
 /// May this peer run mutating commands?
 pub fn authorize(
@@ -94,13 +115,19 @@ pub async fn serve(ctx: Arc<Ctx>, listener: UnixListener) {
         tokio::select! {
             r = listener.accept() => match r {
                 Ok((stream, _)) => {
-                    let Ok(permit) = slots.clone().try_acquire_owned() else {
-                        tracing::warn!("too many IPC connections, refusing one");
-                        continue;
+                    let permit = match slots.clone().try_acquire_owned() {
+                        Ok(p) => Some(p),
+                        // Root (uninstall script, `sudo parabellum dns off`) is never locked out by
+                        // connections other processes keep open.
+                        Err(_) if peer_cred(&stream).is_some_and(|c| c.uid == 0) => None,
+                        Err(_) => {
+                            tracing::warn!("too many IPC connections, refusing one");
+                            continue;
+                        }
                     };
                     let ctx = ctx.clone();
                     tokio::spawn(async move {
-                        handle_connection(ctx, stream).await;
+                        handle_connection(ctx, stream, CONN_LIMITS).await;
                         drop(permit);
                     });
                 }
@@ -125,12 +152,13 @@ pub enum Frame {
 }
 
 /// Read one `\n`-terminated line into `buf` (without the newline), refusing more than `max` bytes.
+/// Cancel-safe: the bytes of a line still incomplete stay in `buf` and the next call completes it, so
+/// the caller empties `buf` once it has used a [`Frame::Line`] (`std::mem::take`).
 pub async fn read_frame<R: AsyncBufRead + Unpin>(
     r: &mut R,
     buf: &mut Vec<u8>,
     max: usize,
 ) -> std::io::Result<Frame> {
-    buf.clear();
     loop {
         let available = r.fill_buf().await?;
         if available.is_empty() {
@@ -144,6 +172,7 @@ pub async fn read_frame<R: AsyncBufRead + Unpin>(
             Some(i) => {
                 if buf.len() + i > max {
                     r.consume(i + 1);
+                    buf.clear();
                     return Ok(Frame::TooLong);
                 }
                 buf.extend_from_slice(&available[..i]);
@@ -154,6 +183,7 @@ pub async fn read_frame<R: AsyncBufRead + Unpin>(
                 let n = available.len();
                 if buf.len() + n > max {
                     r.consume(n);
+                    buf.clear();
                     return Ok(Frame::TooLong);
                 }
                 buf.extend_from_slice(available);
@@ -316,7 +346,7 @@ async fn check_access(ctx: &Ctx, peer: &mut Peer, env: &RequestEnvelope) -> Resu
     }
 }
 
-async fn handle_connection(ctx: Arc<Ctx>, stream: UnixStream) {
+async fn handle_connection(ctx: Arc<Ctx>, stream: UnixStream, limits: ConnLimits) {
     let Some(cred) = peer_cred(&stream) else {
         return;
     };
@@ -324,28 +354,54 @@ async fn handle_connection(ctx: Arc<Ctx>, stream: UnixStream) {
     let (rd, mut wr) = stream.into_split();
     let (out_tx, mut out_rx) = mpsc::channel::<Vec<u8>>(OUT_BUFFER);
     let kill = Arc::new(Notify::new());
-    let writer = tokio::spawn(async move {
+    let writer_kill = kill.clone();
+    let mut writer = tokio::spawn(async move {
         while let Some(line) = out_rx.recv().await {
-            if wr.write_all(&line).await.is_err() {
-                break;
+            match tokio::time::timeout(limits.write, wr.write_all(&line)).await {
+                Ok(Ok(())) => {}
+                Ok(Err(_)) => break,
+                Err(_) => {
+                    // The client stopped reading: stop the reader too.
+                    writer_kill.notify_one();
+                    break;
+                }
             }
         }
-        let _ = wr.shutdown().await;
+        let _ = tokio::time::timeout(limits.write, wr.shutdown()).await;
     });
     let mut forwarder: Option<tokio::task::JoinHandle<()>> = None;
     let in_flight = Arc::new(tokio::sync::Semaphore::new(MAX_IN_FLIGHT));
     let mut reader = BufReader::with_capacity(64 * 1024, rd);
     let mut buf = Vec::new();
     let mut shutdown = ctx.shutdown_rx();
+    let idle = tokio::time::sleep(limits.idle);
+    tokio::pin!(idle);
+    // How the read loop ended: client gone / not reading / daemon stopping (no point waiting).
+    let mut abandon = false;
     loop {
         let frame = tokio::select! {
             f = read_frame(&mut reader, &mut buf, MAX_FRAME) => f,
             _ = kill.notified() => {
-                tracing::info!(uid = cred.uid, "slow subscriber disconnected");
+                tracing::info!(uid = cred.uid, "slow client disconnected");
+                abandon = true;
                 break;
             }
-            _ = shutdown.changed() => break,
+            _ = shutdown.changed() => {
+                abandon = true;
+                break;
+            }
+            _ = &mut idle, if forwarder.is_none() => {
+                if in_flight.available_permits() < MAX_IN_FLIGHT {
+                    // Still answering: not idle (read_frame is cancel-safe).
+                    idle.as_mut().reset(tokio::time::Instant::now() + limits.idle);
+                    continue;
+                }
+                tracing::debug!(uid = cred.uid, "idle IPC connection closed");
+                break;
+            }
         };
+        idle.as_mut()
+            .reset(tokio::time::Instant::now() + limits.idle);
         let response = match frame {
             Err(_) | Ok(Frame::Eof) => break,
             Ok(Frame::TooLong) => {
@@ -357,7 +413,8 @@ async fn handle_connection(ctx: Arc<Ctx>, stream: UnixStream) {
                 break;
             }
             Ok(Frame::Line) => {
-                let trimmed = buf.trim_ascii();
+                let line = std::mem::take(&mut buf);
+                let trimmed = line.trim_ascii();
                 if trimmed.is_empty() {
                     continue;
                 }
@@ -405,7 +462,16 @@ async fn handle_connection(ctx: Arc<Ctx>, stream: UnixStream) {
         f.abort();
     }
     drop(out_tx);
-    let _ = writer.await;
+    // Deliver the responses still being computed (bounded); never hold the slot for a client that is
+    // gone or not reading (the writer could otherwise wait forever).
+    let wait = if abandon {
+        std::time::Duration::from_secs(2)
+    } else {
+        limits.pending
+    };
+    if tokio::time::timeout(wait, &mut writer).await.is_err() {
+        writer.abort();
+    }
 }
 
 /// Requests of one connection handled at the same time.
@@ -565,7 +631,7 @@ mod tests {
             read_frame(&mut r, &mut buf, 100).await.unwrap(),
             Frame::Line
         );
-        assert_eq!(buf, b"abc");
+        assert_eq!(std::mem::take(&mut buf), b"abc");
         assert_eq!(
             read_frame(&mut r, &mut buf, 100).await.unwrap(),
             Frame::Line
@@ -575,7 +641,7 @@ mod tests {
             read_frame(&mut r, &mut buf, 100).await.unwrap(),
             Frame::Line
         );
-        assert_eq!(buf, b"xyz");
+        assert_eq!(std::mem::take(&mut buf), b"xyz");
         assert_eq!(read_frame(&mut r, &mut buf, 100).await.unwrap(), Frame::Eof);
         let long = [b'a'; 50];
         let mut r = BufReader::with_capacity(8, &long[..]);
@@ -583,6 +649,105 @@ mod tests {
             read_frame(&mut r, &mut buf, 10).await.unwrap(),
             Frame::TooLong
         );
+        assert!(buf.is_empty());
+    }
+
+    /// A read interrupted mid-line (select! on another branch) resumes without losing bytes.
+    #[tokio::test]
+    async fn read_frame_is_cancel_safe() {
+        let (client, server) = tokio::io::duplex(64);
+        let (mut client, server) = (client, server);
+        let mut r = BufReader::new(server);
+        let mut buf = Vec::new();
+        client.write_all(b"{\"id\":1,").await.unwrap();
+        let first = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            read_frame(&mut r, &mut buf, 100),
+        )
+        .await;
+        assert!(first.is_err(), "no newline yet");
+        client.write_all(b"\"cmd\":\"ping\"}\n").await.unwrap();
+        assert_eq!(
+            read_frame(&mut r, &mut buf, 100).await.unwrap(),
+            Frame::Line
+        );
+        assert_eq!(buf, br#"{"id":1,"cmd":"ping"}"#);
+    }
+
+    fn test_ctx(root: &Path) -> Arc<Ctx> {
+        let paths = Paths::with_root(root);
+        crate::setup::prepare_dirs(&paths, false).unwrap();
+        Arc::new(Ctx::new(
+            paths,
+            true,
+            crate::store::Store::open_in_memory().unwrap(),
+            crate::backends::Backends::unavailable(),
+            pb_core::config::Config::default(),
+        ))
+    }
+
+    const TEST_LIMITS: ConnLimits = ConnLimits {
+        idle: std::time::Duration::from_millis(600),
+        write: std::time::Duration::from_millis(300),
+        pending: std::time::Duration::from_secs(5),
+    };
+
+    /// An abandoned connection (nothing sent, nothing in flight) is closed after the idle timeout.
+    #[tokio::test]
+    async fn idle_connection_is_closed() {
+        let d = tempfile::tempdir().unwrap();
+        let ctx = test_ctx(d.path());
+        let (client, server) = UnixStream::pair().unwrap();
+        let task = tokio::spawn(handle_connection(ctx, server, TEST_LIMITS));
+        // Activity re-arms the timer: a ping just before the deadline keeps the connection.
+        tokio::time::sleep(TEST_LIMITS.idle - std::time::Duration::from_millis(200)).await;
+        let (rd, mut wr) = client.into_split();
+        wr.write_all(b"{\"id\":7,\"cmd\":\"ping\"}\n")
+            .await
+            .unwrap();
+        let mut lines = BufReader::new(rd).lines();
+        let reply = lines.next_line().await.unwrap().unwrap();
+        assert!(reply.contains("\"id\":7"), "{reply}");
+        tokio::time::sleep(TEST_LIMITS.idle - std::time::Duration::from_millis(200)).await;
+        assert!(!task.is_finished(), "activity re-armed the idle timer");
+        tokio::time::timeout(TEST_LIMITS.idle * 3, task)
+            .await
+            .expect("closed after the idle timeout")
+            .unwrap();
+        assert_eq!(lines.next_line().await.unwrap(), None, "EOF for the client");
+    }
+
+    /// A subscriber that stops reading is dropped and its slot released, even with the socket full.
+    #[tokio::test]
+    async fn stalled_subscriber_releases_its_slot() {
+        let d = tempfile::tempdir().unwrap();
+        let ctx = test_ctx(d.path());
+        let (client, server) = UnixStream::pair().unwrap();
+        let task = tokio::spawn(handle_connection(ctx.clone(), server, TEST_LIMITS));
+        let (rd, mut wr) = client.into_split();
+        wr.write_all(b"{\"id\":1,\"cmd\":\"subscribe\"}\n")
+            .await
+            .unwrap();
+        let mut lines = BufReader::new(rd);
+        let mut ack = String::new();
+        lines.read_line(&mut ack).await.unwrap();
+        assert!(ack.contains("\"ok\":true"), "{ack}");
+        // Never read again; flood events until the connection gives up.
+        let ev =
+            DaemonEvent::Component(crate::spyware::component_status(Path::new("/nonexistent")));
+        for _ in 0..20_000 {
+            ctx.bus.publish(ev.clone());
+            if task.is_finished() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        tokio::time::timeout(std::time::Duration::from_secs(10), task)
+            .await
+            .expect("connection task ends")
+            .unwrap();
+        drop(lines);
+        drop(wr);
     }
 
     #[test]
