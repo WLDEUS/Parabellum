@@ -170,7 +170,7 @@ struct PermissionsView: View {
             .padding(30)
             .glassSurface()
         } else {
-            ForEach(store.extensionGroups, id: \.browser) { group in
+            ForEach(store.extensionGroups) { group in
                 Card(title: BrowserLabels.label(group.browser), symbol: "safari") {
                     VStack(spacing: 0) {
                         ForEach(group.items) { ext in

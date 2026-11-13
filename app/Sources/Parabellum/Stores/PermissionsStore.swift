@@ -48,6 +48,14 @@ struct PermissionGroup: Identifiable {
     var maxRisk: Severity { grants.map(\.risk).max() ?? .info }
 }
 
+/// Extensions of one browser (UI grouping).
+struct ExtensionGroup: Identifiable {
+    let browser: String
+    let items: [BrowserExtension]
+
+    var id: String { browser }
+}
+
 /// State and actions of the "Permissions" feature. Owned by AppModel (`model.*`), survives section switches.
 @MainActor
 final class PermissionsStore: ObservableObject {
@@ -138,13 +146,13 @@ final class PermissionsStore: ObservableObject {
         .sorted { ($0.maxRisk, $1.label) > ($1.maxRisk, $0.label) }
     }
 
-    var extensionGroups: [(browser: String, items: [BrowserExtension])] {
+    var extensionGroups: [ExtensionGroup] {
         let list = (extensions?.extensions ?? []).filter { e in
             riskFilter.accepts(e.risk) && (showDenied || e.enabled != false)
                 && matches([e.name, e.extensionId, e.profile, BrowserLabels.label(e.browser)])
         }
         return Dictionary(grouping: list, by: \.browser)
-            .map { (browser: $0.key, items: $0.value.sorted { ($0.risk, $1.name) > ($1.risk, $0.name) }) }
+            .map { ExtensionGroup(browser: $0.key, items: $0.value.sorted { ($0.risk, $1.name) > ($1.risk, $0.name) }) }
             .sorted { BrowserLabels.label($0.browser) < BrowserLabels.label($1.browser) }
     }
 
