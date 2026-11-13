@@ -15,7 +15,7 @@ struct NetworkView: View {
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                } else if model.isBusy("adblock") {
+                } else if model.isFirstLoad("adblock") {
                     ProgressView("Chargement…").padding(40)
                 } else {
                     ContentUnavailableView("État indisponible", systemImage: "network")
@@ -27,12 +27,12 @@ struct NetworkView: View {
         .toolbar {
             ToolbarItem {
                 RefreshButton(isLoading: model.isBusy("adblock")) {
-                    Task { await model.loadAdblock() }
+                    Task { await model.refresh(section: .network, force: true) }
                 }
             }
         }
-        .task {
-            await model.loadAdblock()
+        .onAppear {
+            model.revalidateSection(.network)
         }
     }
 

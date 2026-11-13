@@ -24,7 +24,9 @@ struct DevicesView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        // Grouped and sorted once per render (used twice below).
+        let groups = self.groups
+        return VStack(spacing: 0) {
             HStack {
                 Toggle("Afficher les périphériques déconnectés", isOn: $showDisconnected)
                     .toggleStyle(.checkbox)
@@ -37,7 +39,10 @@ struct DevicesView: View {
             }
             .padding(10)
             Divider()
-            if groups.isEmpty {
+            if groups.isEmpty && model.isFirstLoad("devices") {
+                ProgressView("Chargement…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if groups.isEmpty {
                 ContentUnavailableView(
                     "Aucun périphérique",
                     systemImage: "cable.connector",
@@ -61,12 +66,12 @@ struct DevicesView: View {
         .toolbar {
             ToolbarItem {
                 RefreshButton(isLoading: model.isBusy("devices")) {
-                    Task { await model.loadDevices() }
+                    Task { await model.refresh(section: .devices, force: true) }
                 }
             }
         }
-        .task {
-            await model.loadDevices()
+        .onAppear {
+            model.revalidateSection(.devices)
         }
     }
 }

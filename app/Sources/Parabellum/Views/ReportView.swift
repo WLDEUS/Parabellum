@@ -21,7 +21,7 @@ struct ReportView: View {
                             }
                         }
                     }
-                } else if model.isBusy("report") {
+                } else if model.isFirstLoad("report") {
                     ProgressView("Chargement du rapport…").padding(40)
                 } else {
                     ContentUnavailableView("Rapport indisponible", systemImage: "chart.bar.xaxis")
@@ -33,12 +33,12 @@ struct ReportView: View {
         .toolbar {
             ToolbarItem {
                 RefreshButton(isLoading: model.isBusy("report")) {
-                    Task { await model.loadReport() }
+                    Task { await model.refresh(section: .report, force: true) }
                 }
             }
         }
-        .task {
-            await model.loadReport()
+        .onAppear {
+            model.revalidateSection(.report)
         }
         .onChange(of: model.reportWeekOffset) { _, _ in
             Task { await model.loadReport() }

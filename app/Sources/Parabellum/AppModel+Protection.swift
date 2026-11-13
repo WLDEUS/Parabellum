@@ -8,28 +8,37 @@ extension AppModel {
     // MARK: - VPN & networks
 
     func loadVpnStatus() async {
-        await perform("vpn-status", quiet: true) {
-            self.vpnStatus = try await self.call(.vpnStatus, as: VpnStatus.self)
+        await fetch("vpn-status", .vpnStatus, as: VpnStatus.self) { status in
+            if self.vpnStatus != status {
+                self.vpnStatus = status
+            }
         }
     }
 
+    /// Status and networks in parallel, then the external services when relevant.
     func loadVpn() async {
-        await loadVpnStatus()
-        await loadNetworks()
-        if vpnStatus?.backend == .external || config?.vpn.backend == .external {
+        await concurrently(
+            { await self.loadVpnStatus() },
+            { await self.loadNetworks() }
+        )
+        if wantsExternalVpnServices {
             await loadExternalVpnServices()
         }
     }
 
     func loadNetworks() async {
-        await perform("networks", quiet: true) {
-            self.networks = try await self.call(.listNetworks, as: [NetworkInfo].self)
+        await fetch("networks", .listNetworks, as: [NetworkInfo].self) { list in
+            if self.networks != list {
+                self.networks = list
+            }
         }
     }
 
     func loadExternalVpnServices() async {
-        await perform("vpn-services", quiet: true) {
-            self.externalVpnServices = try await self.call(.vpnListServices, as: [ExternalVpnService].self)
+        await fetch("vpn-services", .vpnListServices, as: [ExternalVpnService].self) { list in
+            if self.externalVpnServices != list {
+                self.externalVpnServices = list
+            }
         }
     }
 
@@ -122,16 +131,27 @@ extension AppModel {
 
     // MARK: - Behaviour guard & snapshots
 
+    /// Guard status and snapshots in parallel (the snapshot list runs `tmutil` in the daemon).
     func loadGuard() async {
-        await perform("guard", quiet: true) {
-            self.guardStatus = try await self.call(.guardStatus, as: GuardStatus.self)
+        await concurrently(
+            { await self.loadGuardStatus() },
+            { await self.loadSnapshots() }
+        )
+    }
+
+    func loadGuardStatus() async {
+        await fetch("guard", .guardStatus, as: GuardStatus.self) { status in
+            if self.guardStatus != status {
+                self.guardStatus = status
+            }
         }
-        await loadSnapshots()
     }
 
     func loadSnapshots() async {
-        await perform("snapshots", quiet: true) {
-            self.snapshots = try await self.call(.listSnapshots, as: [SnapshotInfo].self, timeout: 60)
+        await fetch("snapshots", .listSnapshots, as: [SnapshotInfo].self, timeout: 60) { list in
+            if self.snapshots != list {
+                self.snapshots = list
+            }
         }
     }
 
@@ -173,23 +193,64 @@ extension AppModel {
 
     // MARK: - Privacy
 
-    func loadPrivacy() async {
-        await perform("privacy", quiet: true) {
-            self.removalSummary = try await self.call(.privacySummary, as: RemovalSummary.self)
-            self.removalRequests = try await self.call(.privacyListRequests, as: [RemovalRequest].self)
+    /// The five privacy lists in parallel (`onlyStale`: skip what is fresh or already loading).
+    func loadPrivacy(onlyStale: Bool = false) async {
+        func due(_ key: String) -> Bool {
+            !onlyStale || (needsRefresh(key) && !isBusy(key))
         }
-        await perform("privacy-profile", quiet: true) {
-            self.identity = try await self.call(.privacyGetProfile(reveal: false), as: IdentityProfile.self)
-        }
-        await perform("brokers", quiet: true) {
-            self.brokers = try await self.call(.privacyListBrokers, as: [BrokerInfo].self)
-        }
-        await perform("breaches", quiet: true) {
-            self.breaches = try await self.call(.breachList, as: [BreachFinding].self)
-        }
-        await perform("aliases", quiet: true) {
-            self.emailAliases = try await self.call(.aliasList, as: [EmailAlias].self)
-        }
+        let summary = due("privacy"), profile = due("privacy-profile"), brokers = due("brokers")
+        let breaches = due("breaches"), aliases = due("aliases")
+        await concurrently(
+            { if summary { await self.loadRemovalRequests() } },
+            {
+                guard profile else { return }
+                await self.fetch("privacy-profile", .privacyGetProfile(reveal: false), as: IdentityProfile.self) { value in
+                    if self.identity != value {
+                        self.identity = value
+                    }
+                }
+            },
+            {
+                guard brokers else { return }
+                await self.fetch("brokers", .privacyListBrokers, as: [BrokerInfo].self) { list in
+                    if self.brokers != list {
+                        self.brokers = list
+                    }
+                }
+            },
+            {
+                guard breaches else { return }
+                await self.fetch("breaches", .breachList, as: [BreachFinding].self) { list in
+                    if self.breaches != list {
+                        self.breaches = list
+                    }
+                }
+            },
+            {
+                guard aliases else { return }
+                await self.fetch("aliases", .aliasList, as: [EmailAlias].self) { list in
+                    if self.emailAliases != list {
+                        self.emailAliases = list
+                    }
+                }
+            }
+        )
+    }
+
+    /// GDPR summary + requests (one key: they are shown together).
+    func loadRemovalRequests() async {
+        await fetch("privacy", { () async throws -> (summary: RemovalSummary, requests: [RemovalRequest]) in
+            async let summary = self.call(.privacySummary, as: RemovalSummary.self)
+            async let requests = self.call(.privacyListRequests, as: [RemovalRequest].self)
+            return (summary: try await summary, requests: try await requests)
+        }, apply: { loaded in
+            if self.removalSummary != loaded.summary {
+                self.removalSummary = loaded.summary
+            }
+            if self.removalRequests != loaded.requests {
+                self.removalRequests = loaded.requests
+            }
+        })
     }
 
     /// Identity in clear (administrator approval) for editing.
