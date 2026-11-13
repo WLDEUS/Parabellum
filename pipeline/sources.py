@@ -33,7 +33,7 @@ from .abusech import (
     parse_urlhaus_csv,
 )
 from .bundle import SourceInfo
-from .domains import parse_list
+from .domains import complete_lines, parse_list
 from .hashes import MalwareEntry
 from .http import Fetcher, FetchError, redact
 from .yara_rules import RuleFile, bundle_name, iter_tarball_members, load_local_rules
@@ -192,7 +192,7 @@ def f_threatfox_export(spec: SourceSpec, ctx: Context) -> Fetched:
 
 def f_domain_list(spec: SourceSpec, ctx: Context) -> Fetched:
     data = ctx.http.get_bytes(spec.url, max_bytes=256 * 1024 * 1024)
-    doms = parse_list(data.decode("utf-8", errors="replace"), str(spec.opt("format", "auto")))
+    doms = parse_list(complete_lines(data.decode("utf-8", errors="replace")), str(spec.opt("format", "auto")))
     min_entries = int(spec.opt("min_entries", 10))  # type: ignore[call-overload]
     if len(doms) < min_entries:
         raise FetchError(f"only {len(doms)} domains parsed (< {min_entries})")

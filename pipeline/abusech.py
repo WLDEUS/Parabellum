@@ -17,7 +17,7 @@ import zipfile
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
-from .domains import host_from_url, normalize_domain
+from .domains import complete_lines, host_from_url, normalize_domain
 from .hashes import MalwareEntry, parse_mb_api, parse_mb_csv
 from .http import Fetcher, FetchError
 
@@ -44,7 +44,8 @@ def fill_key(template: str, key: str) -> str:
 def maybe_unzip(data: bytes, max_bytes: int = MAX_EXPORT_BYTES) -> str:
     """Exports may be plain CSV or a zip holding one CSV; return the text."""
     if data[:2] != b"PK":
-        return data.decode("utf-8", errors="replace")
+        # Plain text has no integrity check of its own (a zip has CRCs): drop a cut last line.
+        return complete_lines(data.decode("utf-8", errors="replace"))
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
         members = [i for i in zf.infolist() if not i.is_dir()]
         if not members:
