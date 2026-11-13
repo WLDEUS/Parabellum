@@ -799,6 +799,33 @@ enum Dispatch {
     Closed,
 }
 
+/// Intelligence (behaviour baseline): an Apple shell / script interpreter started by a non-Apple program.
+/// Apple-to-Apple launches (Terminal → zsh…) stay filtered out, so the volume remains small.
+fn interpreter_from_third_party(target: &EsProcessInfo, parent: Option<&EsProcessInfo>) -> bool {
+    const INTERPRETERS: &[&str] = &[
+        "sh",
+        "bash",
+        "zsh",
+        "dash",
+        "ksh",
+        "tcsh",
+        "csh",
+        "python3",
+        "perl",
+        "perl5.34",
+        "perl5.30",
+        "ruby",
+        "osascript",
+        "tclsh",
+        "swift",
+        "jsc",
+        "awk",
+    ];
+    let name = target.path.rsplit('/').next().unwrap_or("");
+    INTERPRETERS.contains(&name)
+        && parent.is_some_and(|p| !p.is_platform_binary && !p.path.is_empty())
+}
+
 fn dispatch(ev: EsEvent, filter: &EsFilter, tx: &mpsc::Sender<MonitorEvent>) -> Dispatch {
     let out = match ev {
         EsEvent::BtmLaunchItemAdd => {
@@ -817,7 +844,8 @@ fn dispatch(ev: EsEvent, filter: &EsFilter, tx: &mpsc::Sender<MonitorEvent>) -> 
             if target.pid == filter.own_pid
                 || Path::new(&target.path).starts_with(&filter.own_root)
                 || (target.is_platform_binary
-                    && !crate::sensitive::platform_exec_of_interest(&target.path, &args))
+                    && !crate::sensitive::platform_exec_of_interest(&target.path, &args)
+                    && !interpreter_from_third_party(&target, parent.as_ref()))
             {
                 return Dispatch::Skipped;
             }
@@ -1096,6 +1124,25 @@ mod tests {
             parent: None,
         };
         assert!(matches!(dispatch(ev, &f, &tx), Dispatch::Skipped));
+        // Shell started by a third-party program (behaviour baseline): forwarded; by Apple: skipped.
+        let ev = EsEvent::Exec {
+            target: proc_info("/bin/zsh", true),
+            args: vec!["zsh".into(), "-c".into(), "true".into()],
+            parent: Some(proc_info(
+                "/Applications/Editor.app/Contents/MacOS/Editor",
+                false,
+            )),
+        };
+        assert!(matches!(dispatch(ev, &f, &tx), Dispatch::Sent));
+        let ev = EsEvent::Exec {
+            target: proc_info("/bin/zsh", true),
+            args: vec!["zsh".into()],
+            parent: Some(proc_info(
+                "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
+                true,
+            )),
+        };
+        assert!(matches!(dispatch(ev, &f, &tx), Dispatch::Skipped));
         // Credential store copied to a staging folder outside the watched paths: forwarded.
         let ev = EsEvent::File {
             path: "/private/var/folders/xy/T/stage/Login Data".into(),
@@ -1130,7 +1177,7 @@ mod tests {
                 assert_eq!(f, "/Users/q/Documents/report.docx");
             }
         }
-        assert_eq!(n, 3);
+        assert_eq!(n, 4);
     }
 
     #[cfg(not(target_os = "macos"))]
