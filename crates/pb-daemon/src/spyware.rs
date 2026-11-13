@@ -936,7 +936,8 @@ pub async fn schedule_loop(ctx: Arc<Ctx>) {
             .unwrap_or(Duration::from_secs(86_400))
         };
         tokio::select! {
-            _ = tokio::time::sleep(wait) => {
+            // Wall clock: the weekly slot is honoured even if the Mac slept in between.
+            _ = crate::system::sleep_until_wall(crate::system::wall_deadline(wait)) => {
                 catch_up = false;
                 if ctx.config().security.spyware_scan_weekly {
                     auto_start(&ctx, "weekly").await;

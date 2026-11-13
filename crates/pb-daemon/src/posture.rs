@@ -479,7 +479,7 @@ pub async fn daily_loop(ctx: Arc<Ctx>) {
     let mut wait = STARTUP_DELAY;
     loop {
         tokio::select! {
-            _ = tokio::time::sleep(wait) => {}
+            _ = crate::system::sleep_until_wall(crate::system::wall_deadline(wait)) => {}
             _ = shutdown.changed() => if *shutdown.borrow() { return; },
         }
         if ctx.config().security.posture_checks {
