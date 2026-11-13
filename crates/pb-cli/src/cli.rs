@@ -186,6 +186,13 @@ pub enum Command {
     Watch,
     /// Vérifier que le daemon répond.
     Ping,
+    // ----- Travel mode -----
+    /// Mode Voyage (Wi-Fi public) : VPN permanent + coupe-circuit, blocage DNS, coupe-feu furtif ;
+    /// « off » rétablit les réglages d'avant (sudo).
+    Travel {
+        #[arg(value_enum, default_value_t = DnsArg::Status)]
+        state: DnsArg,
+    },
 }
 
 #[derive(Debug, Args)]

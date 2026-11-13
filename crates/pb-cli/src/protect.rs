@@ -77,6 +77,8 @@ pub fn admin_probe(cmd: &Command) -> Option<Request> {
             PrivacyCmd::Complaint { .. } => Request::PrivacyComplaint { request_id: s() },
             _ => return None,
         },
+        // ----- Travel mode -----
+        Command::Travel { state: DnsArg::Off } => Request::TravelDisable,
         _ => return None,
     })
 }

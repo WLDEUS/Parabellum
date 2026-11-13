@@ -11,6 +11,8 @@ pub mod client;
 pub mod commands;
 pub mod format;
 pub mod protect;
+// ----- Travel mode -----
+pub mod travel;
 
 pub use cli::Cli;
 pub use commands::{run, Output};
