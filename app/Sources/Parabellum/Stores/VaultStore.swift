@@ -373,11 +373,11 @@ final class VaultStore: ObservableObject {
         let new = newPassword ?? RecoveryKey.generate()
         let purpose = PasswordPrompt.Purpose.changePassword(newPassword: newPassword)
         await model.perform("vault-chpass") {
-            var old = oldPassword
-            if old == nil {
-                old = try await self.keychainPassword(reason: "changer le mot de passe du coffre", purpose: purpose)
+            var current = oldPassword
+            if current == nil {
+                current = try await self.keychainPassword(reason: "changer le mot de passe du coffre", purpose: purpose)
             }
-            guard let old else { return }
+            guard let old = current else { return }
             do {
                 let s = try await VaultCLI.changePassword(self.location, old: old, new: new)
                 self.apply(s)
@@ -399,11 +399,11 @@ final class VaultStore: ObservableObject {
     func resize(sizeGB: Int, password: String? = nil) async {
         let purpose = PasswordPrompt.Purpose.resize(sizeGB: sizeGB)
         await model.perform("vault-resize") {
-            var pass = password
-            if pass == nil {
-                pass = try await self.keychainPassword(reason: "redimensionner le coffre", purpose: purpose)
+            var typed = password
+            if typed == nil {
+                typed = try await self.keychainPassword(reason: "redimensionner le coffre", purpose: purpose)
             }
-            guard let pass else { return }
+            guard let pass = typed else { return }
             do {
                 let s = try await VaultCLI.resize(self.location, size: "\(sizeGB)g", password: pass)
                 self.apply(s)
@@ -416,11 +416,11 @@ final class VaultStore: ObservableObject {
 
     func compact(password: String? = nil) async {
         await model.perform("vault-compact") {
-            var pass = password
-            if pass == nil {
-                pass = try await self.keychainPassword(reason: "récupérer l'espace du coffre", purpose: .compact)
+            var typed = password
+            if typed == nil {
+                typed = try await self.keychainPassword(reason: "récupérer l'espace du coffre", purpose: .compact)
             }
-            guard let pass else { return }
+            guard let pass = typed else { return }
             let before = self.status?.allocatedBytes ?? 0
             do {
                 let s = try await VaultCLI.compact(self.location, password: pass)
@@ -472,12 +472,12 @@ final class VaultStore: ObservableObject {
     /// Copies files into the open vault; with `removeOriginals`, then asks to securely delete them.
     func addToVault(_ urls: [URL], removeOriginals: Bool) async {
         guard isOpen, let mount = status?.mountPoint, !urls.isEmpty else { return }
-        let copied: [URL]? = await model.perform("vault-add") {
+        let result: [URL]? = await model.perform("vault-add") {
             try await Task.detached(priority: .userInitiated) {
                 try VaultStore.copy(urls, into: mount)
             }.value
         }
-        guard let copied else { return }
+        guard let copied = result else { return }
         activity.touch()
         await refresh()
         model.banner = Banner(message: "\(copied.count) élément(s) copié(s) dans le coffre.", isError: false)
@@ -542,10 +542,10 @@ final class VaultStore: ObservableObject {
     }
 
     func prepareEmptyTrash() async {
-        let reports = await model.perform("vault-shred-plan") {
+        let result = await model.perform("vault-shred-plan") {
             try await VaultCLI.emptyTrash(self.location, dryRun: true)
         }
-        guard let reports else { return }
+        guard let reports = result else { return }
         if reports.isEmpty {
             model.banner = Banner(message: "La Corbeille est déjà vide.", isError: false)
         } else {
@@ -558,10 +558,10 @@ final class VaultStore: ObservableObject {
         shredPlan = nil
         let paths = plan.actionable.map(\.path)
         guard !paths.isEmpty else { return }
-        let reports = await model.perform("vault-shred") {
+        let result = await model.perform("vault-shred") {
             try await VaultCLI.shred(self.location, paths: paths, dryRun: false)
         }
-        guard let reports else { return }
+        guard let reports = result else { return }
         lastShred = reports
         let deleted = reports.filter { $0.outcome == .deleted }
         let failed = reports.count - deleted.count
