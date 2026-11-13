@@ -340,7 +340,8 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
                 redact(&cfg)
             })
         }
-        Request::SetConfig { config } => json(&set_config(ctx, config).await?),
+        // Answered redacted like GetConfig for non-admins: the client keeps it, and sends it back as is.
+        Request::SetConfig { config } => json(&redact(&set_config(ctx, config).await?)),
         Request::SetProtection { paused_minutes } => {
             json(&set_protection(ctx, paused_minutes).await?)
         }
