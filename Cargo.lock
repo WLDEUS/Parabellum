@@ -2358,6 +2358,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "pb-intel"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "flate2",
+ "hex",
+ "pb-ml",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "pb-ml"
 version = "0.1.0"
 dependencies = [
