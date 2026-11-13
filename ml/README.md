@@ -54,7 +54,7 @@ ratio, overlaps, unknown CPU). Bumping the layout drops the old rows from traini
 `ml/data/extra_clean_features.jsonl` on the Mac.
 
 **Script classifier** (`python -m ml.train --kind script`, `pb-features --kind script`, crate
-`pb-ml::script`, `SCRIPT_FEATURES_VERSION = 1`, 360 features): type detection (FasdUAS, shebang,
+`pb-ml::script`, `SCRIPT_FEATURES_VERSION = 1`, 358 features): type detection (FasdUAS, shebang,
 extension, sniffing), UTF-16 / compiled-AppleScript text views, base64 / hex / `\xNN`
 de-obfuscation (depth 2, 1 MiB), lexical + obfuscation statistics, 48 indicator families (AMOS-style
 password dialogs, `dscl -authonly`, `security find-generic-password`, `curl | bash`, decode pipes,
