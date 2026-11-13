@@ -134,6 +134,21 @@ public enum Request: Sendable, Equatable {
     /// → `EmailAlias`
     case aliasCreate(label: String)
 
+    // Local network & permissions audit
+    /// Current network (or a known one) and the scan state. → `LanStatus`
+    case lanStatus(networkId: String? = nil)
+    /// Scan now (`active`: nil = policy, true = active even on an untrusted network, false = caches only);
+    /// progress arrives as `lan` events. → `LanStatus`
+    case lanScan(active: Bool? = nil)
+    /// Rename (empty = clear) and / or mark known. Marking known is admin. → `LanDevice`
+    case lanSetDevice(networkId: String, mac: String, name: String? = nil, trusted: Bool? = nil)
+    /// → `null`
+    case lanForgetDevice(networkId: String, mac: String)
+    /// Top-20 TCP ports of an online device. → `LanDevice`
+    case lanPorts(mac: String)
+    /// TCC grants, risk-scored (installed app only). → `PermissionsReport`
+    case permissionsAudit(refresh: Bool = false)
+
     /// Wire name (`cmd`).
     public var command: String {
         switch self {
@@ -195,6 +210,12 @@ public enum Request: Sendable, Equatable {
         case .breachCheckNow: return "breach_check_now"
         case .aliasList: return "alias_list"
         case .aliasCreate: return "alias_create"
+        case .lanStatus: return "lan_status"
+        case .lanScan: return "lan_scan"
+        case .lanSetDevice: return "lan_set_device"
+        case .lanForgetDevice: return "lan_forget_device"
+        case .lanPorts: return "lan_ports"
+        case .permissionsAudit: return "permissions_audit"
         }
     }
 
@@ -207,6 +228,8 @@ public enum Request: Sendable, Equatable {
             return false
         case .vpnStatus, .vpnListServices, .listNetworks, .guardStatus, .listSnapshots, .privacyListBrokers,
              .privacyListRequests, .privacySummary, .breachList, .aliasList:
+            return false
+        case .lanStatus:
             return false
         case let .privacyGetProfile(reveal):
             return reveal
@@ -227,6 +250,8 @@ public enum Request: Sendable, Equatable {
             return true
         case let .setNetworkTrust(_, trusted):
             return trusted
+        case let .lanSetDevice(_, _, _, trusted):
+            return trusted == true
         case let .privacyGetProfile(reveal):
             return reveal
         case let .setDns(enabled):
@@ -240,7 +265,7 @@ public enum Request: Sendable, Equatable {
         case let .resolveAlert(_, action):
             switch action {
             case .allow, .restore, .trustDevice, .approvePersistence, .removePersistence, .reportFalsePositive,
-                 .resumeProcess, .trustNetwork:
+                 .resumeProcess, .trustNetwork, .trustLanDevice:
                 return true
             default:
                 return false
@@ -363,6 +388,30 @@ public enum Request: Sendable, Equatable {
         case let .retroHunt(days):
             o["days"] = .int(Int64(days))
         case let .posture(refresh):
+            o["refresh"] = .bool(refresh)
+        case let .lanStatus(networkId):
+            if let networkId {
+                o["network_id"] = .string(networkId)
+            }
+        case let .lanScan(active):
+            if let active {
+                o["active"] = .bool(active)
+            }
+        case let .lanSetDevice(networkId, mac, name, trusted):
+            o["network_id"] = .string(networkId)
+            o["mac"] = .string(mac)
+            if let name {
+                o["name"] = .string(name)
+            }
+            if let trusted {
+                o["trusted"] = .bool(trusted)
+            }
+        case let .lanForgetDevice(networkId, mac):
+            o["network_id"] = .string(networkId)
+            o["mac"] = .string(mac)
+        case let .lanPorts(mac):
+            o["mac"] = .string(mac)
+        case let .permissionsAudit(refresh):
             o["refresh"] = .bool(refresh)
         }
         return .object(o)

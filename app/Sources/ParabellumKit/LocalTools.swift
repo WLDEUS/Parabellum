@@ -123,6 +123,20 @@ public enum ParabellumCLI {
         let data = try await runJSON(["privacy", "password-check", "--csv", path])
         return try JSONDecoder().decode([LeakedPasswordEntry].self, from: data)
     }
+
+    // MARK: Permissions audit (run as the user)
+
+    /// `parabellum permissions extensions`: browser extensions of this user.
+    public static func browserExtensions() async throws -> ExtensionsReport {
+        let data = try await runJSON(["permissions", "extensions"], timeout: 60)
+        return try JSONDecoder().decode(ExtensionsReport.self, from: data)
+    }
+
+    /// `parabellum permissions reset <service> <bundle id>` (`tccutil reset`, as the user).
+    public static func resetPermission(service: String, bundleId: String) async throws -> TccResetResult {
+        let data = try await runJSON(["permissions", "reset", service, bundleId], timeout: 30)
+        return try JSONDecoder().decode(TccResetResult.self, from: data)
+    }
 }
 
 /// Data written by one thread and read by another after a `DispatchGroup.wait()`.

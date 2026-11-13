@@ -129,6 +129,7 @@ extension AlertAction {
         case .killProcess: return "Arrêter le processus"
         case .resumeProcess: return "Reprendre le processus"
         case .trustNetwork: return "Faire confiance à ce réseau"
+        case .trustLanDevice: return "Je connais cet appareil"
         case .unknown: return "Action inconnue"
         }
     }

@@ -280,6 +280,8 @@ public enum AlertAction: String, TolerantEnum {
     case resumeProcess = "resume_process"
     /// Trust the network named in the alert (`networkId`).
     case trustNetwork = "trust_network"
+    /// "Je connais cet appareil" (LAN device of the alert).
+    case trustLanDevice = "trust_lan_device"
     case unknown
     public static let fallback: AlertAction = .unknown
     public init(from decoder: Decoder) throws { self = try Self.decodeTolerantly(from: decoder) }
