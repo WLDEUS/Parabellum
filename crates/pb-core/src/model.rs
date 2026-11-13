@@ -250,6 +250,10 @@ pub enum AlertAction {
     ResumeProcess,
     /// Mark the network named in the alert (`network_id`) as trusted.
     TrustNetwork,
+    // ----- Local network -----
+    /// "Je connais cet appareil": mark the LAN device of the alert (`device_id` = `lan:<mac>`, on
+    /// `network_id`) as known.
+    TrustLanDevice,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -988,6 +992,292 @@ pub struct EmailAlias {
     pub provider: crate::config::AliasProvider,
     pub created_at: i64,
     pub active: bool,
+}
+
+// ---------------------------------------------------------------------------------------------
+// Local network inventory ("Réseau local")
+// ---------------------------------------------------------------------------------------------
+
+/// Best guess of what a device of the local network is (vendor, Bonjour services, ports, names).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum LanDeviceType {
+    Router,
+    Computer,
+    Phone,
+    Tablet,
+    Tv,
+    Speaker,
+    Printer,
+    Camera,
+    Nas,
+    Console,
+    Iot,
+    #[default]
+    Unknown,
+}
+
+/// How the last scan of a network was done.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum LanScanMode {
+    /// Only the system caches (ARP / NDP): no packet sent. Default on untrusted networks.
+    #[default]
+    Passive,
+    /// Light sweep of the subnet (one UDP datagram per address, rate-limited), IPv6 all-nodes ping and
+    /// Bonjour browsing, then the caches.
+    Active,
+}
+
+/// A device seen on a local network (identified by its MAC address on that network).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LanDevice {
+    /// Lowercase `aa:bb:cc:dd:ee:ff` (the device id on its network).
+    pub mac: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ipv4: Option<String>,
+    #[serde(default)]
+    pub ipv6: Vec<String>,
+    /// Bonjour host name (`Apple-TV.local`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hostname: Option<String>,
+    /// Bonjour service instance name (`Salon`, `Imprimante du bureau`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mdns_name: Option<String>,
+    /// Name given by the user.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Manufacturer from the IEEE OUI list (none for private addresses).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vendor: Option<String>,
+    /// Locally administered address ("adresse privée" of iOS / Android / macOS / Windows): no vendor, and
+    /// the same device may come back with another address.
+    #[serde(default)]
+    pub private_mac: bool,
+    #[serde(default)]
+    pub device_type: LanDeviceType,
+    /// Model announced over Bonjour (`AppleTV11,1`, `HP LaserJet …`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// Bonjour service types (`_airplay._tcp`…).
+    #[serde(default)]
+    pub services: Vec<String>,
+    /// Open TCP ports found by the last on-demand check.
+    #[serde(default)]
+    pub open_ports: Vec<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ports_checked_at: Option<i64>,
+    pub first_seen: i64,
+    pub last_seen: i64,
+    /// Seen by the last scan.
+    #[serde(default)]
+    pub online: bool,
+    /// The user knows this device ("Je connais cet appareil").
+    #[serde(default)]
+    pub trusted: bool,
+    /// Present at the first scan of the network (never alerted on).
+    #[serde(default)]
+    pub baseline: bool,
+    #[serde(default)]
+    pub is_gateway: bool,
+    /// This Mac.
+    #[serde(default)]
+    pub is_self: bool,
+}
+
+/// A network with its devices.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LanNetwork {
+    /// `gw:<router MAC>` (same fingerprint as the VPN / network guard).
+    pub id: String,
+    pub name: String,
+    pub interface: String,
+    /// `192.168.1.0/24`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subnet: Option<String>,
+    /// In `vpn.trusted_networks`.
+    pub trusted: bool,
+    pub current: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_scan: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_scan_mode: Option<LanScanMode>,
+    pub devices: Vec<LanDevice>,
+}
+
+/// Short view of a known network.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LanNetworkSummary {
+    pub id: String,
+    pub name: String,
+    pub trusted: bool,
+    pub current: bool,
+    pub devices: u32,
+    /// Devices not marked as known.
+    pub unknown: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_scan: Option<i64>,
+}
+
+/// `lan_status` answer, also pushed as the `lan` event while a scan runs and when it ends.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct LanStatus {
+    /// `lan.enabled`.
+    pub enabled: bool,
+    pub scanning: bool,
+    /// 0.0 – 1.0 while scanning.
+    pub progress: f32,
+    /// Current step (French), while scanning.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase: Option<String>,
+    /// The current network (or the one asked for).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network: Option<LanNetwork>,
+    #[serde(default)]
+    pub networks: Vec<LanNetworkSummary>,
+    /// Why the last scan was passive / did not run (French).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    pub interval_minutes: u32,
+}
+
+// ---------------------------------------------------------------------------------------------
+// Permissions audit (TCC grants, browser extensions)
+// ---------------------------------------------------------------------------------------------
+
+/// `auth_value` of a TCC row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TccAuthValue {
+    Denied,
+    Allowed,
+    /// Partial access (Photos "limited", Location "when in use"…).
+    Limited,
+    #[default]
+    Unknown,
+}
+
+/// One privacy permission recorded by macOS (a row of a `TCC.db`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TccGrant {
+    /// Stable id: 16 hex chars of the SHA-256 of `scope|service|client|target`.
+    pub id: String,
+    /// `kTCCServiceCamera`…
+    pub service: String,
+    /// French label (`Caméra`).
+    pub service_label: String,
+    /// Bundle id, or executable path when `client_is_path`.
+    pub client: String,
+    pub client_is_path: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_path: Option<String>,
+    /// `Some(false)`: the app is no longer on this Mac (stale grant); `None`: could not tell.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub installed: Option<bool>,
+    pub auth: TccAuthValue,
+    /// From the system database (`/Library/…/TCC.db`) rather than the user's.
+    pub system_wide: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_modified: Option<i64>,
+    /// Automation (`AppleEvents`): bundle id of the app it may control.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signing: Option<SigningInfo>,
+    pub risk: Severity,
+    /// Why this risk (French).
+    #[serde(default)]
+    pub reasons: Vec<String>,
+    /// System Settings pane where the user revokes it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settings_url: Option<String>,
+}
+
+/// `permissions_audit` answer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct PermissionsReport {
+    pub generated_at: i64,
+    pub grants: Vec<TccGrant>,
+    pub system_db_read: bool,
+    pub user_db_read: bool,
+    /// Installed configuration profiles (from the persistence inventory): they can grant permissions
+    /// silently (PPPC payloads).
+    #[serde(default)]
+    pub configuration_profiles: Vec<String>,
+    /// What could not be read (French).
+    #[serde(default)]
+    pub errors: Vec<String>,
+}
+
+/// A browser extension (`parabellum permissions extensions --json`, run as the user).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BrowserExtension {
+    /// `<browser>:<profile>:<extension id>`.
+    pub id: String,
+    /// `chrome`, `brave`, `edge`, `arc`, `chromium`, `vivaldi`, `firefox`, `safari`.
+    pub browser: String,
+    pub profile: String,
+    pub extension_id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    /// Installed from the browser's store (Chrome Web Store, addons.mozilla.org, App Store).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_store: Option<bool>,
+    /// Loaded from a folder (developer mode / temporary add-on).
+    pub unpacked: bool,
+    /// API permissions (`cookies`, `nativeMessaging`…).
+    #[serde(default)]
+    pub permissions: Vec<String>,
+    /// Sites it can read and change (`<all_urls>`, `https://*.example.com/*`).
+    #[serde(default)]
+    pub host_permissions: Vec<String>,
+    pub risk: Severity,
+    #[serde(default)]
+    pub reasons: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
+/// `parabellum permissions extensions --json`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ExtensionsReport {
+    pub generated_at: i64,
+    pub extensions: Vec<BrowserExtension>,
+    #[serde(default)]
+    pub errors: Vec<String>,
+}
+
+/// One TCC client resolved by `parabellum permissions resolve --json` (run as the console user for the
+/// daemon, so root never reads app bundles in user-writable folders).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppIdentity {
+    /// Bundle id or path, as asked.
+    pub client: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// `Some(false)` = not found on this Mac.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub installed: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signing: Option<SigningInfo>,
+}
+
+/// `parabellum permissions reset <service> <bundle id> --json`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TccResetResult {
+    pub ok: bool,
+    pub service: String,
+    pub bundle_id: String,
+    pub message: String,
 }
 
 #[cfg(test)]

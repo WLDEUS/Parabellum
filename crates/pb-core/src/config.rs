@@ -37,6 +37,9 @@ pub struct Config {
     pub data_removal: DataRemovalConfig,
     pub breach: BreachConfig,
     pub aliases: AliasConfig,
+    // ----- Local network & permissions audit -----
+    pub lan: LanConfig,
+    pub permissions: PermissionsAuditConfig,
 }
 
 impl Config {
@@ -211,6 +214,13 @@ impl Config {
         }
         if !self.aliases.base_url.is_empty() && !self.aliases.base_url.starts_with("https://") {
             return invalid("aliases.base_url must use https");
+        }
+        // ----- Local network & permissions audit -----
+        if !(5..=24 * 60).contains(&self.lan.scan_interval_minutes) {
+            return invalid("lan.scan_interval_minutes must be 5..1440");
+        }
+        if !(1..=24 * 7).contains(&self.permissions.interval_hours) {
+            return invalid("permissions.interval_hours must be 1..168");
         }
         Ok(())
     }
@@ -793,6 +803,57 @@ pub struct AliasConfig {
     pub domain: String,
 }
 
+// ---------------------------------------------------------------------------------------------
+// Local network inventory & permissions audit
+// ---------------------------------------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LanConfig {
+    /// Inventory of the devices of the current network (periodic scan, alerts on trusted networks).
+    pub enabled: bool,
+    /// Periodic scan, minutes (skipped on low battery and while offline).
+    pub scan_interval_minutes: u32,
+    /// On trusted, non-captive networks the periodic scan is active (rate-limited sweep of the /24, IPv6
+    /// all-nodes ping, Bonjour). Untrusted networks are only read from the system caches (ARP / NDP):
+    /// sweeping a public Wi-Fi can look hostile. A scan asked from the app may be active anywhere.
+    pub active_on_trusted: bool,
+    /// Alert when an unknown device joins a trusted network.
+    pub alert_new_devices: bool,
+}
+
+impl Default for LanConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            scan_interval_minutes: 15,
+            active_on_trusted: true,
+            alert_new_devices: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PermissionsAuditConfig {
+    /// Periodic audit of the privacy permissions (TCC) with alerts on new high-risk grants.
+    pub enabled: bool,
+    pub interval_hours: u32,
+    /// Alert when a new high-risk grant appears (unsigned / ad-hoc app with Accessibility, Screen Recording,
+    /// Full Disk Access, Input Monitoring…).
+    pub alert_high_risk: bool,
+}
+
+impl Default for PermissionsAuditConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            interval_hours: 24,
+            alert_high_risk: true,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -862,6 +923,23 @@ mod tests {
         assert!(Config::from_toml("[security]\nspyware_scan_hour = 24\n").is_err());
         let c = Config::from_toml("[security]\nspyware_scan_weekly = false\n").unwrap();
         assert!(!c.security.spyware_scan_weekly && c.security.posture_checks);
+    }
+
+    #[test]
+    fn lan_and_permissions_sections() {
+        let c = Config::default();
+        assert!(
+            c.lan.enabled
+                && c.lan.scan_interval_minutes == 15
+                && c.permissions.interval_hours == 24
+        );
+        assert!(Config::from_toml("[lan]\nscan_interval_minutes = 1\n").is_err());
+        assert!(Config::from_toml(
+            "[lan]\nscan_interval_minutes = 60\nactive_on_trusted = false\n"
+        )
+        .is_ok());
+        assert!(Config::from_toml("[permissions]\ninterval_hours = 0\n").is_err());
+        assert!(Config::from_toml("[permissions]\nalert_high_risk = false\n").is_ok());
     }
 
     #[test]

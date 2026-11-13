@@ -246,6 +246,45 @@ pub enum Request {
 
     /// Start receiving [`EventEnvelope`]s on this connection. -> `null`
     Subscribe,
+
+    // ----- Local network (LAN inventory) -----
+    /// Devices of the current network (or of the known network `network_id`) and the scan state.
+    /// -> [`LanStatus`]
+    LanStatus {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        network_id: Option<String>,
+    },
+    /// Scan the current network now; progress and result are pushed as `lan` events. `active`: absent =
+    /// the policy (active only on trusted, non-captive networks), `true` = active even on an untrusted
+    /// network (the user asked), `false` = system caches only. -> [`LanStatus`]
+    LanScan {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        active: Option<bool>,
+    },
+    /// Rename a device (empty name = clear) and / or mark it known. Marking known hides it from the
+    /// "unknown" list: admin. -> [`LanDevice`]
+    LanSetDevice {
+        network_id: String,
+        mac: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        trusted: Option<bool>,
+    },
+    /// Forget a device (reported as new if it comes back). -> `null`
+    LanForgetDevice { network_id: String, mac: String },
+    /// Check the 20 most common TCP ports of an online device of the current network (only on request).
+    /// -> [`LanDevice`]
+    LanPorts { mac: String },
+
+    // ----- Permissions audit -----
+    /// Privacy permissions (system and console-user TCC databases), resolved and risk-scored. `refresh`
+    /// re-runs the audit (at most every 30 s). Reveals data macOS reserves to Full Disk Access holders:
+    /// only for the installed app / CLI (mutating class). -> [`PermissionsReport`]
+    PermissionsAudit {
+        #[serde(default)]
+        refresh: bool,
+    },
 }
 
 fn default_true() -> bool {
@@ -281,6 +320,7 @@ impl Request {
             | Request::PrivacyComplaint { .. }
             | Request::PrivacyStartRemoval { .. } => true,
             Request::SetNetworkTrust { trusted, .. } => *trusted,
+            Request::LanSetDevice { trusted, .. } => *trusted == Some(true),
             Request::PrivacyGetProfile { reveal } => *reveal,
             Request::SetDns { enabled } => !enabled,
             Request::SetProtection { paused_minutes } => *paused_minutes > 0,
@@ -296,6 +336,7 @@ impl Request {
                     | AlertAction::ReportFalsePositive
                     | AlertAction::ResumeProcess
                     | AlertAction::TrustNetwork
+                    | AlertAction::TrustLanDevice
             ),
             _ => false,
         }
@@ -331,6 +372,7 @@ impl Request {
                 | Request::PrivacySummary
                 | Request::BreachList
                 | Request::AliasList
+                | Request::LanStatus { .. }
         )
     }
 }
@@ -441,6 +483,8 @@ pub enum DaemonEvent {
     Quarantined(QuarantineEntry),
     /// VPN state, kill switch, current network or leak test changed.
     Vpn(VpnStatus),
+    /// LAN scan progress / result.
+    Lan(LanStatus),
 }
 
 /// Alias kept for documentation symmetry with the module docs.
@@ -619,6 +663,48 @@ mod tests {
         let line = String::from_utf8(encode_line(&DaemonEvent::Vpn(VpnStatus::default())).unwrap())
             .unwrap();
         assert!(line.starts_with(r#"{"event":"vpn","data":{"#));
+    }
+
+    #[test]
+    fn lan_and_permissions_requests() {
+        let r: RequestEnvelope = serde_json::from_str(r#"{"id":1,"cmd":"lan_status"}"#).unwrap();
+        assert_eq!(r.request, Request::LanStatus { network_id: None });
+        assert!(!r.request.is_mutating() && !r.request.requires_admin());
+        let r: RequestEnvelope = serde_json::from_str(r#"{"id":2,"cmd":"lan_scan"}"#).unwrap();
+        assert_eq!(r.request, Request::LanScan { active: None });
+        assert!(r.request.is_mutating() && !r.request.requires_admin());
+        let set = |trusted| Request::LanSetDevice {
+            network_id: "gw:00:11:22:33:44:55".into(),
+            mac: "aa:bb:cc:dd:ee:ff".into(),
+            name: None,
+            trusted,
+        };
+        assert!(set(Some(true)).requires_admin());
+        assert!(!set(Some(false)).requires_admin() && !set(None).requires_admin());
+        assert!(set(None).is_mutating());
+        let s = serde_json::to_string(&RequestEnvelope {
+            id: 3,
+            auth: None,
+            request: set(None),
+        })
+        .unwrap();
+        assert_eq!(
+            s,
+            r#"{"id":3,"cmd":"lan_set_device","network_id":"gw:00:11:22:33:44:55","mac":"aa:bb:cc:dd:ee:ff"}"#
+        );
+        assert!(Request::LanPorts { mac: "x".into() }.is_mutating());
+        let r: RequestEnvelope =
+            serde_json::from_str(r#"{"id":4,"cmd":"permissions_audit"}"#).unwrap();
+        assert_eq!(r.request, Request::PermissionsAudit { refresh: false });
+        assert!(r.request.is_mutating() && !r.request.requires_admin());
+        assert!(Request::ResolveAlert {
+            alert_id: 1,
+            action: AlertAction::TrustLanDevice
+        }
+        .requires_admin());
+        let line = String::from_utf8(encode_line(&DaemonEvent::Lan(LanStatus::default())).unwrap())
+            .unwrap();
+        assert!(line.starts_with(r#"{"event":"lan","data":{"#));
     }
 
     #[test]
