@@ -280,6 +280,8 @@ public enum AlertAction: String, TolerantEnum {
     case resumeProcess = "resume_process"
     /// Trust the network named in the alert (`networkId`).
     case trustNetwork = "trust_network"
+    /// Turn travel mode on (untrusted network suggestion).
+    case enableTravelMode = "enable_travel_mode"
     case unknown
     public static let fallback: AlertAction = .unknown
     public init(from decoder: Decoder) throws { self = try Self.decodeTolerantly(from: decoder) }
@@ -733,6 +735,9 @@ public struct StatusInfo: Codable, Sendable, Hashable {
     public let uptimeSecs: Int
     /// Resident memory of the daemon, bytes.
     public let rssBytes: Int
+    // Travel mode
+    /// Travel mode is on (details: `travel_status`).
+    public let travelActive: Bool
 
     public var pausedUntilDate: Date? { pausedUntil.map(Date.init(unixSeconds:)) }
     public var lastScanDate: Date? { lastScan.map(Date.init(unixSeconds:)) }
@@ -750,6 +755,8 @@ public struct StatusInfo: Codable, Sendable, Hashable {
         case mlEnabled = "ml_enabled"
         case uptimeSecs = "uptime_secs"
         case rssBytes = "rss_bytes"
+        // Travel mode
+        case travelActive = "travel_active"
     }
 
     public init(from decoder: Decoder) throws {
@@ -769,6 +776,8 @@ public struct StatusInfo: Codable, Sendable, Hashable {
         mlEnabled = try c.decode(Bool.self, forKey: .mlEnabled)
         uptimeSecs = try c.decode(Int.self, forKey: .uptimeSecs)
         rssBytes = try c.decode(Int.self, forKey: .rssBytes)
+        // Travel mode
+        travelActive = try c.decodeOr(.travelActive, false)
     }
 }
 

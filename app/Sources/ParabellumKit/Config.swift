@@ -28,6 +28,8 @@ public struct Config: Codable, Sendable, Hashable {
     public var dataRemoval = DataRemovalConfig()
     public var breach = BreachConfig()
     public var aliases = AliasConfig()
+    // Travel mode
+    public var travel = TravelConfig()
 
     public init() {}
 
@@ -38,6 +40,8 @@ public struct Config: Codable, Sendable, Hashable {
         case networkGuard = "network"
         case dataRemoval = "data_removal"
         case breach, aliases
+        // Travel mode
+        case travel
     }
 
     public init(from decoder: Decoder) throws {
@@ -60,6 +64,8 @@ public struct Config: Codable, Sendable, Hashable {
         dataRemoval = try c.decodeOr(.dataRemoval, dataRemoval)
         breach = try c.decodeOr(.breach, breach)
         aliases = try c.decodeOr(.aliases, aliases)
+        // Travel mode
+        travel = try c.decodeOr(.travel, travel)
     }
 
     /// Same rules as `Config::validate` in Rust (messages in French). Empty = valid.

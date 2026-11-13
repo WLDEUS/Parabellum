@@ -70,6 +70,11 @@ final class ProtocolTests: XCTestCase {
             .aliasCreate(label: "boutique"),
             .resolveAlert(alertId: 31, action: .killProcess),
             .resolveAlert(alertId: 31, action: .resumeProcess),
+            // Travel mode
+            .travelStatus,
+            .travelEnable,
+            .travelDisable,
+            .resolveAlert(alertId: 40, action: .enableTravelMode),
         ]
     }
 

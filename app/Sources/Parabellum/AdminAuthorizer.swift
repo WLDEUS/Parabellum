@@ -170,6 +170,8 @@ extension Request {
         case .privacyStartRemoval: return "envoyer des demandes d'effacement en ton nom"
         case .privacyDraft: return "préparer un e-mail de demande d'effacement (il contient ton identité)"
         case .privacyComplaint: return "préparer une plainte CNIL (elle contient ton identité)"
+        // Travel mode
+        case .travelDisable: return "désactiver le mode Voyage et rétablir les réglages d'avant"
         default: return "réduire la protection"
         }
     }
