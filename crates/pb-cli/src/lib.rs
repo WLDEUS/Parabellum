@@ -11,6 +11,8 @@ pub mod client;
 pub mod commands;
 pub mod format;
 pub mod protect;
+// ----- Local network & permissions audit -----
+pub mod audit;
 
 pub use cli::Cli;
 pub use commands::{run, Output};

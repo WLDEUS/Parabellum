@@ -110,6 +110,7 @@ pub fn needs_admin(cmd: &Command) -> bool {
     admin_probe(cmd)
         .map(|r| r.requires_admin())
         .unwrap_or(false)
+        || crate::audit::needs_admin(cmd)
 }
 
 /// Run a parsed command line; returns the process exit code.
@@ -169,6 +170,9 @@ fn connect(cli: &Cli) -> Result<Client, CliError> {
 fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
     if crate::protect::is_local(&cli.command) {
         return crate::protect::local(cli, io);
+    }
+    if crate::audit::is_local(&cli.command) {
+        return crate::audit::local(cli, io);
     }
     let mut c = connect(cli)?;
     match &cli.command {
@@ -434,6 +438,11 @@ fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
                 }
                 io.out.flush()?;
             }
+        }
+        // ----- Local network & permissions audit -----
+        Command::Lan { action } => return crate::audit::lan(cli, io, &mut c, action),
+        Command::Permissions { action } => {
+            return crate::audit::permissions(cli, io, &mut c, action)
         }
     }
     Ok(EXIT_OK)

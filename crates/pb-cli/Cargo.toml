@@ -27,6 +27,8 @@ thiserror = { workspace = true }
 chrono = { workspace = true }
 toml = { workspace = true }
 libc = { workspace = true }
+# Local network & permissions audit (Info.plist of apps)
+plist = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
