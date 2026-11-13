@@ -240,7 +240,7 @@ public struct DomainIntelStatus: Codable, Sendable, Hashable {
 
 /// A predictive model and its evaluation (domain, behaviour; Mach-O / script models are merged in by the
 /// app from their own status).
-public struct ModelInfo: Codable, Sendable, Hashable, Identifiable {
+public struct IntelModelInfo: Codable, Sendable, Hashable, Identifiable {
     public let id: String
     public let name: String
     public let loaded: Bool
@@ -281,7 +281,7 @@ public struct ModelInfo: Codable, Sendable, Hashable, Identifiable {
 public struct IntelligenceStatus: Codable, Sendable, Hashable {
     public let behavior: BehaviorStatus
     public let domains: DomainIntelStatus
-    public let models: [ModelInfo]
+    public let models: [IntelModelInfo]
 
     enum CodingKeys: String, CodingKey {
         case behavior, domains, models
@@ -291,7 +291,7 @@ public struct IntelligenceStatus: Codable, Sendable, Hashable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         behavior = try c.decode(BehaviorStatus.self, forKey: .behavior)
         domains = try c.decode(DomainIntelStatus.self, forKey: .domains)
-        models = try c.decodeOr(.models, [ModelInfo]())
+        models = try c.decodeOr(.models, [IntelModelInfo]())
     }
 }
 

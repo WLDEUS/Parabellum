@@ -681,7 +681,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 message: None,
             },
             models: vec![
-                ModelInfo {
+                IntelModelInfo {
                     id: "domain".into(),
                     name: "Domaines (hameçonnage, typosquatting)".into(),
                     loaded: true,
@@ -693,7 +693,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ]),
                     detail: Some("LightGBM".into()),
                 },
-                ModelInfo {
+                IntelModelInfo {
                     id: "behavior".into(),
                     name: "Comportement (appris sur ce Mac)".into(),
                     loaded: true,

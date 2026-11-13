@@ -968,7 +968,7 @@ pub fn status(ctx: &Arc<Ctx>) -> IntelligenceStatus {
         },
     };
     let models = vec![
-        ModelInfo {
+        IntelModelInfo {
             id: "domain".into(),
             name: "Domaines (hameçonnage, typosquatting)".into(),
             loaded: scorer.has_model(),
@@ -981,7 +981,7 @@ pub fn status(ctx: &Arc<Ctx>) -> IntelligenceStatus {
                 scorer.brands().len()
             )),
         },
-        ModelInfo {
+        IntelModelInfo {
             id: "behavior".into(),
             name: "Comportement (appris sur ce Mac)".into(),
             loaded: ic.behavior_anomaly && g.baseline.is_some(),

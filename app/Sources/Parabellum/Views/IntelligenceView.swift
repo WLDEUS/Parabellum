@@ -378,7 +378,7 @@ private struct DomainTestCard: View {
 // MARK: - Models
 
 private struct ModelsCard: View {
-    let models: [ModelInfo]
+    let models: [IntelModelInfo]
 
     var body: some View {
         Card(title: "Modèles", symbol: "cpu") {
@@ -391,19 +391,17 @@ private struct ModelsCard: View {
                     ForEach(models) { m in
                         row(m)
                     }
-                    // TODO(integration): Mach-O and script models (ml-files) are merged in
-                    // `IntelligenceStore.models`; nothing else to change here.
                 }
             }
         }
     }
 
-    private func metric(_ m: ModelInfo, _ key: String, _ label: String, percent: Bool) -> String? {
+    private func metric(_ m: IntelModelInfo, _ key: String, _ label: String, percent: Bool) -> String? {
         guard let v = m.metrics[key] else { return nil }
         return percent ? "\(label) \(String(format: "%.2f", v * 100)) %" : "\(label) \(String(format: "%.3f", v))"
     }
 
-    private func row(_ m: ModelInfo) -> some View {
+    private func row(_ m: IntelModelInfo) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 Text(m.name).font(.callout.weight(.medium))

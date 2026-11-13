@@ -41,13 +41,34 @@ final class IntelligenceStore: ObservableObject {
         }
     }
 
-    /// Every model to show in the "Modèles" card.
-    var models: [ModelInfo] {
-        var list = status?.models ?? []
-        // TODO(integration): merge the Mach-O and script model entries published by the ml-files worker
-        // (DbStatus / model inventory) here, e.g. `list.append(contentsOf: model.fileModels)`.
-        list.sort { $0.id < $1.id }
-        return list
+    /// Every model to show in the "Modèles" card: the threat-DB file classifiers (Mach-O, scripts) from
+    /// `StatusInfo.db.models`, then the intelligence models (domains, behaviour).
+    var models: [IntelModelInfo] {
+        // Integration note: `DbStatus.modelInfos` / `ModelInfo` come from the ml-files work (claude/v2).
+        let fileModels = (model.status?.db.modelInfos ?? []).map(Self.fileModel)
+        return fileModels + (status?.models ?? [])
+    }
+
+    /// Maps a threat-DB classifier (`ModelInfo`, ml-files) to the card's row model.
+    static func fileModel(_ m: ModelInfo) -> IntelModelInfo {
+        var metrics: [String: Double] = [:]
+        if let v = m.metrics.rocAuc { metrics["auc"] = v }
+        if let v = m.metrics.tprAtThreshold { metrics["tpr_at_threshold"] = v }
+        if let v = m.metrics.fprAtThreshold { metrics["fpr_at_threshold"] = v }
+        var detail: [String] = []
+        if let trees = m.trees { detail.append("\(trees) arbres") }
+        if let calibration = m.calibration { detail.append("calibration \(calibration)") }
+        if let n = m.metrics.nPos, let k = m.metrics.nNeg { detail.append("\(n) malveillants / \(k) sains") }
+        if let error = m.error { detail.append(error) }
+        return IntelModelInfo(
+            id: m.name,
+            name: m.displayName,
+            loaded: m.loaded,
+            version: m.version,
+            threshold: m.threshold,
+            metrics: metrics,
+            detail: detail.isEmpty ? nil : detail.joined(separator: " · ")
+        )
     }
 
     func scoreTestDomain() async {

@@ -1108,7 +1108,7 @@ pub struct DomainIntelStatus {
 
 /// A predictive model and its evaluation (the Mach-O / script models are added by their owners).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ModelInfo {
+pub struct IntelModelInfo {
     /// `domain`, `behavior`, `macho`, `script`…
     pub id: String,
     /// French display name.
@@ -1131,7 +1131,7 @@ pub struct IntelligenceStatus {
     pub behavior: BehaviorStatus,
     pub domains: DomainIntelStatus,
     #[serde(default)]
-    pub models: Vec<ModelInfo>,
+    pub models: Vec<IntelModelInfo>,
 }
 
 /// Result of scoring one domain on demand.
