@@ -170,6 +170,8 @@ extension Request {
         case .privacyStartRemoval: return "envoyer des demandes d'effacement en ton nom"
         case .privacyDraft: return "préparer un e-mail de demande d'effacement (il contient ton identité)"
         case .privacyComplaint: return "préparer une plainte CNIL (elle contient ton identité)"
+        // Rust-review fixes: scans outside the user's own folders need approval (daemon answers auth_required).
+        case .scan: return "analyser un dossier système, protégé ou d'un autre utilisateur"
         default: return "réduire la protection"
         }
     }

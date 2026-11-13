@@ -149,7 +149,7 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
             paths,
             recursive,
             use_clamav,
-        } => scan(ctx, paths, recursive, use_clamav).await,
+        } => scan(ctx, peer, paths, recursive, use_clamav).await,
         Request::CancelScan { job_id } => match ctx.jobs.cancel(&job_id) {
             CancelOutcome::Signalled => Ok(Value::Null),
             CancelOutcome::Dequeued(j) => {
@@ -498,8 +498,62 @@ fn validate_component_name(name: &str) -> Result<(), IpcError> {
     Ok(())
 }
 
+/// Under a user's home, stores macOS protects even from that user's own processes (TCC) or that hold
+/// other apps' data: a non-administrator peer may not have the root daemon enumerate them.
+pub const PROTECTED_HOME_DIRS: &[&str] = &[
+    "Library/Messages",
+    "Library/Mail",
+    "Library/Safari",
+    "Library/Cookies",
+    "Library/Containers",
+    "Library/Group Containers",
+    "Library/Daemon Containers",
+    "Library/Application Support/com.apple.TCC",
+    "Library/Application Support/AddressBook",
+    "Library/Application Support/CallHistoryDB",
+    "Library/Application Support/CallHistoryTransactions",
+    "Library/Application Support/Knowledge",
+    "Library/Application Support/com.apple.sharedfilelist",
+    "Library/Calendars",
+    "Library/Reminders",
+    "Library/HomeKit",
+    "Library/IdentityServices",
+    "Library/Accounts",
+    "Library/Biome",
+    "Library/Suggestions",
+    "Library/PersonalizationPortrait",
+    "Library/Metadata/CoreSpotlight",
+    "Library/Mobile Documents",
+    "Library/Sharing",
+    "Library/Trial",
+    "Pictures/Photos Library.photoslibrary",
+];
+
+/// Shared or removable locations any local user can already list.
+pub const SHARED_SCAN_ROOTS: &[&str] =
+    &["/Applications", "/Volumes", "/Users/Shared", "/private/tmp"];
+
+/// May a non-administrator peer whose home is `home` start a manual scan of `path`? Both canonical
+/// (no symlink, no `..`). Allowed: the home (without [`PROTECTED_HOME_DIRS`], nor any folder holding
+/// one, like the home itself or `~/Library`) and [`SHARED_SCAN_ROOTS`]. The rest (system folders,
+/// other users) needs administrator approval: job progress shows every file path.
+pub fn scan_root_allowed(path: &std::path::Path, home: Option<&std::path::Path>) -> bool {
+    if SHARED_SCAN_ROOTS.iter().any(|r| path.starts_with(r)) {
+        return true;
+    }
+    let Some(home) = home.filter(|h| h.is_absolute() && h.components().count() > 2) else {
+        return false;
+    };
+    path.starts_with(home)
+        && !PROTECTED_HOME_DIRS.iter().any(|d| {
+            let d = home.join(d);
+            path.starts_with(&d) || d.starts_with(path)
+        })
+}
+
 async fn scan(
     ctx: &Arc<Ctx>,
+    peer: &Peer,
     paths: Vec<String>,
     recursive: bool,
     use_clamav: Option<bool>,
@@ -511,16 +565,36 @@ async fn scan(
         return Err(bad(format!("au plus {MAX_SCAN_PATHS} chemins par analyse")));
     }
     let mut roots = Vec::with_capacity(paths.len());
+    // Non-administrator peers: canonical roots inside the allowed locations (see scan_root_allowed).
+    let home = (!peer.admin)
+        .then(|| crate::system::user_by_uid(peer.uid))
+        .flatten()
+        .and_then(|(_, h)| std::fs::canonicalize(h).ok());
     for p in &paths {
         if p.contains('\0') || !p.starts_with('/') {
             return Err(bad(format!("chemin absolu requis : {p}")));
         }
-        let pb = PathBuf::from(p);
+        let mut pb = PathBuf::from(p);
         if std::fs::symlink_metadata(&pb).is_err() {
             return Err(IpcError::new(
                 ErrorCode::NotFound,
                 format!("introuvable : {p}"),
             ));
+        }
+        if !peer.admin {
+            let canon = std::fs::canonicalize(&pb)
+                .map_err(|_| IpcError::new(ErrorCode::NotFound, format!("introuvable : {p}")))?;
+            if !scan_root_allowed(&canon, home.as_deref()) {
+                tracing::warn!(uid = peer.uid, path = %canon.display(), "manual scan outside the user's locations: approval required");
+                return Err(IpcError::new(
+                    ErrorCode::AuthRequired,
+                    format!(
+                        "analyse de {p} : dossier système, protégé ou d'un autre utilisateur, autorisation administrateur requise"
+                    ),
+                ));
+            }
+            // Scan what was checked, not a symlink that could be swapped afterwards.
+            pb = canon;
         }
         roots.push(pb);
     }
@@ -767,6 +841,61 @@ mod tests {
             .unwrap()
             .flatten()
             .any(|e| e.file_name().to_string_lossy().contains(".tmp")));
+    }
+
+    #[test]
+    fn scan_root_policy() {
+        use std::path::Path;
+        let home = Path::new("/Users/camille");
+        let cases: &[(&str, bool)] = &[
+            ("/Users/camille/Downloads", true),
+            ("/Users/camille/Desktop/a.dmg", true),
+            ("/Users/camille/Documents/projet", true),
+            ("/Users/camille/Library/LaunchAgents", true),
+            ("/Users/camille/Library/Application Support/Zoom", true),
+            ("/Applications", true),
+            ("/Applications/Foo.app", true),
+            ("/Volumes/CLE USB", true),
+            ("/Users/Shared/x", true),
+            ("/private/tmp/x.pkg", true),
+            // Holding protected stores, or inside one.
+            ("/Users/camille", false),
+            ("/Users/camille/Library", false),
+            ("/Users/camille/Library/Application Support", false),
+            ("/Users/camille/Library/Messages/chat.db", false),
+            ("/Users/camille/Library/Mail/V10", false),
+            ("/Users/camille/Library/Containers/com.apple.mail", false),
+            (
+                "/Users/camille/Library/Application Support/com.apple.TCC",
+                false,
+            ),
+            (
+                "/Users/camille/Pictures/Photos Library.photoslibrary",
+                false,
+            ),
+            // Other users, system, prefix tricks.
+            ("/Users/dominique/Documents", false),
+            ("/Users/camille2/Documents", false),
+            ("/Users", false),
+            ("/", false),
+            ("/private/var/root", false),
+            ("/Library/Application Support/com.apple.TCC", false),
+            ("/System/Volumes/Data/Users/camille/Documents", false),
+            ("/ApplicationsX", false),
+        ];
+        for (p, want) in cases {
+            assert_eq!(scan_root_allowed(Path::new(p), Some(home)), *want, "{p}");
+        }
+        // Unknown home: shared locations only; a bogus home grants nothing.
+        assert!(scan_root_allowed(Path::new("/Applications"), None));
+        assert!(!scan_root_allowed(
+            Path::new("/Users/camille/Downloads"),
+            None
+        ));
+        assert!(!scan_root_allowed(
+            Path::new("/etc/x"),
+            Some(Path::new("/"))
+        ));
     }
 
     #[test]

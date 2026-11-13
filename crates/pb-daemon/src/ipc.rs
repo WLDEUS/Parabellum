@@ -304,7 +304,11 @@ fn current_peer(ctx: &Ctx, cred: &system::PeerCred) -> Peer {
 
 /// Check access for one request (verifies `auth` with Authorization Services only when it matters).
 async fn check_access(ctx: &Ctx, peer: &mut Peer, env: &RequestEnvelope) -> Result<(), IpcError> {
-    let wants_admin = env.request.requires_admin() || env.request == Request::GetConfig;
+    // A scan outside the user's own locations needs approval (`router::scan_root_allowed`): the app
+    // retries such an `auth_required` answer with `auth`, which must then be checked.
+    let wants_admin = env.request.requires_admin()
+        || env.request == Request::GetConfig
+        || (env.auth.is_some() && matches!(env.request, Request::Scan { .. }));
     let is_root = peer.admin;
     let auth_ok = match (&env.auth, wants_admin && !is_root) {
         (Some(a), true) => {
