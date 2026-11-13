@@ -37,6 +37,11 @@ struct SettingsView: View {
                     }
                     privacySection
                     notificationsSection
+                    // Local network & permissions audit
+                    Group {
+                        lanSection
+                        permissionsAuditSection
+                    }
                 }
                 .formStyle(.grouped)
                 Divider()
@@ -604,5 +609,43 @@ struct SettingsView: View {
                 binding.wrappedValue = trimmed.isEmpty ? nil : trimmed
             }
         )
+    }
+}
+
+// MARK: - Local network & permissions audit
+
+extension SettingsView {
+    var lanSection: some View {
+        Section {
+            Toggle("Inventorier les appareils du réseau local", isOn: $draft.lan.enabled)
+            Stepper(value: $draft.lan.scanIntervalMinutes, in: 5...1440, step: 5) {
+                LabeledContent("Analyse automatique toutes les", value: "\(draft.lan.scanIntervalMinutes) min")
+            }
+            .disabled(!draft.lan.enabled)
+            Toggle("Analyse active sur les réseaux de confiance", isOn: $draft.lan.activeOnTrusted)
+                .disabled(!draft.lan.enabled)
+            Toggle("Alerter quand un appareil inconnu rejoint un réseau de confiance", isOn: $draft.lan.alertNewDevices)
+                .disabled(!draft.lan.enabled)
+        } header: {
+            Text("Réseau local")
+        } footer: {
+            Text("Sur les réseaux non fiables (Wi-Fi public…), seuls les caches système sont lus : aucun paquet n'est envoyé. L'analyse active envoie un petit paquet à chaque adresse du réseau (64 par seconde au plus) et interroge Bonjour. Elle est suspendue sur batterie faible.")
+        }
+    }
+
+    var permissionsAuditSection: some View {
+        Section {
+            Toggle("Auditer régulièrement les permissions des apps", isOn: $draft.permissionsAudit.enabled)
+            Stepper(value: $draft.permissionsAudit.intervalHours, in: 1...168) {
+                LabeledContent("Audit toutes les", value: "\(draft.permissionsAudit.intervalHours) h")
+            }
+            .disabled(!draft.permissionsAudit.enabled)
+            Toggle("Alerter quand une app à risque obtient un accès sensible", isOn: $draft.permissionsAudit.alertHighRisk)
+                .disabled(!draft.permissionsAudit.enabled)
+        } header: {
+            Text("Permissions")
+        } footer: {
+            Text("Accessibilité, enregistrement de l'écran, accès complet au disque, surveillance du clavier… accordés à une app non signée ou signée « ad hoc » déclenchent une alerte.")
+        }
     }
 }
