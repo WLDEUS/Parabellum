@@ -170,6 +170,10 @@ fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
     if crate::protect::is_local(&cli.command) {
         return crate::protect::local(cli, io);
     }
+    // Nettoyage du Mac: local, never through the daemon.
+    if let Command::Clean(args) = &cli.command {
+        return crate::clean::command::run(cli, io, args);
+    }
     let mut c = connect(cli)?;
     match &cli.command {
         Command::Vpn { action } => return crate::protect::vpn(cli, io, &mut c, action),
@@ -454,6 +458,8 @@ fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
                 io.out.flush()?;
             }
         }
+        // Nettoyage du Mac (handled above, before connecting).
+        Command::Clean(args) => return crate::clean::command::run(cli, io, args),
     }
     Ok(EXIT_OK)
 }

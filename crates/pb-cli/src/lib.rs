@@ -4,8 +4,10 @@
 //! - [`client`]: synchronous JSON-lines client over the Unix socket,
 //! - [`commands`]: execution + exit codes,
 //! - [`format`]: human-readable tables,
-//! - [`protect`]: `vpn`, `guard` and `privacy` commands.
+//! - [`protect`]: `vpn`, `guard` and `privacy` commands,
+//! - [`clean`]: Mac cleaning (local, as the user).
 
+pub mod clean;
 pub mod cli;
 pub mod client;
 pub mod commands;

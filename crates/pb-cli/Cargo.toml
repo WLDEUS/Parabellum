@@ -27,6 +27,13 @@ thiserror = { workspace = true }
 chrono = { workspace = true }
 toml = { workspace = true }
 libc = { workspace = true }
+# Nettoyage du Mac: Info.plist / LaunchAgents, tree walks, item ids, app archives.
+plist = { workspace = true }
+walkdir = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+zip = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+filetime = "0.2"

@@ -195,6 +195,10 @@ pub enum Command {
     Watch,
     /// Vérifier que le daemon répond.
     Ping,
+    // --- Nettoyage du Mac (local, as the user) ---
+    /// Nettoyage du Mac : caches, journaux, installeurs, gros fichiers, restes d'applications, corbeille.
+    /// Sans sudo ; tout va à la corbeille sauf demande contraire.
+    Clean(crate::clean::command::CleanArgs),
 }
 
 #[derive(Debug, Args)]
