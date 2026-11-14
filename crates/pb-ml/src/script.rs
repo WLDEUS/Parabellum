@@ -806,7 +806,9 @@ fn strip_bom(bytes: &[u8]) -> std::borrow::Cow<'_, [u8]> {
     let le = bytes.starts_with(&[0xff, 0xfe]);
     if be || le {
         let narrowed = bytes[2..]
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|c| {
                 let u = if be {
                     u16::from_be_bytes([c[0], c[1]])
@@ -901,7 +903,9 @@ pub(crate) fn decode_base64(s: &[u8], max: usize) -> Vec<u8> {
 
 fn decode_hex(s: &[u8], max: usize) -> Vec<u8> {
     let nib = |b: u8| (b as char).to_digit(16).map(|d| d as u8);
-    s.chunks_exact(2)
+    s.as_chunks::<2>()
+        .0
+        .iter()
         .take(max)
         .filter_map(|c| Some((nib(c[0])? << 4) | nib(c[1])?))
         .collect()

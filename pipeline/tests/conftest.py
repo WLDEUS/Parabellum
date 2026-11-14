@@ -60,3 +60,9 @@ MACHO = b"\xcf\xfa\xed\xfe" + b"\x0c\x00\x00\x01" + b"\x00" * 24
 @pytest.fixture
 def fake_http() -> FakeHttp:
     return FakeHttp()
+
+
+@pytest.fixture(autouse=True)
+def _no_ci_build_number(monkeypatch):
+    """`build.py` defaults --build-number to GITHUB_RUN_NUMBER: keep CI's run number out of the tests."""
+    monkeypatch.delenv("GITHUB_RUN_NUMBER", raising=False)
