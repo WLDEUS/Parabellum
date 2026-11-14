@@ -3,7 +3,9 @@
 use crate::lists::{render_name_file, ListBuilder};
 use crate::packet::probe;
 use crate::proxy_config::{parse_listen, render, ProxyConfigParams};
-use crate::system::{is_ours, load_saved, write_saved, Backend, SavedDns, SavedState};
+use crate::system::{
+    is_ours, is_unknown_service_error, load_saved, write_saved, Backend, SavedDns, SavedState,
+};
 use crate::{querylog, DnsError};
 use crate::{
     ALLOWED_NAMES_FILE, BLOCKED_LOG_FILE, BLOCKED_NAMES_FILE, LISTS_STATE_FILE, PROXY_CONFIG_FILE,
@@ -443,17 +445,26 @@ impl DnsManager {
         if saved == SavedState::Absent {
             return Ok(Vec::new());
         }
-        let services = self.backend.list_services().await.unwrap_or_default();
+        // Disabled services included: one disabled since it was switched still points at the proxy. A
+        // listing failure is not "no services": every saved service is then still attempted, and a service
+        // is only forgotten once restored or reported as gone.
+        let listing = self.backend.list_all_services().await;
+        if let Err(e) = &listing {
+            tracing::warn!(error = %e, "cannot list network services; restoring every saved service");
+        }
         let mut restored = Vec::new();
         let mut failed = SavedDns::new();
         match saved {
             SavedState::Present(s) => {
                 for (svc, original) in s.services {
-                    if !services.contains(&svc) {
-                        continue; // service gone: nothing to restore
-                    }
                     match self.backend.set_dns(&svc, &original).await {
                         Ok(()) => restored.push(svc),
+                        Err(e)
+                            if is_unknown_service_error(&e)
+                                || matches!(&listing, Ok(l) if !l.contains(&svc)) =>
+                        {
+                            tracing::info!(service = %svc, "network service gone: nothing to restore");
+                        }
                         Err(e) => {
                             tracing::error!(service = %svc, error = %e, "cannot restore DNS servers");
                             failed.services.insert(svc, original);
@@ -463,6 +474,12 @@ impl DnsManager {
             }
             SavedState::Corrupt => {
                 // Originals unknown: never leave a service pointing at a dead local proxy — back to DHCP.
+                // Without the service list nothing can be done: keep the file for the next attempt.
+                let services = listing.map_err(|e| {
+                    DnsError::Command(format!(
+                        "restauration impossible (liste des services) : {e}"
+                    ))
+                })?;
                 let ours = ["127.0.0.1".to_string(), "::1".to_string()];
                 for svc in &services {
                     if let Ok(cur) = self.backend.get_dns(svc).await {
@@ -738,6 +755,67 @@ pub(crate) mod tests {
         assert_eq!(load_saved(&m.saved_dns_path()), SavedState::Absent);
         // Idempotent.
         assert!(m.restore_system_dns().await.unwrap().is_empty());
+    }
+
+    /// A failed service listing must never be taken for "no services" (Mac left on 127.0.0.1 with the
+    /// originals lost), and a service disabled since it was switched gets its DNS back too.
+    #[tokio::test]
+    async fn restore_survives_listing_failure_and_disabled_services() {
+        let d = tempfile::tempdir().unwrap();
+        let (m, net) = fake_manager(
+            d.path(),
+            &[("Wi-Fi", &["192.168.1.1"]), ("Ethernet", &["9.9.9.9"])],
+        );
+        let cfg = DnsConfig {
+            enabled: true,
+            ..Default::default()
+        };
+        m.apply_system_dns(&cfg, false).await.unwrap();
+
+        // Listing and setting both fail: error, nothing forgotten.
+        {
+            let mut n = net.lock().unwrap();
+            n.fail_list = true;
+            n.fail_set = true;
+        }
+        assert!(m.restore_system_dns().await.is_err());
+        let s = saved(&m);
+        assert_eq!(s.services["Wi-Fi"], vec!["192.168.1.1"]);
+        assert_eq!(s.services["Ethernet"], vec!["9.9.9.9"]);
+
+        // Listing still fails but setting works: every saved service is restored anyway.
+        net.lock().unwrap().fail_set = false;
+        let restored = m.restore_system_dns().await.unwrap();
+        assert_eq!(restored, vec!["Ethernet", "Wi-Fi"]);
+        assert_eq!(net.lock().unwrap().services["Wi-Fi"], vec!["192.168.1.1"]);
+        assert_eq!(load_saved(&m.saved_dns_path()), SavedState::Absent);
+
+        // Disabled after being switched: restored as well; a vanished one is dropped.
+        net.lock().unwrap().fail_list = false;
+        net.lock()
+            .unwrap()
+            .services
+            .insert("USB LAN".into(), vec!["10.0.0.1".into()]);
+        m.apply_system_dns(&cfg, false).await.unwrap();
+        {
+            let mut n = net.lock().unwrap();
+            n.disabled.insert("Wi-Fi".into());
+            n.services.remove("USB LAN");
+        }
+        assert_eq!(m.backend.list_services().await.unwrap(), vec!["Ethernet"]);
+        let restored = m.restore_system_dns().await.unwrap();
+        assert_eq!(restored, vec!["Ethernet", "Wi-Fi"]);
+        assert_eq!(net.lock().unwrap().services["Wi-Fi"], vec!["192.168.1.1"]);
+        assert_eq!(load_saved(&m.saved_dns_path()), SavedState::Absent);
+
+        // Corrupt file + listing failure: error, file kept for the next attempt.
+        std::fs::write(m.saved_dns_path(), b"{not json").unwrap();
+        net.lock().unwrap().fail_list = true;
+        assert!(m.restore_system_dns().await.is_err());
+        assert_eq!(load_saved(&m.saved_dns_path()), SavedState::Corrupt);
+        net.lock().unwrap().fail_list = false;
+        m.restore_system_dns().await.unwrap();
+        assert_eq!(load_saved(&m.saved_dns_path()), SavedState::Absent);
     }
 
     #[tokio::test]

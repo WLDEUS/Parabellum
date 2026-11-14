@@ -174,6 +174,8 @@ extension Request {
         case .intelAllowDomain: return "autoriser ce domaine (le modèle ne le signalera plus)"
         case .intelMarkNormal: return "ajouter ce comportement à la référence"
         case .intelResetBaseline: return "effacer la référence comportementale"
+        // Rust-review fixes: scans outside the user's own folders need approval (daemon answers auth_required).
+        case .scan: return "analyser un dossier système, protégé ou d'un autre utilisateur"
         default: return "réduire la protection"
         }
     }

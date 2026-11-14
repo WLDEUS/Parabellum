@@ -99,6 +99,38 @@ pub fn parse_services(out: &str) -> Vec<String> {
         .collect()
 }
 
+/// Like [`parse_services`] but keeps the disabled services (asterisk stripped): a service disabled after
+/// it was pointed at the proxy still has to get its original DNS back.
+pub fn parse_all_services(out: &str) -> Vec<String> {
+    out.lines()
+        .filter(|l| !l.starts_with("An asterisk"))
+        .map(|l| l.trim_end_matches(['\r', '\n']))
+        .map(|l| l.strip_prefix('*').unwrap_or(l))
+        .filter(|l| !l.trim().is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// A service name starting with '-' could be taken for an option: leave it alone.
+fn usable_service_names(names: Vec<String>) -> Vec<String> {
+    names
+        .into_iter()
+        .filter(|s| {
+            let ok = !s.starts_with('-');
+            if !ok {
+                tracing::warn!(service = %s, "network service name starts with '-', not managed");
+            }
+            ok
+        })
+        .collect()
+}
+
+/// `networksetup` error text for a service that does not exist (any more).
+pub(crate) fn is_unknown_service_error(e: &DnsError) -> bool {
+    e.to_string()
+        .contains("is not a recognized network service")
+}
+
 /// `networksetup -getdnsservers <svc>`: one IP per line, or "There aren't any DNS Servers set on <svc>."
 /// (= DHCP, empty list). Anything else (unknown service, error text) is an error.
 pub fn parse_dns_servers(out: &str) -> Result<Vec<String>, String> {
@@ -134,6 +166,12 @@ pub(crate) struct FakeNet {
     pub(crate) services: BTreeMap<String, Vec<String>>,
     pub(crate) set_calls: Vec<(String, Vec<String>)>,
     pub(crate) flushes: u32,
+    /// Disabled services (`*` in `networksetup -listallnetworkservices`).
+    pub(crate) disabled: std::collections::BTreeSet<String>,
+    /// `networksetup -listallnetworkservices` fails (timeout, error).
+    pub(crate) fail_list: bool,
+    /// `networksetup -setdnsservers` fails for every service.
+    pub(crate) fail_set: bool,
 }
 
 /// Where system DNS changes go.
@@ -170,20 +208,40 @@ impl Backend {
 
     pub(crate) async fn list_services(&self) -> Result<Vec<String>, DnsError> {
         match self {
-            Backend::Mac => Ok(parse_services(&networksetup(&["-listallnetworkservices"]).await?)
-                .into_iter()
-                .filter(|s| {
-                    // A service name starting with '-' could be taken for an option: leave it alone.
-                    let ok = !s.starts_with('-');
-                    if !ok {
-                        tracing::warn!(service = %s, "network service name starts with '-', not managed");
-                    }
-                    ok
-                })
-                .collect()),
+            Backend::Mac => Ok(usable_service_names(parse_services(
+                &networksetup(&["-listallnetworkservices"]).await?,
+            ))),
             Backend::Noop => Ok(Vec::new()),
             #[cfg(test)]
-            Backend::Fake(f) => Ok(f.lock().unwrap().services.keys().cloned().collect()),
+            Backend::Fake(f) => {
+                let f = f.lock().unwrap();
+                if f.fail_list {
+                    return Err(DnsError::Command("networksetup : délai dépassé".into()));
+                }
+                Ok(f.services
+                    .keys()
+                    .filter(|k| !f.disabled.contains(*k))
+                    .cloned()
+                    .collect())
+            }
+        }
+    }
+
+    /// Every service, disabled ones included.
+    pub(crate) async fn list_all_services(&self) -> Result<Vec<String>, DnsError> {
+        match self {
+            Backend::Mac => Ok(usable_service_names(parse_all_services(
+                &networksetup(&["-listallnetworkservices"]).await?,
+            ))),
+            Backend::Noop => Ok(Vec::new()),
+            #[cfg(test)]
+            Backend::Fake(f) => {
+                let f = f.lock().unwrap();
+                if f.fail_list {
+                    return Err(DnsError::Command("networksetup : délai dépassé".into()));
+                }
+                Ok(f.services.keys().cloned().collect())
+            }
         }
     }
 
@@ -216,6 +274,9 @@ impl Backend {
             Backend::Fake(f) => {
                 let mut f = f.lock().unwrap();
                 f.set_calls.push((svc.to_string(), servers.to_vec()));
+                if f.fail_set {
+                    return Err(DnsError::Command("networksetup : délai dépassé".into()));
+                }
                 match f.services.get_mut(svc) {
                     Some(v) => {
                         *v = servers.to_vec();
@@ -262,6 +323,21 @@ mod tests {
             parse_services(list),
             vec!["Wi-Fi", "Thunderbolt Bridge", "USB 10/100/1000 LAN"]
         );
+        assert_eq!(
+            parse_all_services(list),
+            vec![
+                "Wi-Fi",
+                "Bluetooth PAN",
+                "Thunderbolt Bridge",
+                "USB 10/100/1000 LAN"
+            ]
+        );
+        assert!(is_unknown_service_error(&DnsError::Command(
+            "networksetup -setdnsservers : Foo is not a recognized network service.".into()
+        )));
+        assert!(!is_unknown_service_error(&DnsError::Command(
+            "networksetup : délai dépassé".into()
+        )));
         assert_eq!(
             parse_dns_servers("There aren't any DNS Servers set on Wi-Fi.\n"),
             Ok(vec![])

@@ -75,6 +75,9 @@ pub struct Ctx {
     pub privacy: std::sync::OnceLock<Arc<pb_privacy::PrivacyService>>,
     /// Intelligence: domain model + behaviour baseline state.
     pub intel: crate::intel::IntelState,
+    /// Held across every configuration write (read the latest, modify, save, publish) so concurrent
+    /// requests never lose each other's changes.
+    pub config_write: tokio::sync::Mutex<()>,
 }
 
 impl Ctx {
@@ -111,6 +114,7 @@ impl Ctx {
             vpn: std::sync::OnceLock::new(),
             privacy: std::sync::OnceLock::new(),
             intel: crate::intel::IntelState::default(),
+            config_write: tokio::sync::Mutex::new(()),
         }
     }
 

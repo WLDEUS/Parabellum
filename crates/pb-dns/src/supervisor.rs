@@ -86,10 +86,20 @@ fn child_alive(p: &mut Option<Proc>) -> bool {
 }
 
 /// Last non-empty line of the proxy log (for error messages), bounded.
+/// The directory belongs to the proxy user: no symlink, no FIFO, no hard link (to a root-only file).
 fn last_log_line(dir: &Path) -> Option<String> {
     use std::io::{Read, Seek, SeekFrom};
-    let mut f = std::fs::File::open(dir.join("dnscrypt-proxy.log")).ok()?;
-    let len = f.metadata().ok()?.len();
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+    let mut f = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
+        .open(dir.join("dnscrypt-proxy.log"))
+        .ok()?;
+    let meta = f.metadata().ok()?;
+    if !meta.is_file() || meta.nlink() != 1 {
+        return None;
+    }
+    let len = meta.len();
     f.seek(SeekFrom::Start(len.saturating_sub(4096))).ok()?;
     let mut buf = Vec::new();
     f.take(4096).read_to_end(&mut buf).ok()?;
@@ -379,6 +389,33 @@ mod tests {
     use crate::manager::tests::fake_manager;
     use crate::packet::tests::make_response;
     use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn last_log_line_refuses_links() {
+        let d = tempfile::tempdir().unwrap();
+        let log = d.path().join("dnscrypt-proxy.log");
+        std::fs::write(
+            &log,
+            "first\n[FATAL] listen udp 127.0.0.1:53: bind: address already in use\n\n",
+        )
+        .unwrap();
+        assert_eq!(
+            last_log_line(d.path()).as_deref(),
+            Some("[FATAL] listen udp 127.0.0.1:53: bind: address already in use")
+        );
+        let secret = d.path().join("secret");
+        std::fs::write(&secret, "root-only line\n").unwrap();
+        std::fs::remove_file(&log).unwrap();
+        std::os::unix::fs::symlink(&secret, &log).unwrap();
+        assert_eq!(last_log_line(d.path()), None, "symlink");
+        std::fs::remove_file(&log).unwrap();
+        std::fs::hard_link(&secret, &log).unwrap();
+        assert_eq!(last_log_line(d.path()), None, "hard link");
+        std::fs::remove_file(&log).unwrap();
+        let c = std::ffi::CString::new(log.as_os_str().as_encoded_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
+        assert_eq!(last_log_line(d.path()), None, "FIFO, without blocking");
+    }
 
     /// Fake "proxy": the supervisor spawns a shell script; the DNS answers come from a UDP responder
     /// running in the test (listen address chosen by the test, port 53 is not needed for the probe path).
