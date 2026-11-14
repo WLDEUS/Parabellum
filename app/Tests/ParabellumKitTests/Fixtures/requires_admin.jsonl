@@ -78,3 +78,7 @@
 {"id":78,"requires_admin":false}
 {"id":79,"requires_admin":false}
 {"id":80,"requires_admin":true}
+{"id":81,"requires_admin":false}
+{"id":82,"requires_admin":false}
+{"id":83,"requires_admin":true}
+{"id":84,"requires_admin":false}

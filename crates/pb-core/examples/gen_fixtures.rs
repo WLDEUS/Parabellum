@@ -242,6 +242,31 @@ fn status() -> StatusInfo {
         ml_enabled: true,
         uptime_secs: 3600,
         rss_bytes: 58_000_000,
+        // ----- Travel mode -----
+        travel_active: true,
+    }
+}
+
+// ----- Travel mode -----
+fn travel_status() -> TravelStatus {
+    TravelStatus {
+        active: true,
+        since: Some(1_793_000_200),
+        automatic: false,
+        network: Some("Gare-WiFi-Gratuit".into()),
+        changes: vec![
+            TravelItem {
+                id: "vpn_mode".into(),
+                label: "VPN toujours actif".into(),
+            },
+            TravelItem {
+                id: "stealth".into(),
+                label: "Mode furtif du coupe-feu".into(),
+            },
+        ],
+        warnings: vec!["Blocage DNS indisponible : dnscrypt-proxy absent".into()],
+        message: None,
+        untrusted_network: true,
     }
 }
 
@@ -339,6 +364,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Payloads
     w("status", serde_json::to_value(status())?)?;
+    // ----- Travel mode -----
+    w("travel_status", serde_json::to_value(travel_status())?)?;
+    w(
+        "travel_status_default",
+        serde_json::to_value(TravelStatus::default())?,
+    )?;
     w("scan_report", serde_json::to_value(report())?)?;
     w("job_running", serde_json::to_value(job(JobState::Running))?)?;
     w(
@@ -1139,6 +1170,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Request::ResolveAlert {
             alert_id: 32,
             action: AlertAction::TrustLanDevice,
+        },
+        // ----- Travel mode -----
+        Request::TravelStatus,
+        Request::TravelEnable,
+        Request::TravelDisable,
+        Request::ResolveAlert {
+            alert_id: 40,
+            action: AlertAction::EnableTravelMode,
         },
     ];
     // Which commands need administrator approval (`auth` or root), same order/ids as requests.jsonl.

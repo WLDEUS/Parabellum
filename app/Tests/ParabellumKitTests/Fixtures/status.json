@@ -65,6 +65,7 @@
     "persistence_monitor": true
   },
   "rss_bytes": 58000000,
+  "travel_active": true,
   "uptime_secs": 3600,
   "version": "0.1.0"
 }

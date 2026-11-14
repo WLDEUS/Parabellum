@@ -161,6 +161,14 @@ public enum Request: Sendable, Equatable {
     /// TCC grants, risk-scored (installed app only). → `PermissionsReport`
     case permissionsAudit(refresh: Bool = false)
 
+    // Travel mode
+    /// → `TravelStatus`
+    case travelStatus
+    /// VPN always + kill switch, DNS blocking, stealth firewall; previous state saved. → `TravelStatus`
+    case travelEnable
+    /// Restore what travel mode changed. Admin. → `TravelStatus`
+    case travelDisable
+
     /// Wire name (`cmd`).
     public var command: String {
         switch self {
@@ -233,6 +241,10 @@ public enum Request: Sendable, Equatable {
         case .lanForgetDevice: return "lan_forget_device"
         case .lanPorts: return "lan_ports"
         case .permissionsAudit: return "permissions_audit"
+        // Travel mode
+        case .travelStatus: return "travel_status"
+        case .travelEnable: return "travel_enable"
+        case .travelDisable: return "travel_disable"
         }
     }
 
@@ -249,6 +261,9 @@ public enum Request: Sendable, Equatable {
         case .intelStatus, .intelScoreDomain:
             return false
         case .lanStatus:
+            return false
+        // Travel mode
+        case .travelStatus:
             return false
         case let .privacyGetProfile(reveal):
             return reveal
@@ -268,6 +283,9 @@ public enum Request: Sendable, Equatable {
              .privacyDraft, .privacyComplaint, .privacyStartRemoval:
             return true
         case .intelAllowDomain, .intelMarkNormal, .intelResetBaseline:
+            return true
+        // Travel mode
+        case .travelDisable:
             return true
         case let .setNetworkTrust(_, trusted):
             return trusted
@@ -312,6 +330,9 @@ public enum Request: Sendable, Equatable {
         case .vpnStatus, .vpnConnect, .vpnDisconnect, .vpnRemoveProfile, .vpnLeakTest, .vpnListServices,
              .listNetworks, .guardStatus, .listSnapshots, .createSnapshot, .privacyListBrokers, .privacyListRequests,
              .privacySummary, .breachList, .breachCheckNow, .aliasList:
+            break
+        // Travel mode
+        case .travelStatus, .travelEnable, .travelDisable:
             break
         case let .vpnImportProfile(profile):
             o["profile"] = .string(profile)

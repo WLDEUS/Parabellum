@@ -751,6 +751,12 @@ pub async fn resolve_alert(
             alert.status = AlertStatus::Resolved;
             alert.actions.clear();
         }
+        // ----- Travel mode -----
+        AlertAction::EnableTravelMode => {
+            crate::travel::enable(ctx, false).await?;
+            alert.status = AlertStatus::Resolved;
+            alert.actions.clear();
+        }
     }
     // Re-read: the sub-actions may have updated this alert (e.g. restore resolves linked alerts).
     let fresh_id = alert.id;

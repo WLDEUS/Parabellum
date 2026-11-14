@@ -89,6 +89,11 @@ final class ProtocolTests: XCTestCase {
             .lanPorts(mac: "3a:5f:12:9c:7e:01"),
             .permissionsAudit(refresh: true),
             .resolveAlert(alertId: 32, action: .trustLanDevice),
+            // Travel mode
+            .travelStatus,
+            .travelEnable,
+            .travelDisable,
+            .resolveAlert(alertId: 40, action: .enableTravelMode),
         ]
     }
 

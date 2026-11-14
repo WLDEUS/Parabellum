@@ -176,6 +176,8 @@ extension Request {
         case .intelResetBaseline: return "effacer la référence comportementale"
         // Rust-review fixes: scans outside the user's own folders need approval (daemon answers auth_required).
         case .scan: return "analyser un dossier système, protégé ou d'un autre utilisateur"
+        // Travel mode
+        case .travelDisable: return "désactiver le mode Voyage et rétablir les réglages d'avant"
         default: return "réduire la protection"
         }
     }

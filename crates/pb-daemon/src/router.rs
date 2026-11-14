@@ -525,6 +525,11 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
         Request::PermissionsAudit { refresh } => {
             json(&crate::permissions::get(ctx, refresh).await?)
         }
+
+        // ----- Travel mode -----
+        Request::TravelStatus => json(&crate::travel::status(ctx)),
+        Request::TravelEnable => json(&crate::travel::enable(ctx, false).await?),
+        Request::TravelDisable => json(&crate::travel::disable(ctx).await?),
     }
 }
 

@@ -184,6 +184,8 @@ fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
         Command::Guard { action } => return crate::protect::guard(cli, io, &mut c, action),
         Command::Intel { action } => return crate::intel::intel(cli, io, &mut c, action),
         Command::Privacy { action } => return crate::protect::privacy(cli, io, &mut c, action),
+        // ----- Travel mode -----
+        Command::Travel { state } => return crate::travel::run(cli, io, &mut c, *state),
         Command::Ping => {
             let p: PingResponse = c.call(Request::Ping)?;
             emit(cli, io, &p, |p| {

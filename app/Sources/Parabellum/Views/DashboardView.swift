@@ -179,6 +179,8 @@ struct DashboardView: View {
             StatTile(value: PBFormat.count(status.db.blockedDomains), caption: "Domaines bloqués", symbol: "network.badge.shield.half.filled", tint: Brand.cyan)
             // Coffre
             VaultDashboardTile(store: model.vault)
+            // Travel mode
+            TravelDashboardTile(store: model.travel)
         }
     }
 

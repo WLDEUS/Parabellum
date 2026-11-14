@@ -259,6 +259,9 @@ pub enum AlertAction {
     /// "Je connais cet appareil": mark the LAN device of the alert (`device_id` = `lan:<mac>`, on
     /// `network_id`) as known.
     TrustLanDevice,
+    // ----- Travel mode -----
+    /// Enable travel mode (VPN always on, kill switch, DNS blocking, stealth firewall).
+    EnableTravelMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -710,6 +713,10 @@ pub struct StatusInfo {
     pub uptime_secs: u64,
     /// Resident memory of the daemon, bytes.
     pub rss_bytes: u64,
+    // ----- Travel mode -----
+    /// Travel mode is on (details: `travel_status`).
+    #[serde(default)]
+    pub travel_active: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1524,6 +1531,45 @@ pub struct TccResetResult {
     pub service: String,
     pub bundle_id: String,
     pub message: String,
+}
+
+// ---------------------------------------------------------------------------------------------
+// Travel mode
+// ---------------------------------------------------------------------------------------------
+
+/// One setting travel mode changed (and will put back).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TravelItem {
+    /// `vpn_mode`, `kill_switch`, `dns`, `firewall`, `stealth`, `block_all`.
+    pub id: String,
+    /// French label, e.g. `VPN toujours actif`.
+    pub label: String,
+}
+
+/// State of travel mode ("Mode Voyage").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct TravelStatus {
+    pub active: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub since: Option<i64>,
+    /// Enabled by the daemon on an untrusted network (`travel.auto_enable`), not by hand.
+    #[serde(default)]
+    pub automatic: bool,
+    /// Name of the network it was enabled on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network: Option<String>,
+    /// Settings changed by travel mode (restored when it is turned off).
+    #[serde(default)]
+    pub changes: Vec<TravelItem>,
+    /// What could not be done (VPN not configured, firewall unreadable…), French.
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    /// Outcome of the last change (e.g. settings you modified meanwhile and that were kept), French.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    /// The Mac is on a network that is not trusted right now.
+    #[serde(default)]
+    pub untrusted_network: bool,
 }
 
 #[cfg(test)]

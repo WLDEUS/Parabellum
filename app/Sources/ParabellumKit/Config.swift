@@ -34,6 +34,8 @@ public struct Config: Codable, Sendable, Hashable {
     public var lan = LanConfig()
     /// Rust `permissions`.
     public var permissionsAudit = PermissionsAuditConfig()
+    // Travel mode
+    public var travel = TravelConfig()
 
     public init() {}
 
@@ -48,6 +50,8 @@ public struct Config: Codable, Sendable, Hashable {
         // ----- Local network & permissions audit -----
         case lan
         case permissionsAudit = "permissions"
+        // Travel mode
+        case travel
     }
 
     public init(from decoder: Decoder) throws {
@@ -74,6 +78,8 @@ public struct Config: Codable, Sendable, Hashable {
         // ----- Local network & permissions audit -----
         lan = try c.decodeOr(.lan, lan)
         permissionsAudit = try c.decodeOr(.permissionsAudit, permissionsAudit)
+        // Travel mode
+        travel = try c.decodeOr(.travel, travel)
     }
 
     /// Same rules as `Config::validate` in Rust (messages in French). Empty = valid.

@@ -17,6 +17,8 @@ pub mod vault;
 pub mod intel;
 // ----- Local network & permissions audit -----
 pub mod audit;
+// ----- Travel mode -----
+pub mod travel;
 
 pub use cli::Cli;
 pub use commands::{run, Output};

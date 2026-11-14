@@ -27,6 +27,8 @@ struct MenuBarContentView: View {
                 }
             case .connected:
                 details
+                // Travel mode
+                TravelMenuCard(store: model.travel)
                 Divider()
                 actions
             }

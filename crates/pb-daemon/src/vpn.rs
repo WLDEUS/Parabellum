@@ -67,6 +67,8 @@ impl VpnHooks for DaemonVpnHooks {
         if let Some(ctx) = self.ctx.upgrade() {
             ctx.bus.publish(DaemonEvent::Vpn(status.clone()));
             ctx.status_dirty.notify_one();
+            // ----- Travel mode -----
+            crate::travel::on_vpn_status(&ctx, status);
         }
     }
 

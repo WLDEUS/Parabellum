@@ -52,6 +52,23 @@
 	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<!-- parabellum:// links (Shortcuts "Ouvrir l'URL", scripts): parsed strictly by ParabellumURL.parse. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.wldeus.parabellum.actions</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>parabellum</string>
+			</array>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+		</dict>
+	</array>
+	<!-- Travel mode can turn Bluetooth off (opt-in, IOBluetooth): required by TCC to touch Bluetooth. -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Le mode Voyage peut couper le Bluetooth pendant vos déplacements, puis le rallumer.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>© @YEAR@ Deus. Logiciel libre sous licence MIT.</string>
 </dict>

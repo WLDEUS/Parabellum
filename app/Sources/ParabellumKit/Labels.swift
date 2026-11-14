@@ -132,6 +132,7 @@ extension AlertAction {
         case .allowDomain: return "Autoriser ce domaine"
         case .markNormal: return "C'est normal"
         case .trustLanDevice: return "Je connais cet appareil"
+        case .enableTravelMode: return "Activer le mode Voyage"
         case .unknown: return "Action inconnue"
         }
     }

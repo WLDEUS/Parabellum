@@ -47,6 +47,8 @@ final class NotificationManager {
     /// Actions that make sense straight from a notification (others need the app).
     private static let notificationActions: [AlertAction] = [
         .killProcess, .quarantine, .allow, .approvePersistence, .trustDevice, .blockDevice, .removePersistence,
+        // Travel mode
+        .enableTravelMode,
     ]
 
     private weak var model: AppModel?
