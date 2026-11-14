@@ -200,6 +200,8 @@ final class AppModel: ObservableObject {
     private(set) lazy var cleaning = CleaningStore(model: self)
     private(set) lazy var intelligence = IntelligenceStore(model: self)
     private(set) lazy var travel = TravelStore(model: self)
+    // Activity report (period picker, PDF export).
+    private(set) lazy var reports = ReportStore(model: self)
 
     init(client: DaemonClient = DaemonClient()) {
         self.client = client
@@ -223,6 +225,8 @@ final class AppModel: ObservableObject {
             showOnboarding = true
             showMainWindow()
         }
+        // Nettoyage: monthly "X Go récupérables" reminder.
+        cleaning.startReminders()
     }
 
     /// Event connection: drives `connection`, keeps state in sync, triggers notifications.
@@ -435,7 +439,9 @@ final class AppModel: ObservableObject {
         guard alert.status == .open, !notifiedAlertIds.contains(alert.id) else { return }
         notifiedAlertIds.insert(alert.id)
         let preferences = config?.notifications ?? NotificationsConfig()
-        guard preferences.enabled, alert.severity >= preferences.minSeverity else { return }
+        // Informational nudges (monthly report…) carry a section link and are always worth a banner.
+        let isNudge = alert.openSection != nil
+        guard preferences.enabled, isNudge || alert.severity >= preferences.minSeverity else { return }
         let notifications = self.notifications
         Task { await notifications.post(alert) }
     }
@@ -672,10 +678,7 @@ final class AppModel: ObservableObject {
     }
 
     func loadReport() async {
-        let offset = reportWeekOffset
-        await perform("report", quiet: true) {
-            self.weeklyReport = try await self.call(.weeklyReport(weekOffset: offset), as: WeeklyReport.self)
-        }
+        await reports.load()
     }
 
     // MARK: - Scans
@@ -947,8 +950,14 @@ final class AppModel: ObservableObject {
     }
 
     /// Notification button or tap.
-    func handleNotificationResponse(actionIdentifier: String, alertId: Int64?) {
+    func handleNotificationResponse(actionIdentifier: String, alertId: Int64?, section: String? = nil) {
         if actionIdentifier == UNNotificationDismissActionIdentifier {
+            return
+        }
+        if let section, openSectionLink(section) {
+            if let alertId {
+                Task { await resolve(alertId: alertId, action: .acknowledge) }
+            }
             return
         }
         guard let alertId else {
@@ -1002,5 +1011,18 @@ final class AppModel: ObservableObject {
 
     func revealInFinder(_ path: String) {
         NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
+    }
+
+    // MARK: - Section links (alert `open_section`, reminders)
+
+    /// Opens the main window on `report?period=month&month=2026-10`-style links. False when unknown.
+    @discardableResult
+    func openSectionLink(_ raw: String) -> Bool {
+        guard let link = SectionLink(raw), let target = SidebarSection(rawValue: link.section) else { return false }
+        if target == .report {
+            reports.open(link)
+        }
+        showMainWindow(section: target)
+        return true
     }
 }

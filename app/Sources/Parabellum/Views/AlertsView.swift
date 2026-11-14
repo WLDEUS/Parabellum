@@ -280,6 +280,11 @@ private struct AlertDetailView: View {
                     model.section = .privacy
                 }
             }
+            if let link = alert.openSection, let target = SectionLink(link).flatMap({ SidebarSection(rawValue: $0.section) }) {
+                Button("Ouvrir « \(target.title) »") {
+                    model.openSectionLink(link)
+                }
+            }
         }
         .buttonStyle(.link)
     }

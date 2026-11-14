@@ -93,7 +93,7 @@ struct MainWindowView: View {
             case .behavior: GuardView()
             case .privacy: PrivacyView()
             case .components: ComponentsView()
-            case .report: ReportView()
+            case .report: ReportView(store: model.reports)
             case .settings: SettingsView()
             case .intelligence: IntelligenceView(store: model.intelligence)
             case .lan: LanView(store: model.lan)
