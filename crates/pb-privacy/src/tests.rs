@@ -457,3 +457,46 @@ fn local_days() {
     assert!(next > now && next - now <= 25 * 3600);
     assert_ne!(local_day(now), local_day(next));
 }
+
+#[tokio::test]
+async fn starting_a_campaign_sends_without_waiting_for_the_next_pass() {
+    let e = env();
+    let c = cfg(SendMode::Smtp);
+    e.svc.set_profile(me()).await.unwrap();
+    let (_cfg_tx, cfg_rx) = watch::channel(Arc::new(c.clone()));
+    let (stop_tx, stop_rx) = watch::channel(false);
+    let task = tokio::spawn(e.svc.clone().run(cfg_rx, stop_rx));
+    // Let the loop reach its first wait (60 s), then start: the kick must cut that wait short.
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    e.svc.start_removal(&c, None).await.unwrap();
+    let mut sent = 0;
+    for _ in 0..100 {
+        sent = e.smtp.sent.lock().unwrap().len();
+        if sent > 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert_eq!(sent, 1);
+    stop_tx.send(true).unwrap();
+    task.await.unwrap();
+}
+
+#[tokio::test]
+async fn incomplete_smtp_account_is_reported() {
+    let e = env();
+    let mut c = cfg(SendMode::Smtp);
+    e.svc.set_profile(me()).await.unwrap();
+    e.svc.start_removal(&c, None).await.unwrap();
+    c.data_removal.smtp_host.clear();
+    let (_tx, mut rx) = watch::channel(false);
+    e.svc.tick(&c, pb_core::now_ts(), &mut rx).await;
+    assert!(e.smtp.sent.lock().unwrap().is_empty());
+    assert!(e
+        .hooks
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|a| a.key.starts_with("privacy:smtp-config:")));
+}

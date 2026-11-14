@@ -4,6 +4,7 @@ import SwiftUI
 /// Content of the floating BadUSB panel. Mouse only: no keyboard shortcut on any button.
 struct KeyboardAlertView: View {
     let device: DeviceInfo
+    @ObservedObject var state: KeyboardAlertState
     let onTrust: () -> Void
     let onBlock: () -> Void
     let onLater: () -> Void
@@ -31,10 +32,19 @@ struct KeyboardAlertView: View {
                     }
                 }
             }
+            if let error = state.error {
+                Label("Non appliqué : \(error)", systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             HStack {
                 Button("Plus tard", action: onLater)
                     .buttonStyle(.link)
                 Spacer()
+                if state.busy {
+                    ProgressView().controlSize(.small)
+                }
                 Button(role: .destructive, action: onBlock) {
                     Label("Bloquer", systemImage: "hand.raised.fill")
                         .padding(.horizontal, 6)
@@ -47,6 +57,7 @@ struct KeyboardAlertView: View {
                 .controlSize(.large)
                 .buttonStyle(.borderedProminent)
             }
+            .disabled(state.busy)
         }
         .padding(22)
         .frame(width: 460)

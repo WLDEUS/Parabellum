@@ -14,8 +14,41 @@ export PATH
 readonly DAEMON_LABEL="com.wldeus.parabellum.daemon"
 readonly UI_LABEL="com.wldeus.parabellum.ui"
 readonly SELF_UPDATE_MARKER="/Library/Application Support/Parabellum/state/self-update.marker"
+readonly DAEMON_BIN="/Library/Application Support/Parabellum/bin/parabellumd"
 
 log() { printf 'parabellum preinstall: %s\n' "$*"; }
+
+# Stop every parabellumd running from the installed path except launchd's current instance ($1, may be
+# empty): copies orphaned by an earlier `bootout` that timed out, or started by hand. They hold the instance
+# lock and would keep running the old binary next to the new one. SIGTERM, 20 s grace, then SIGKILL.
+stop_orphan_daemons() {
+    local keep="${1:-}" pids pid waited
+    pids="$(/usr/bin/pgrep -f "^$DAEMON_BIN( |\$)" 2>/dev/null || true)"
+    for pid in $pids; do
+        [[ "$pid" == "$keep" ]] && continue
+        log "parabellumd orphelin (pid $pid) : arrêt"
+        /bin/kill -TERM "$pid" 2>/dev/null || true
+    done
+    waited=0
+    while ((waited < 80)); do
+        local left=""
+        for pid in $pids; do
+            [[ "$pid" == "$keep" ]] && continue
+            /bin/kill -0 "$pid" 2>/dev/null && left="$left $pid"
+        done
+        [[ -z "$left" ]] && return 0
+        /bin/sleep 0.25
+        waited=$((waited + 1))
+    done
+    for pid in $pids; do
+        [[ "$pid" == "$keep" ]] && continue
+        if /bin/kill -0 "$pid" 2>/dev/null; then
+            log "parabellumd (pid $pid) n'a pas quitté : SIGKILL"
+            /bin/kill -KILL "$pid" 2>/dev/null || true
+        fi
+    done
+    return 0
+}
 
 # Installer arguments: $1 package path, $2 install location, $3 target volume.
 target_volume="${3:-/}"
@@ -52,6 +85,11 @@ elif /bin/launchctl print "system/$DAEMON_LABEL" >/dev/null 2>&1; then
     fi
 else
     log "daemon non chargé (première installation ?)"
+fi
+if [[ ! -f "$SELF_UPDATE_MARKER" ]]; then
+    # bootout returns before (or without) the process exiting when its shutdown is slow: never leave a
+    # daemon running the old binary next to the one postinstall starts.
+    stop_orphan_daemons ""
 fi
 
 exit 0

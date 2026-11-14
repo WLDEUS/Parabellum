@@ -170,6 +170,14 @@ extension Request {
         case .privacyStartRemoval: return "envoyer des demandes d'effacement en ton nom"
         case .privacyDraft: return "préparer un e-mail de demande d'effacement (il contient ton identité)"
         case .privacyComplaint: return "préparer une plainte CNIL (elle contient ton identité)"
+        // Intelligence
+        case .intelAllowDomain: return "autoriser ce domaine (le modèle ne le signalera plus)"
+        case .intelMarkNormal: return "ajouter ce comportement à la référence"
+        case .intelResetBaseline: return "effacer la référence comportementale"
+        // Rust-review fixes: scans outside the user's own folders need approval (daemon answers auth_required).
+        case .scan: return "analyser un dossier système, protégé ou d'un autre utilisateur"
+        // Travel mode
+        case .travelDisable: return "désactiver le mode Voyage et rétablir les réglages d'avant"
         default: return "réduire la protection"
         }
     }

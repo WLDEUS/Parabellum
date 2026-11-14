@@ -77,6 +77,8 @@ pub fn admin_probe(cmd: &Command) -> Option<Request> {
             PrivacyCmd::Complaint { .. } => Request::PrivacyComplaint { request_id: s() },
             _ => return None,
         },
+        // ----- Travel mode -----
+        Command::Travel { state: DnsArg::Off } => Request::TravelDisable,
         _ => return None,
     })
 }
@@ -923,7 +925,7 @@ fn resolve_request_id(c: &mut Client, id: &str) -> Result<String, CliError> {
 // ---------------------------------------------------------------------------------------------
 
 /// Read a line from the terminal without echo.
-fn read_password(prompt: &str) -> Result<String, CliError> {
+pub(crate) fn read_password(prompt: &str) -> Result<String, CliError> {
     use std::io::BufRead;
     let tty = std::fs::OpenOptions::new()
         .read(true)

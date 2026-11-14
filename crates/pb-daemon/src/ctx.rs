@@ -73,6 +73,14 @@ pub struct Ctx {
     pub vpn: std::sync::OnceLock<Arc<pb_vpn::VpnService>>,
     /// GDPR requests, breaches, aliases (set at startup).
     pub privacy: std::sync::OnceLock<Arc<pb_privacy::PrivacyService>>,
+    /// Intelligence: domain model + behaviour baseline state.
+    pub intel: crate::intel::IntelState,
+    /// Held across every configuration write (read the latest, modify, save, publish) so concurrent
+    /// requests never lose each other's changes.
+    pub config_write: tokio::sync::Mutex<()>,
+    // ----- Travel mode -----
+    /// Travel mode snapshot / state (loaded from `state/travel.json`).
+    pub travel: crate::travel::Travel,
 }
 
 impl Ctx {
@@ -86,6 +94,7 @@ impl Ctx {
     ) -> Self {
         let (config_tx, _) = watch::channel(Arc::new(config));
         let (shutdown, _) = watch::channel(false);
+        let travel = crate::travel::Travel::new(&paths.state_dir());
         Self {
             paths,
             dev_mode,
@@ -108,6 +117,9 @@ impl Ctx {
             guard: crate::guard::GuardState::default(),
             vpn: std::sync::OnceLock::new(),
             privacy: std::sync::OnceLock::new(),
+            intel: crate::intel::IntelState::default(),
+            config_write: tokio::sync::Mutex::new(()),
+            travel,
         }
     }
 

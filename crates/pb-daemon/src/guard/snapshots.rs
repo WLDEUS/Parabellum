@@ -24,6 +24,10 @@ pub const RESTORE_DIR: &str = "Parabellum-Restauration";
 /// kv: snapshot dates created by Parabellum (JSON array of `YYYY-MM-DD-HHMMSS`).
 pub const KV_OURS: &str = "guard_snapshots_ours";
 const CMD_TIMEOUT: Duration = Duration::from_secs(120);
+/// speed: `list_snapshots` answer (spawns `tmutil`), reused for 30 s; invalidated when we create one
+/// (macOS purges old ones on its own: at most 30 s of staleness).
+pub static LIST_CACHE: pb_core::cache::TtlCell<Vec<SnapshotInfo>> =
+    pb_core::cache::TtlCell::new(Duration::from_secs(30));
 
 /// `com.apple.TimeMachine.2026-10-29-120000.local` -> `2026-10-29-120000`.
 pub fn snapshot_date(name: &str) -> Option<&str> {
@@ -117,17 +121,21 @@ pub async fn list(ctx: &Arc<Ctx>) -> Result<Vec<SnapshotInfo>, IpcError> {
     if !cfg!(target_os = "macos") {
         return Err(unavailable("instantanés APFS : macOS uniquement"));
     }
-    let out = run_command(TMUTIL, &["listlocalsnapshots", "/"], CMD_TIMEOUT)
+    LIST_CACHE
+        .get_or_try_refresh(|| async {
+            let out = run_command(TMUTIL, &["listlocalsnapshots", "/"], CMD_TIMEOUT)
+                .await
+                .map_err(unavailable)?;
+            if !out.success() {
+                return Err(unavailable(format!(
+                    "tmutil listlocalsnapshots : {}",
+                    out.stderr.trim()
+                )));
+            }
+            let ours = ours(ctx).await;
+            Ok(parse_list(&out.stdout, &ours))
+        })
         .await
-        .map_err(unavailable)?;
-    if !out.success() {
-        return Err(unavailable(format!(
-            "tmutil listlocalsnapshots : {}",
-            out.stderr.trim()
-        )));
-    }
-    let ours = ours(ctx).await;
-    Ok(parse_list(&out.stdout, &ours))
 }
 
 /// Create a snapshot now.
@@ -156,7 +164,10 @@ pub async fn create(ctx: &Arc<Ctx>) -> Result<SnapshotInfo, IpcError> {
     let skip = list.len().saturating_sub(200);
     let list: Vec<String> = list.into_iter().skip(skip).collect();
     let json = serde_json::to_string(&list).unwrap_or_else(|_| "[]".into());
-    ctx.store.run(move |s| s.kv_set(KV_OURS, &json)).await?;
+    let saved = ctx.store.run(move |s| s.kv_set(KV_OURS, &json)).await;
+    // After the kv write: a list computed from here on sees the new snapshot as ours.
+    LIST_CACHE.invalidate();
+    saved?;
     Ok(SnapshotInfo {
         name: format!("com.apple.TimeMachine.{date}.local"),
         created_at: date_to_ts(&date),

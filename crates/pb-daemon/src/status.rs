@@ -199,6 +199,8 @@ pub async fn compute(ctx: &Arc<Ctx>) -> StatusInfo {
         ml_enabled: cfg.ml.enabled && engine.ml_loaded(),
         uptime_secs: ctx.started.elapsed().as_secs(),
         rss_bytes: crate::system::rss_bytes(),
+        // ----- Travel mode -----
+        travel_active: ctx.travel.is_active(),
     }
 }
 

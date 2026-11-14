@@ -10,6 +10,12 @@ struct MenuBarContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
+            if let banner = model.banner {
+                // Results of the actions below (pause, DNS, VPN, update, scan) are visible here too.
+                MenuBanner(banner: banner) {
+                    model.banner = nil
+                }
+            }
             Divider()
             switch model.connection {
             case .unreachable(let message):
@@ -21,6 +27,8 @@ struct MenuBarContentView: View {
                 }
             case .connected:
                 details
+                // Travel mode
+                TravelMenuCard(store: model.travel)
                 Divider()
                 actions
             }
@@ -29,23 +37,42 @@ struct MenuBarContentView: View {
         }
         .padding(14)
         .frame(width: 340)
+        .tint(Brand.accent)
         .onAppear {
             model.registerOpenWindow(openWindow)
+            model.menuBarVisible = true
+        }
+        .onDisappear {
+            model.menuBarVisible = false
         }
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
-            Image(systemName: model.menuBarSymbol)
-                .font(.title)
-                .foregroundStyle(headerColor)
+        HStack(spacing: 12) {
+            StatusRing(progress: headerProgress, color: headerColor, symbol: model.menuBarSymbol, size: 46)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Parabellum").font(.headline)
+                HStack(spacing: 6) {
+                    BrandMark(size: 13)
+                    Text("Parabellum")
+                        .font(.system(.headline, design: .rounded).weight(.bold))
+                }
                 Text(headerSubtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
             Spacer()
+        }
+        .padding(12)
+        .glassSurface(cornerRadius: 18, tint: headerColor)
+    }
+
+    private var headerProgress: Double {
+        guard case .connected = model.connection, let status = model.status else { return 0.1 }
+        switch status.protection {
+        case .active: return status.issues.isEmpty ? 1 : 0.85
+        case .degraded: return 0.6
+        case .paused: return 0.35
+        case .unknown: return 0.1
         }
     }
 
@@ -171,6 +198,9 @@ struct MenuBarContentView: View {
                 .disabled(model.isBusy("protection"))
                 .padding(.vertical, 2)
             }
+
+            // Coffre
+            VaultMenuRow(store: model.vault)
         }
     }
 
@@ -251,5 +281,30 @@ struct MenuActionButton: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
+    }
+}
+
+/// Compact banner of the menu bar window (errors and confirmations of its actions).
+private struct MenuBanner: View {
+    let banner: Banner
+    let onClose: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: banner.isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(banner.isError ? Color.orange : Color.green)
+            Text(banner.message)
+                .font(.callout)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.borderless)
+            .help("Fermer")
+        }
+        .padding(10)
+        .glassSurface(cornerRadius: 12, tint: banner.isError ? .orange : .green)
     }
 }

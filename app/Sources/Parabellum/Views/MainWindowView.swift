@@ -13,33 +13,49 @@ struct MainWindowView: View {
             // menu-bar (accessory) app, rows were not clickable on the user's Mac.
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
-                    ForEach(SidebarSection.allCases) { section in
-                        SidebarRow(
-                            section: section,
-                            selected: (model.section ?? .dashboard) == section,
-                            badge: model.badgeCount(for: section)
-                        ) {
-                            model.section = section
+                    BrandWordmark()
+                        .padding(.horizontal, 8)
+                        .padding(.top, 4)
+                        .padding(.bottom, 14)
+                    ForEach(SidebarGroup.allCases) { group in
+                        Text(group.title.uppercased())
+                            .font(.system(size: 10, weight: .bold))
+                            .tracking(1.2)
+                            .foregroundStyle(.tertiary)
+                            .padding(.horizontal, 10)
+                            .padding(.top, group == .protection ? 0 : 12)
+                            .padding(.bottom, 2)
+                        ForEach(group.sections) { section in
+                            SidebarRow(
+                                section: section,
+                                selected: (model.section ?? .dashboard) == section,
+                                badge: model.badgeCount(for: section)
+                            ) {
+                                model.section = section
+                            }
                         }
                     }
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 10)
             }
-            .navigationSplitViewColumnWidth(min: 190, ideal: 215)
+            .navigationSplitViewColumnWidth(min: 200, ideal: 228)
         } detail: {
-            VStack(spacing: 0) {
-                if let banner = model.banner {
-                    BannerView(banner: banner) {
-                        model.banner = nil
+            detail
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .scrollContentBackground(.hidden)
+                .auroraBackground()
+                .overlay(alignment: .top) {
+                    if let banner = model.banner {
+                        BannerView(banner: banner) {
+                            withAnimation(.snappy) { model.banner = nil }
+                        }
                     }
-                    Divider()
                 }
-                detail
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+                .animation(.snappy(duration: 0.3), value: model.banner?.message)
         }
-        .frame(minWidth: 860, minHeight: 560)
+        .tint(Brand.accent)
+        .frame(minWidth: 900, minHeight: 600)
         .sheet(isPresented: $model.showOnboarding) {
             OnboardingView()
                 .environmentObject(model)
@@ -57,29 +73,99 @@ struct MainWindowView: View {
         }
     }
 
+    /// Before the first connection: connection screens. Afterwards the current screen stays mounted while
+    /// the service is away (a daemon restart must not discard an unsaved Settings draft or an open sheet):
+    /// a bar at the bottom tells what happens.
     @ViewBuilder
     private var detail: some View {
+        if model.hasConnectedOnce {
+            sectionView
+                .overlay(alignment: .bottom) {
+                    if model.connection != .connected {
+                        DisconnectedBar()
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                }
+                .animation(.snappy(duration: 0.3), value: model.connection == .connected)
+        } else {
+            switch model.connection {
+            case .unreachable(let message):
+                UnreachableView(message: message, compact: false)
+            case .connecting:
+                ProgressView("Connexion au service Parabellum…")
+            case .connected:
+                sectionView
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var sectionView: some View {
+        switch model.section ?? .dashboard {
+        case .dashboard: DashboardView()
+        case .scan: ScanView()
+        case .alerts: AlertsView()
+        case .quarantine: QuarantineView()
+        case .persistence: PersistenceView()
+        case .devices: DevicesView()
+        case .network: NetworkView()
+        case .vpn: VpnView()
+        case .behavior: GuardView()
+        case .privacy: PrivacyView()
+        case .components: ComponentsView()
+        case .report: ReportView()
+        case .settings: SettingsView()
+        case .intelligence: IntelligenceView(store: model.intelligence)
+        case .lan: LanView(store: model.lan)
+        case .permissions: PermissionsView(store: model.permissionsAudit)
+        case .cleaning: CleaningView(store: model.cleaning)
+        case .vault: VaultView(store: model.vault)
+        }
+    }
+}
+
+/// Shown over the current screen while the service is unreachable (it reconnects on its own).
+private struct DisconnectedBar: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: "xmark.shield")
+                .foregroundStyle(.red)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.callout.weight(.semibold))
+                Text("Les données affichées datent d'avant la coupure ; les actions échoueront jusqu'au retour du service. Relance : \(AppModel.kickstartCommand)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Button {
+                model.copyToPasteboard(AppModel.kickstartCommand)
+            } label: {
+                Image(systemName: "doc.on.doc")
+            }
+            .buttonStyle(.borderless)
+            .help("Copier la commande de relance")
+            Button("Réessayer") {
+                model.retryConnection()
+            }
+            .disabled(model.connection == .connecting)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .glassSurface(cornerRadius: 14, tint: .red)
+        .padding(16)
+    }
+
+    private var title: String {
         switch model.connection {
         case .unreachable(let message):
-            UnreachableView(message: message, compact: false)
-        case .connecting:
-            ProgressView("Connexion au service Parabellum…")
-        case .connected:
-            switch model.section ?? .dashboard {
-            case .dashboard: DashboardView()
-            case .scan: ScanView()
-            case .alerts: AlertsView()
-            case .quarantine: QuarantineView()
-            case .persistence: PersistenceView()
-            case .devices: DevicesView()
-            case .network: NetworkView()
-            case .vpn: VpnView()
-            case .behavior: GuardView()
-            case .privacy: PrivacyView()
-            case .components: ComponentsView()
-            case .report: ReportView()
-            case .settings: SettingsView()
-            }
+            return "Service Parabellum injoignable — reconnexion automatique (\(message))"
+        case .connecting, .connected:
+            return "Reconnexion au service Parabellum…"
         }
     }
 }
@@ -93,9 +179,7 @@ struct UnreachableView: View {
     var body: some View {
         VStack(alignment: compact ? .leading : .center, spacing: compact ? 8 : 14) {
             if !compact {
-                Image(systemName: "xmark.shield")
-                    .font(.system(size: 54))
-                    .foregroundStyle(.red)
+                StatusRing(progress: 0.08, color: .red, symbol: "xmark.shield", size: 110)
                 Text("Le service Parabellum ne répond pas")
                     .font(.title2.weight(.semibold))
             } else {
@@ -129,7 +213,7 @@ struct UnreachableView: View {
             } label: {
                 Label("Réessayer", systemImage: "arrow.clockwise")
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.brand)
         }
         .padding(compact ? 0 : 40)
         .frame(maxWidth: compact ? .infinity : 620)
@@ -142,31 +226,45 @@ private struct SidebarRow: View {
     let selected: Bool
     let badge: Int
     let action: () -> Void
+    @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
                 Image(systemName: section.symbol)
-                    .frame(width: 18)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(selected ? AnyShapeStyle(Color.white) : AnyShapeStyle(Brand.gradient))
+                    .frame(width: 20)
                 Text(section.title)
+                    .fontWeight(selected ? .semibold : .regular)
                 Spacer(minLength: 4)
                 if badge > 0 {
                     Text("\(badge)")
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 1)
-                        .background(Capsule().fill(Color.secondary.opacity(0.25)))
+                        .font(.caption2.weight(.bold))
+                        .monospacedDigit()
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(Capsule(style: .continuous).fill(selected ? Color.white.opacity(0.28) : Color.orange))
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
             .frame(maxWidth: .infinity, alignment: .leading)
             .foregroundStyle(selected ? Color.white : Color.primary)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(selected ? Color.accentColor : Color.clear)
-            )
+            .background {
+                if selected {
+                    RoundedRectangle(cornerRadius: Brand.Radius.row, style: .continuous)
+                        .fill(Brand.gradient)
+                        .shadow(color: Brand.indigo.opacity(0.35), radius: 8, y: 3)
+                } else if hovering {
+                    RoundedRectangle(cornerRadius: Brand.Radius.row, style: .continuous)
+                        .fill(Color.primary.opacity(0.06))
+                }
+            }
             .contentShape(Rectangle())
+            .onHover { hovering = $0 }
+            .animation(.snappy(duration: 0.2), value: selected)
         }
         .buttonStyle(.plain)
         .help(section.title)

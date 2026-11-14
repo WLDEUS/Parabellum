@@ -160,6 +160,31 @@ async fn basic_commands_and_config() {
             .daily_hour,
         5
     );
+    // SetConfig answers redacted (secrets, monitored addresses, SMTP login), even to an admin peer;
+    // the daemon keeps them in clear.
+    let mut cfg2 = got.clone();
+    cfg2.breach.emails = vec!["camille.martin@example.com".into()];
+    cfg2.data_removal.smtp_username = "camille.martin".into();
+    cfg2.data_removal.smtp_password = Some("app-pass".into());
+    let mut c = Client::connect(&sock, Some(Duration::from_secs(5))).unwrap();
+    let back: Config = c
+        .call(Request::SetConfig {
+            config: cfg2.clone(),
+        })
+        .unwrap();
+    let text = serde_json::to_string(&back).unwrap();
+    for secret in ["k3y", "app-pass", "camille.martin"] {
+        assert!(!text.contains(secret), "{secret} in {text}");
+    }
+    assert_eq!(back.privacy.virustotal_api_key.as_deref(), Some("********"));
+    assert_eq!(d.ctx().config().breach.emails, cfg2.breach.emails);
+    assert_eq!(
+        d.ctx().config().data_removal.smtp_password.as_deref(),
+        Some("app-pass")
+    );
+    // Sending the redacted answer back changes nothing.
+    let _: Config = c.call(Request::SetConfig { config: back }).unwrap();
+    assert_eq!(*d.ctx().config(), cfg2);
     // Invalid file refused client-side.
     std::fs::write(&f, "[updates]\ndaily_hour = 99\n").unwrap();
     let (code, _, err) = cli(&sock, &["config", "set", f.to_str().unwrap()]).await;
@@ -362,16 +387,16 @@ async fn monitor_events_realtime_devices_persistence() {
     }
     let ctx = d.ctx().clone();
     wait_for(|| (!eicar.exists()).then_some(()), "real-time quarantine").await;
-    let alerts = wait_for(
+    // Other subsystems (LAN, intelligence…) may raise their own alerts first: look for the malware one.
+    let malware = wait_for(
         || {
-            let a = ctx.store.list_alerts(10, false).ok()?;
-            (!a.is_empty()).then_some(a)
+            let a = ctx.store.list_alerts(50, false).ok()?;
+            a.into_iter().find(|a| a.kind == AlertKind::Malware)
         },
-        "alert",
+        "malware alert",
     )
     .await;
-    assert_eq!(alerts[0].kind, AlertKind::Malware);
-    assert!(alerts[0].quarantine_id.is_some());
+    assert!(malware.quarantine_id.is_some());
     assert!(ctx
         .store
         .files_seen_since(0, 10)

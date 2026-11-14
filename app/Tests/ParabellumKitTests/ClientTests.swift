@@ -137,11 +137,18 @@ final class ClientTests: XCTestCase {
         } catch let error as DaemonClientError {
             XCTAssertEqual(error, .timeout)
         }
-        // The connection is still usable afterwards.
+        // The next request goes through a fresh connection (the daemon still holds a slot of the old one
+        // for the abandoned request).
         let ping = try await withTimeout(5) {
             try await client.call(.ping, as: PingResponse.self)
         }
         XCTAssertEqual(ping.protocolVersion, 1)
+        XCTAssertEqual(server.connectionCount, 2)
+        // ...and keeps being used.
+        _ = try await withTimeout(5) {
+            try await client.call(.ping, as: PingResponse.self)
+        }
+        XCTAssertEqual(server.connectionCount, 2)
     }
 
     func testNotRunning() async throws {

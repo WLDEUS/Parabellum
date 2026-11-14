@@ -29,20 +29,20 @@ struct ScanView: View {
         .toolbar {
             ToolbarItem {
                 RefreshButton(isLoading: model.isBusy("jobs")) {
-                    Task { await model.loadJobs() }
+                    Task { await model.refresh(section: .scan, force: true) }
                 }
             }
         }
-        .task {
+        .onAppear {
             if !clamavInitialized, let config = model.config {
                 useClamav = config.scan.clamavOnDemand
                 clamavInitialized = true
             }
-            volumes = AppModel.externalVolumes()
-            await model.loadJobs()
-            if let selected = model.selectedJobId, model.jobDetails[selected] == nil {
-                await model.loadJobDetail(selected)
-            }
+            model.revalidateSection(.scan)
+        }
+        .task {
+            // Mounted-volume lookup can block on a slow network or optical volume: off the main thread.
+            volumes = await Task.detached(priority: .utility) { AppModel.externalVolumes() }.value
         }
     }
 

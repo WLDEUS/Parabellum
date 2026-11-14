@@ -725,9 +725,52 @@ pub fn local_date(ts: i64) -> String {
     }
 }
 
+/// Longest single tokio sleep of a long wait: tokio timers use the monotonic uptime clock, which stops
+/// while the Mac sleeps, so long waits re-read the wall clock at least this often.
+pub const WALL_CLOCK_STEP: Duration = Duration::from_secs(10 * 60);
+
+/// Next sleep towards the wall-clock `deadline` (Unix seconds): zero once due, never above `max_step`.
+pub fn wall_clock_step(now: i64, deadline: i64, max_step: Duration) -> Duration {
+    if now >= deadline {
+        Duration::ZERO
+    } else {
+        Duration::from_secs((deadline - now) as u64).min(max_step)
+    }
+}
+
+/// Sleep until the wall clock reaches `deadline` (Unix seconds), also across system sleep. Cancel-safe.
+pub async fn sleep_until_wall(deadline: i64) {
+    loop {
+        let step = wall_clock_step(pb_core::now_ts(), deadline, WALL_CLOCK_STEP);
+        if step.is_zero() {
+            return;
+        }
+        tokio::time::sleep(step).await;
+    }
+}
+
+/// Wall-clock deadline `wait` from now.
+pub fn wall_deadline(wait: Duration) -> i64 {
+    pb_core::now_ts().saturating_add(i64::try_from(wait.as_secs()).unwrap_or(i64::MAX))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wall_clock_steps() {
+        let step = WALL_CLOCK_STEP;
+        // A week away: bounded steps, re-checked against the wall clock.
+        assert_eq!(wall_clock_step(0, 7 * 86_400, step), step);
+        // Close: exactly the remainder.
+        assert_eq!(wall_clock_step(100, 130, step), Duration::from_secs(30));
+        // Due or overdue (the Mac slept past it): no wait.
+        assert_eq!(wall_clock_step(130, 130, step), Duration::ZERO);
+        assert_eq!(wall_clock_step(10_000, 130, step), Duration::ZERO);
+        assert!(wall_deadline(Duration::from_secs(60)) >= pb_core::now_ts() + 59);
+        assert_eq!(wall_deadline(Duration::MAX), i64::MAX);
+    }
 
     #[test]
     fn pmset_parsing() {

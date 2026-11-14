@@ -86,10 +86,20 @@ fn child_alive(p: &mut Option<Proc>) -> bool {
 }
 
 /// Last non-empty line of the proxy log (for error messages), bounded.
+/// The directory belongs to the proxy user: no symlink, no FIFO, no hard link (to a root-only file).
 fn last_log_line(dir: &Path) -> Option<String> {
     use std::io::{Read, Seek, SeekFrom};
-    let mut f = std::fs::File::open(dir.join("dnscrypt-proxy.log")).ok()?;
-    let len = f.metadata().ok()?.len();
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+    let mut f = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
+        .open(dir.join("dnscrypt-proxy.log"))
+        .ok()?;
+    let meta = f.metadata().ok()?;
+    if !meta.is_file() || meta.nlink() != 1 {
+        return None;
+    }
+    let len = meta.len();
     f.seek(SeekFrom::Start(len.saturating_sub(4096))).ok()?;
     let mut buf = Vec::new();
     f.take(4096).read_to_end(&mut buf).ok()?;
@@ -97,6 +107,52 @@ fn last_log_line(dir: &Path) -> Option<String> {
     text.lines()
         .rfind(|l| !l.trim().is_empty())
         .map(|l| l.chars().take(200).collect())
+}
+
+/// Longest query-log line kept (longer ones are skipped).
+const MAX_QUERY_LINE: usize = 4096;
+
+/// Reads the proxy's stdout until EOF, forwarding query names to `tap` with `try_send` (dropped when
+/// the consumer lags). Never blocks on the consumer, so a full pipe can never stall DNS resolution.
+pub(crate) async fn drain_query_log<R>(out: R, tap: Option<tokio::sync::mpsc::Sender<String>>)
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    use tokio::io::AsyncReadExt;
+    let mut out = out;
+    let mut buf = vec![0u8; 64 * 1024];
+    let mut line: Vec<u8> = Vec::with_capacity(512);
+    let mut skipping = false;
+    loop {
+        let n = match out.read(&mut buf).await {
+            Ok(0) | Err(_) => return,
+            Ok(n) => n,
+        };
+        let Some(tap) = tap.as_ref().filter(|t| !t.is_closed()) else {
+            continue; // nobody listening: just drain
+        };
+        for &b in &buf[..n] {
+            if b == b'\n' {
+                if !skipping {
+                    if let Some(q) = std::str::from_utf8(&line)
+                        .ok()
+                        .and_then(crate::querylog::query_name)
+                    {
+                        let _ = tap.try_send(q);
+                    }
+                }
+                line.clear();
+                skipping = false;
+            } else if !skipping {
+                if line.len() >= MAX_QUERY_LINE {
+                    skipping = true;
+                    line.clear();
+                } else {
+                    line.push(b);
+                }
+            }
+        }
+    }
 }
 
 impl DnsSupervisor {
@@ -126,13 +182,18 @@ impl DnsSupervisor {
             .arg(&config)
             .current_dir(self.manager.dns_dir())
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
+            // stdout carries the query log (`[query_log] file = '/dev/stdout'`): always drained.
+            .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .env_clear()
             .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
             .kill_on_drop(true)
             .spawn()
             .map_err(|e| format!("lancement de dnscrypt-proxy impossible : {e}"))?;
+        let mut child = child;
+        if let Some(out) = child.stdout.take() {
+            tokio::spawn(drain_query_log(out, self.manager.query_tap()));
+        }
         tracing::info!(pid = child.id(), "dnscrypt-proxy started");
         if let Some(pid) = child.id() {
             if let Err(e) = crate::pidfile::write_pidfile(&self.manager.pidfile_path(), pid) {
@@ -329,6 +390,33 @@ mod tests {
     use crate::packet::tests::make_response;
     use std::os::unix::fs::PermissionsExt;
 
+    #[test]
+    fn last_log_line_refuses_links() {
+        let d = tempfile::tempdir().unwrap();
+        let log = d.path().join("dnscrypt-proxy.log");
+        std::fs::write(
+            &log,
+            "first\n[FATAL] listen udp 127.0.0.1:53: bind: address already in use\n\n",
+        )
+        .unwrap();
+        assert_eq!(
+            last_log_line(d.path()).as_deref(),
+            Some("[FATAL] listen udp 127.0.0.1:53: bind: address already in use")
+        );
+        let secret = d.path().join("secret");
+        std::fs::write(&secret, "root-only line\n").unwrap();
+        std::fs::remove_file(&log).unwrap();
+        std::os::unix::fs::symlink(&secret, &log).unwrap();
+        assert_eq!(last_log_line(d.path()), None, "symlink");
+        std::fs::remove_file(&log).unwrap();
+        std::fs::hard_link(&secret, &log).unwrap();
+        assert_eq!(last_log_line(d.path()), None, "hard link");
+        std::fs::remove_file(&log).unwrap();
+        let c = std::ffi::CString::new(log.as_os_str().as_encoded_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
+        assert_eq!(last_log_line(d.path()), None, "FIFO, without blocking");
+    }
+
     /// Fake "proxy": the supervisor spawns a shell script; the DNS answers come from a UDP responder
     /// running in the test (listen address chosen by the test, port 53 is not needed for the probe path).
     #[tokio::test]
@@ -375,6 +463,33 @@ mod tests {
             vec!["192.168.1.1".to_string()]
         );
         drop(cfg_tx);
+    }
+
+    #[tokio::test]
+    async fn query_log_is_drained_and_forwarded_lossily() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(2);
+        let mut text = String::new();
+        for i in 0..10 {
+            text.push_str(&format!(
+                "time:1\thost:127.0.0.1\tmessage:Host{i}.Example.com.\ttype:A\treturn:PASS\n"
+            ));
+        }
+        text.push_str(&"x".repeat(MAX_QUERY_LINE + 10));
+        text.push_str("\ntime:1\tmessage:last.example.com\n");
+        // Consumer never reads during the drain: the reader must still reach EOF (lossy, non-blocking).
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            drain_query_log(text.as_bytes(), Some(tx)),
+        )
+        .await
+        .unwrap();
+        assert_eq!(rx.recv().await.as_deref(), Some("host0.example.com"));
+        assert_eq!(rx.recv().await.as_deref(), Some("host1.example.com"));
+        assert!(
+            rx.recv().await.is_none(),
+            "the rest was dropped, sender gone"
+        );
+        drain_query_log(&b"time:1\tmessage:a.b\n"[..], None).await;
     }
 
     #[tokio::test]

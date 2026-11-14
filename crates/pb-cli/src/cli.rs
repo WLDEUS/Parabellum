@@ -182,10 +182,100 @@ pub enum Command {
         #[command(subcommand)]
         action: PrivacyCmd,
     },
+    /// Intelligence : modèle de domaines (hameçonnage) et anomalies de comportement.
+    Intel {
+        #[command(subcommand)]
+        action: Option<IntelCmd>,
+    },
     /// Afficher les événements du daemon en continu (Ctrl-C pour quitter).
     Watch,
     /// Vérifier que le daemon répond.
     Ping,
+    // --- Coffre & effacement sûr (local, as the user) ---
+    /// Coffre chiffré (image APFS chiffrée AES-256) et effacement sûr, sans sudo. Les mots de passe
+    /// sont lus sur l'entrée standard (ou demandés sans écho).
+    Vault(crate::vault::command::VaultArgs),
+    // ----- Local network & permissions audit -----
+    /// Appareils du réseau local (inventaire, analyse, appareils connus).
+    Lan {
+        #[command(subcommand)]
+        action: Option<LanCmd>,
+    },
+    /// Permissions de confidentialité (TCC) et extensions de navigateur.
+    Permissions {
+        #[command(subcommand)]
+        action: Option<PermissionsCmd>,
+    },
+    // ----- Travel mode -----
+    /// Mode Voyage (Wi-Fi public) : VPN permanent + coupe-circuit, blocage DNS, coupe-feu furtif ;
+    /// « off » rétablit les réglages d'avant (sudo).
+    Travel {
+        #[arg(value_enum, default_value_t = DnsArg::Status)]
+        state: DnsArg,
+    },
+}
+
+// ----- Local network & permissions audit -----
+
+#[derive(Debug, Subcommand)]
+pub enum LanCmd {
+    /// Appareils du réseau actuel (ou d'un réseau connu).
+    Status {
+        /// Réseau (`gw:<adresse du routeur>`).
+        #[arg(long)]
+        network: Option<String>,
+    },
+    /// Analyser le réseau actuel maintenant.
+    Scan {
+        /// Analyse active (balayage léger + Bonjour) même sur un réseau non fiable.
+        #[arg(long, conflicts_with = "passive")]
+        active: bool,
+        /// Lire seulement les caches système (aucun paquet envoyé).
+        #[arg(long)]
+        passive: bool,
+    },
+    /// Ports TCP ouverts d'un appareil (20 ports courants).
+    Ports {
+        /// Adresse matérielle (aa:bb:cc:dd:ee:ff).
+        mac: String,
+    },
+    /// Nommer un appareil (nom vide = effacer).
+    Rename {
+        network: String,
+        mac: String,
+        name: String,
+    },
+    /// « Je connais cet appareil » (administrateur).
+    Trust { network: String, mac: String },
+    /// Ne plus considérer l'appareil comme connu.
+    Untrust { network: String, mac: String },
+    /// Oublier un appareil (signalé comme nouveau s'il revient).
+    Forget { network: String, mac: String },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum PermissionsCmd {
+    /// Permissions accordées aux apps (bases TCC du système et de l'utilisateur, via le daemon).
+    Audit {
+        /// Refaire l'audit maintenant.
+        #[arg(long)]
+        refresh: bool,
+    },
+    /// Extensions des navigateurs (Chrome, Brave, Edge, Arc, Chromium, Vivaldi, Firefox, Safari).
+    Extensions,
+    /// Retirer une permission à une app (tccutil reset, en tant qu'utilisateur).
+    Reset {
+        /// Service (`Camera`, `Microphone`, `ScreenCapture`, `Accessibility`… ou `kTCCService…`).
+        service: String,
+        /// Identifiant de l'app (com.exemple.app).
+        bundle_id: String,
+    },
+    /// (Interne) Résoudre des identifiants d'apps ou chemins : nom, emplacement, signature.
+    #[command(hide = true)]
+    Resolve {
+        #[arg(required = true)]
+        clients: Vec<String>,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -379,6 +469,21 @@ pub enum GuardCmd {
         /// Fichier ou dossier de votre dossier personnel.
         path: PathBuf,
     },
+}
+
+// ----- Intelligence -----
+#[derive(Debug, Subcommand)]
+pub enum IntelCmd {
+    /// État des modèles, apprentissage, anomalies et domaines signalés (défaut).
+    Status,
+    /// Évaluer un nom de domaine avec le modèle (rien n'est enregistré).
+    Score { domain: String },
+    /// Ne plus jamais signaler ni bloquer ce domaine (sudo).
+    AllowDomain { domain: String },
+    /// « C'est normal » : ajouter une anomalie à la référence (sudo).
+    MarkNormal { anomaly_id: String },
+    /// Oublier la référence comportementale et recommencer l'apprentissage (sudo).
+    ResetBaseline,
 }
 
 #[derive(Debug, Subcommand)]
@@ -722,6 +827,16 @@ mod tests {
             Command::Privacy {
                 action: PrivacyCmd::Start { .. }
             }
+        ));
+        assert!(matches!(
+            parse(&["intel", "score", "paypa1.com"]).unwrap().command,
+            Command::Intel {
+                action: Some(IntelCmd::Score { .. })
+            }
+        ));
+        assert!(matches!(
+            parse(&["intel"]).unwrap().command,
+            Command::Intel { action: None }
         ));
         assert!(parse(&["privacy"]).is_err());
         assert!(parse(&["pause"]).is_err());

@@ -166,6 +166,43 @@ fn db_status() -> DbStatus {
         blocked_domains: 402_113,
         clamav_version: Some("ClamAV 1.4.3/27800".into()),
         ml_model_version: Some("2026.10.20".into()),
+        // --- ML model info (ml-files) ---
+        models: vec![
+            ModelInfo {
+                name: "macho".into(),
+                display_name: "Classifieur Mach-O".into(),
+                loaded: true,
+                version: Some("2026.10.20".into()),
+                features_version: 2,
+                threshold: Some(0.9375),
+                trees: Some(214),
+                calibration: Some("isotonic".into()),
+                trained_at: Some(1_792_900_000),
+                metrics: ModelMetrics {
+                    roc_auc: Some(0.9981),
+                    pr_auc: Some(0.9712),
+                    tpr_at_threshold: Some(0.884),
+                    fpr_at_threshold: Some(0.0004),
+                    tpr_at_fpr_0_1: Some(0.902),
+                    brier: Some(0.0213),
+                    n_pos: Some(1830),
+                    n_neg: Some(14_210),
+                    holdout_pos: Some(366),
+                    holdout_neg: Some(2842),
+                    holdout_since: Some(1_790_000_000),
+                    families: Some(41),
+                },
+                error: None,
+            },
+            ModelInfo {
+                name: "script".into(),
+                display_name: "Classifieur de scripts".into(),
+                loaded: false,
+                features_version: 1,
+                error: Some("Modèle incompatible avec cette version de Parabellum : en attente du prochain entraînement.".into()),
+                ..Default::default()
+            },
+        ],
     }
 }
 
@@ -205,6 +242,31 @@ fn status() -> StatusInfo {
         ml_enabled: true,
         uptime_secs: 3600,
         rss_bytes: 58_000_000,
+        // ----- Travel mode -----
+        travel_active: true,
+    }
+}
+
+// ----- Travel mode -----
+fn travel_status() -> TravelStatus {
+    TravelStatus {
+        active: true,
+        since: Some(1_793_000_200),
+        automatic: false,
+        network: Some("Gare-WiFi-Gratuit".into()),
+        changes: vec![
+            TravelItem {
+                id: "vpn_mode".into(),
+                label: "VPN toujours actif".into(),
+            },
+            TravelItem {
+                id: "stealth".into(),
+                label: "Mode furtif du coupe-feu".into(),
+            },
+        ],
+        warnings: vec!["Blocage DNS indisponible : dnscrypt-proxy absent".into()],
+        message: None,
+        untrusted_network: true,
     }
 }
 
@@ -302,6 +364,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Payloads
     w("status", serde_json::to_value(status())?)?;
+    // ----- Travel mode -----
+    w("travel_status", serde_json::to_value(travel_status())?)?;
+    w(
+        "travel_status_default",
+        serde_json::to_value(TravelStatus::default())?,
+    )?;
     w("scan_report", serde_json::to_value(report())?)?;
     w("job_running", serde_json::to_value(job(JobState::Running))?)?;
     w(
@@ -626,6 +694,293 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     std::fs::write(dir.join("server_lines.jsonl"), lines.join("\n") + "\n")?;
 
+    // ----- Intelligence -----
+    w(
+        "intel_status",
+        serde_json::to_value(IntelligenceStatus {
+            behavior: BehaviorStatus {
+                enabled: true,
+                learning: false,
+                learning_progress: 1.0,
+                learning_started_at: Some(1_761_400_000),
+                learning_until: Some(1_762_004_800),
+                events_observed: 182_345,
+                profiles: 412,
+                behaviors: 3_120,
+                anomalies_24h: 1,
+                anomalies_7d: 3,
+                baseline_bytes: 96_512,
+                recent_anomalies: vec![BehaviorAnomaly {
+                    id: "00ff00ff00ff00ff".into(),
+                    ts: 1_762_100_000,
+                    process: "/Library/Backup/agent".into(),
+                    kind: AnomalyKind::Interpreter,
+                    summary: "agent lance un interpréteur inhabituel (zsh)".into(),
+                    details: vec!["lance un interpréteur inhabituel (zsh)".into()],
+                    score: 0.9,
+                    alert_id: Some(42),
+                    marked_normal: false,
+                }],
+                message: None,
+            },
+            domains: DomainIntelStatus {
+                enabled: true,
+                dns_active: true,
+                model_loaded: true,
+                block_enabled: false,
+                alert_threshold: 0.93,
+                block_threshold: 0.99,
+                scored_total: 5_210,
+                scored_24h: 640,
+                flagged_total: 2,
+                blocked_count: 0,
+                top_flagged: vec![FlaggedDomain {
+                    domain: "paypal.com.secure-login.xyz".into(),
+                    registrable: "secure-login.xyz".into(),
+                    score: 0.991,
+                    first_seen: 1_762_090_000,
+                    last_seen: 1_762_090_100,
+                    hits: 3,
+                    reasons: vec!["La marque « paypal » apparaît dans un sous-domaine".into()],
+                    blocked: false,
+                    allowed: false,
+                    alert_id: Some(41),
+                }],
+                message: None,
+            },
+            models: vec![
+                IntelModelInfo {
+                    id: "domain".into(),
+                    name: "Domaines (hameçonnage, typosquatting)".into(),
+                    loaded: true,
+                    version: Some("2026.11.13".into()),
+                    threshold: Some(0.93),
+                    metrics: BTreeMap::from([
+                        ("auc".to_string(), 0.995),
+                        ("fpr_at_threshold".to_string(), 0.0004),
+                    ]),
+                    detail: Some("LightGBM".into()),
+                },
+                IntelModelInfo {
+                    id: "behavior".into(),
+                    name: "Comportement (appris sur ce Mac)".into(),
+                    loaded: true,
+                    version: None,
+                    threshold: Some(0.75),
+                    metrics: BTreeMap::new(),
+                    detail: None,
+                },
+            ],
+        })?,
+    )?;
+    w(
+        "intel_status_default",
+        serde_json::to_value(IntelligenceStatus::default())?,
+    )?;
+    w(
+        "domain_verdict",
+        serde_json::to_value(DomainVerdictInfo {
+            domain: "paypa1-login.xyz".into(),
+            registrable: Some("paypa1-login.xyz".into()),
+            score: Some(0.97),
+            flagged: true,
+            would_block: false,
+            source: Some("model".into()),
+            skipped: None,
+            reasons: vec!["Ressemble à « paypal » (1 faute(s) de frappe)".into()],
+            allowed: false,
+        })?,
+    )?;
+    w(
+        "domain_verdict_skipped",
+        serde_json::to_value(DomainVerdictInfo {
+            domain: "printer.local".into(),
+            registrable: None,
+            score: None,
+            flagged: false,
+            would_block: false,
+            source: None,
+            skipped: Some("nom local".into()),
+            reasons: vec![],
+            allowed: false,
+        })?,
+    )?;
+
+    // ----- Local network & permissions audit -----
+    let lan_device = |mac: &str, ip: &str, t: LanDeviceType| LanDevice {
+        mac: mac.into(),
+        ipv4: Some(ip.into()),
+        ipv6: vec![],
+        hostname: None,
+        mdns_name: None,
+        name: None,
+        vendor: None,
+        private_mac: false,
+        device_type: t,
+        model: None,
+        services: vec![],
+        open_ports: vec![],
+        ports_checked_at: None,
+        first_seen: 1_793_000_000,
+        last_seen: 1_793_000_900,
+        online: true,
+        trusted: false,
+        baseline: true,
+        is_gateway: false,
+        is_self: false,
+    };
+    let mut router = lan_device("00:24:d4:a1:b2:c3", "192.168.1.1", LanDeviceType::Router);
+    router.vendor = Some("Freebox SAS".into());
+    router.is_gateway = true;
+    router.ipv6 = vec!["fe80::1".into()];
+    let mut tv = lan_device("90:dd:5d:11:22:33", "192.168.1.30", LanDeviceType::Tv);
+    tv.vendor = Some("Apple, Inc.".into());
+    tv.hostname = Some("Apple-TV.local".into());
+    tv.mdns_name = Some("Salon".into());
+    tv.model = Some("AppleTV11,1".into());
+    tv.services = vec!["_airplay._tcp".into(), "_raop._tcp".into()];
+    tv.trusted = true;
+    tv.name = Some("Apple TV du salon".into());
+    let mut phone = lan_device("3a:5f:12:9c:7e:01", "192.168.1.41", LanDeviceType::Unknown);
+    phone.private_mac = true;
+    phone.baseline = false;
+    phone.open_ports = vec![62078];
+    phone.ports_checked_at = Some(1_793_000_950);
+    let lan_status = LanStatus {
+        enabled: true,
+        scanning: false,
+        progress: 1.0,
+        phase: None,
+        network: Some(LanNetwork {
+            id: "gw:00:24:d4:a1:b2:c3".into(),
+            name: "Livebox-1234".into(),
+            interface: "en0".into(),
+            subnet: Some("192.168.1.0/24".into()),
+            trusted: true,
+            current: true,
+            last_scan: Some(1_793_000_900),
+            last_scan_mode: Some(LanScanMode::Active),
+            devices: vec![router, tv, phone],
+        }),
+        networks: vec![LanNetworkSummary {
+            id: "gw:00:24:d4:a1:b2:c3".into(),
+            name: "Livebox-1234".into(),
+            trusted: true,
+            current: true,
+            devices: 3,
+            unknown: 1,
+            last_scan: Some(1_793_000_900),
+        }],
+        message: None,
+        interval_minutes: 15,
+    };
+    w("lan_status", serde_json::to_value(&lan_status)?)?;
+    let scanning = LanStatus {
+        scanning: true,
+        progress: 0.4,
+        phase: Some("Balayage léger du sous-réseau".into()),
+        message: Some("Réseau non marqué de confiance : seuls les caches système sont lus.".into()),
+        interval_minutes: 15,
+        ..Default::default()
+    };
+    std::fs::write(
+        dir.join("lan_event.jsonl"),
+        serde_json::to_string(&DaemonEvent::Lan(scanning))? + "\n",
+    )?;
+    let adhoc = SigningInfo {
+        signed: true,
+        valid: true,
+        adhoc: true,
+        team_id: None,
+        identifier: Some("com.example.clicker".into()),
+        authority: None,
+        notarized: None,
+        apple: false,
+    };
+    let report = PermissionsReport {
+        generated_at: 1_793_001_000,
+        grants: vec![
+            TccGrant {
+                id: "0123456789abcdef".into(),
+                service: "kTCCServiceAccessibility".into(),
+                service_label: "Accessibilité".into(),
+                client: "com.example.clicker".into(),
+                client_is_path: false,
+                app_name: Some("Clicker".into()),
+                app_path: Some("/Applications/Clicker.app".into()),
+                installed: Some(true),
+                auth: TccAuthValue::Allowed,
+                system_wide: true,
+                last_modified: Some(1_792_000_000),
+                target: None,
+                target_name: None,
+                signing: Some(adhoc.clone()),
+                risk: Severity::High,
+                reasons: vec!["App signée « ad hoc » (sans identité de développeur)".into()],
+                settings_url: Some(
+                    "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+                        .into(),
+                ),
+            },
+            TccGrant {
+                id: "fedcba9876543210".into(),
+                service: "kTCCServiceAppleEvents".into(),
+                service_label: "Automatisation".into(),
+                client: "/usr/local/bin/helper".into(),
+                client_is_path: true,
+                app_name: Some("helper".into()),
+                app_path: None,
+                installed: Some(false),
+                auth: TccAuthValue::Allowed,
+                system_wide: false,
+                last_modified: None,
+                target: Some("com.apple.finder".into()),
+                target_name: Some("Finder".into()),
+                signing: None,
+                risk: Severity::Low,
+                reasons: vec![
+                    "App introuvable sur ce Mac : autorisation orpheline à réinitialiser".into(),
+                ],
+                settings_url: None,
+            },
+        ],
+        system_db_read: true,
+        user_db_read: true,
+        configuration_profiles: vec!["Profil Wi-Fi du bureau".into()],
+        errors: vec![],
+    };
+    w("permissions_report", serde_json::to_value(&report)?)?;
+    let ext = ExtensionsReport {
+        generated_at: 1_793_001_100,
+        extensions: vec![BrowserExtension {
+            id: "chrome:Personnel:cjpalhdlnbpafiamejdnhcphjbkeiagm".into(),
+            browser: "chrome".into(),
+            profile: "Personnel".into(),
+            extension_id: "cjpalhdlnbpafiamejdnhcphjbkeiagm".into(),
+            name: "uBlock Origin".into(),
+            version: Some("1.62.0".into()),
+            enabled: Some(true),
+            from_store: Some(true),
+            unpacked: false,
+            permissions: vec!["webRequest".into(), "tabs".into()],
+            host_permissions: vec!["<all_urls>".into()],
+            risk: Severity::High,
+            reasons: vec!["Peut lire et modifier toutes les pages web".into()],
+            path: None,
+        }],
+        errors: vec!["Safari : pluginkit n'a pas répondu".into()],
+    };
+    w("extensions_report", serde_json::to_value(&ext)?)?;
+    w(
+        "tcc_reset",
+        serde_json::to_value(TccResetResult {
+            ok: true,
+            service: "Camera".into(),
+            bundle_id: "us.zoom.xos".into(),
+            message: "Autorisation « Camera » retirée à us.zoom.xos.".into(),
+        })?,
+    )?;
+
     // Every request kind, as the Swift client must encode them (one per line).
     let reqs = vec![
         Request::Ping,
@@ -764,6 +1119,65 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Request::ResolveAlert {
             alert_id: 31,
             action: AlertAction::ResumeProcess,
+        },
+        // ----- Intelligence -----
+        Request::IntelStatus,
+        Request::IntelScoreDomain {
+            domain: "paypa1-login.xyz".into(),
+        },
+        Request::IntelAllowDomain {
+            domain: "example.org".into(),
+        },
+        Request::IntelMarkNormal {
+            anomaly_id: "00ff00ff00ff00ff".into(),
+        },
+        Request::IntelResetBaseline,
+        Request::ResolveAlert {
+            alert_id: 41,
+            action: AlertAction::AllowDomain,
+        },
+        Request::ResolveAlert {
+            alert_id: 42,
+            action: AlertAction::MarkNormal,
+        },
+        // ----- Local network & permissions audit -----
+        Request::LanStatus { network_id: None },
+        Request::LanStatus {
+            network_id: Some("gw:00:24:d4:a1:b2:c3".into()),
+        },
+        Request::LanScan { active: None },
+        Request::LanScan { active: Some(true) },
+        Request::LanSetDevice {
+            network_id: "gw:00:24:d4:a1:b2:c3".into(),
+            mac: "3a:5f:12:9c:7e:01".into(),
+            name: Some("iPhone de Camille".into()),
+            trusted: Some(true),
+        },
+        Request::LanSetDevice {
+            network_id: "gw:00:24:d4:a1:b2:c3".into(),
+            mac: "3a:5f:12:9c:7e:01".into(),
+            name: Some(String::new()),
+            trusted: None,
+        },
+        Request::LanForgetDevice {
+            network_id: "gw:00:24:d4:a1:b2:c3".into(),
+            mac: "3a:5f:12:9c:7e:01".into(),
+        },
+        Request::LanPorts {
+            mac: "3a:5f:12:9c:7e:01".into(),
+        },
+        Request::PermissionsAudit { refresh: true },
+        Request::ResolveAlert {
+            alert_id: 32,
+            action: AlertAction::TrustLanDevice,
+        },
+        // ----- Travel mode -----
+        Request::TravelStatus,
+        Request::TravelEnable,
+        Request::TravelDisable,
+        Request::ResolveAlert {
+            alert_id: 40,
+            action: AlertAction::EnableTravelMode,
         },
     ];
     // Which commands need administrator approval (`auth` or root), same order/ids as requests.jsonl.

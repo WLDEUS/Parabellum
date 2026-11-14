@@ -3,12 +3,15 @@
 use crate::lists::{render_name_file, ListBuilder};
 use crate::packet::probe;
 use crate::proxy_config::{parse_listen, render, ProxyConfigParams};
-use crate::system::{is_ours, load_saved, write_saved, Backend, SavedDns, SavedState};
+use crate::system::{
+    is_ours, is_unknown_service_error, load_saved, write_saved, Backend, SavedDns, SavedState,
+};
 use crate::{querylog, DnsError};
 use crate::{
     ALLOWED_NAMES_FILE, BLOCKED_LOG_FILE, BLOCKED_NAMES_FILE, LISTS_STATE_FILE, PROXY_CONFIG_FILE,
     RUNTIME_DIR, SAVED_DNS_FILE,
 };
+use pb_core::cache::TtlCell;
 use pb_core::config::DnsConfig;
 use pb_core::model::DnsStatus;
 use pb_core::paths::Paths;
@@ -48,7 +51,19 @@ pub struct DnsManager {
     runtime: std::sync::Mutex<RuntimeInfo>,
     /// Ancestors checked by the trust policy stop here (`/` in production; a temp dir in tests).
     trust_boundary: PathBuf,
+    /// `queries_blocked_24h` (tails up to 64 MB of query logs): recomputed at most once a minute.
+    blocked_24h: TtlCell<Option<u64>>,
+    /// Listen address whose last probe answered: a healthy proxy is not re-probed for a few seconds
+    /// (failed probes are never cached, so a toggle sees the proxy come up at once).
+    probe_ok: TtlCell<String>,
+    /// Intelligence: receives every query name logged by the proxy (bounded, lossy).
+    query_tap: std::sync::Mutex<Option<tokio::sync::mpsc::Sender<String>>>,
 }
+
+/// How long `queries_blocked_24h` is cached.
+pub const BLOCKED_COUNT_TTL: Duration = Duration::from_secs(60);
+/// How long a successful status probe is trusted.
+pub const PROBE_OK_TTL: Duration = Duration::from_secs(5);
 
 impl std::fmt::Debug for DnsManager {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -96,6 +111,11 @@ fn rebuild_lists_at(
         }
         b.add_file(&dir.join("dns").join("allowlist.txt"), true)?;
         list_version = bundle_version(dir);
+    }
+    // Intelligence: high-confidence domain-model verdicts (file present only when blocking is opted in).
+    let ml = dns_dir.join(crate::ML_BLOCKED_FILE);
+    if ml.is_file() {
+        b.add_file(&ml, false)?;
     }
     b.add_entries(&cfg.custom_block, false);
     b.add_entries(&cfg.custom_allow, true);
@@ -160,7 +180,23 @@ impl DnsManager {
             switch_lock: tokio::sync::Mutex::new(()),
             runtime: std::sync::Mutex::new(RuntimeInfo::default()),
             trust_boundary: PathBuf::from("/"),
+            blocked_24h: TtlCell::new(BLOCKED_COUNT_TTL),
+            probe_ok: TtlCell::new(PROBE_OK_TTL),
+            query_tap: std::sync::Mutex::new(None),
         }
+    }
+
+    /// Intelligence: send every query name the proxy logs to `tx` (names are dropped, never queued
+    /// without bound, when the receiver is slow: DNS resolution never waits for the consumer).
+    pub fn set_query_tap(&self, tx: tokio::sync::mpsc::Sender<String>) {
+        *self.query_tap.lock().unwrap_or_else(|p| p.into_inner()) = Some(tx);
+    }
+
+    pub(crate) fn query_tap(&self) -> Option<tokio::sync::mpsc::Sender<String>> {
+        self.query_tap
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
     }
 
     #[cfg(test)]
@@ -402,23 +438,33 @@ impl DnsManager {
     /// re-applies): this is the fast path for daemon shutdown (SIGTERM) and for fail-open.
     /// Returns the restored services. A no-op when nothing is saved.
     pub async fn restore_system_dns(&self) -> Result<Vec<String>, DnsError> {
+        self.probe_ok.invalidate();
         let _g = self.switch_lock.lock().await;
         let path = self.saved_dns_path();
         let saved = load_saved(&path);
         if saved == SavedState::Absent {
             return Ok(Vec::new());
         }
-        let services = self.backend.list_services().await.unwrap_or_default();
+        // Disabled services included: one disabled since it was switched still points at the proxy. A
+        // listing failure is not "no services": every saved service is then still attempted, and a service
+        // is only forgotten once restored or reported as gone.
+        let listing = self.backend.list_all_services().await;
+        if let Err(e) = &listing {
+            tracing::warn!(error = %e, "cannot list network services; restoring every saved service");
+        }
         let mut restored = Vec::new();
         let mut failed = SavedDns::new();
         match saved {
             SavedState::Present(s) => {
                 for (svc, original) in s.services {
-                    if !services.contains(&svc) {
-                        continue; // service gone: nothing to restore
-                    }
                     match self.backend.set_dns(&svc, &original).await {
                         Ok(()) => restored.push(svc),
+                        Err(e)
+                            if is_unknown_service_error(&e)
+                                || matches!(&listing, Ok(l) if !l.contains(&svc)) =>
+                        {
+                            tracing::info!(service = %svc, "network service gone: nothing to restore");
+                        }
                         Err(e) => {
                             tracing::error!(service = %svc, error = %e, "cannot restore DNS servers");
                             failed.services.insert(svc, original);
@@ -428,6 +474,12 @@ impl DnsManager {
             }
             SavedState::Corrupt => {
                 // Originals unknown: never leave a service pointing at a dead local proxy — back to DHCP.
+                // Without the service list nothing can be done: keep the file for the next attempt.
+                let services = listing.map_err(|e| {
+                    DnsError::Command(format!(
+                        "restauration impossible (liste des services) : {e}"
+                    ))
+                })?;
                 let ours = ["127.0.0.1".to_string(), "::1".to_string()];
                 for svc in &services {
                     if let Ok(cur) = self.backend.get_dns(svc).await {
@@ -470,6 +522,7 @@ impl DnsManager {
     /// [`crate::DnsSupervisor`] does, once its *own* dnscrypt-proxy child answers. The caller then
     /// publishes `dns.enabled = true` on the config channel.
     pub async fn enable(&self, cfg: &DnsConfig) -> Result<DnsStatus, DnsError> {
+        self.probe_ok.invalidate();
         our_servers(&cfg.listen)?;
         self.checked_proxy_binary()?;
         self.prepare(cfg, false).await?;
@@ -503,33 +556,57 @@ impl DnsManager {
             .await)
     }
 
-    /// Current status (cheap: a 700 ms local UDP probe when enabled, small file reads).
+    /// Current status (cheap: a local UDP probe of at most 700 ms when enabled — skipped for a few seconds
+    /// after a successful one —, small file reads, and a blocked-queries count cached for a minute).
     pub async fn status(&self, cfg: &DnsConfig) -> DnsStatus {
         let ls = self.lists_state().unwrap_or_default();
         let rt = self.runtime();
         let running = if cfg.enabled {
             match parse_listen(&cfg.listen) {
-                Ok(addr) => probe(addr, Duration::from_millis(700)).await.is_ok(),
+                Ok(addr) => self.probe_cached(&cfg.listen, addr).await,
                 Err(_) => false,
             }
         } else {
             false
         };
-        let since = pb_core::now_ts() - 86_400;
         DnsStatus {
             enabled: cfg.enabled,
             running,
             listen: cfg.listen.clone(),
             blocked_domains: ls.blocked,
             list_version: ls.list_version,
-            queries_blocked_24h: querylog::count_blocked_since(
-                &self.runtime_dir(),
-                BLOCKED_LOG_FILE,
-                since,
-            ),
+            queries_blocked_24h: self.blocked_queries_24h().await,
             managed_services: self.managed_services(),
             message: if cfg.enabled { rt.message } else { None },
         }
+    }
+
+    /// Probe `addr`; a success is remembered for [`PROBE_OK_TTL`] (per listen address).
+    async fn probe_cached(&self, listen: &str, addr: SocketAddr) -> bool {
+        if self.probe_ok.get().as_deref() == Some(listen) {
+            return true;
+        }
+        let generation = self.probe_ok.generation();
+        let ok = probe(addr, Duration::from_millis(700)).await.is_ok();
+        if ok {
+            self.probe_ok.put(generation, listen.to_string());
+        }
+        ok
+    }
+
+    /// Blocked queries of the last 24 h, from the query logs (off the async workers, cached).
+    async fn blocked_queries_24h(&self) -> Option<u64> {
+        let dir = self.runtime_dir();
+        self.blocked_24h
+            .get_or_refresh(|| async move {
+                let since = pb_core::now_ts() - 86_400;
+                tokio::task::spawn_blocking(move || {
+                    querylog::count_blocked_since(&dir, BLOCKED_LOG_FILE, since)
+                })
+                .await
+                .unwrap_or(None)
+            })
+            .await
     }
 
     /// Crash safety at daemon start: if DNS blocking is disabled (or the proxy binary is missing) but
@@ -678,6 +755,67 @@ pub(crate) mod tests {
         assert_eq!(load_saved(&m.saved_dns_path()), SavedState::Absent);
         // Idempotent.
         assert!(m.restore_system_dns().await.unwrap().is_empty());
+    }
+
+    /// A failed service listing must never be taken for "no services" (Mac left on 127.0.0.1 with the
+    /// originals lost), and a service disabled since it was switched gets its DNS back too.
+    #[tokio::test]
+    async fn restore_survives_listing_failure_and_disabled_services() {
+        let d = tempfile::tempdir().unwrap();
+        let (m, net) = fake_manager(
+            d.path(),
+            &[("Wi-Fi", &["192.168.1.1"]), ("Ethernet", &["9.9.9.9"])],
+        );
+        let cfg = DnsConfig {
+            enabled: true,
+            ..Default::default()
+        };
+        m.apply_system_dns(&cfg, false).await.unwrap();
+
+        // Listing and setting both fail: error, nothing forgotten.
+        {
+            let mut n = net.lock().unwrap();
+            n.fail_list = true;
+            n.fail_set = true;
+        }
+        assert!(m.restore_system_dns().await.is_err());
+        let s = saved(&m);
+        assert_eq!(s.services["Wi-Fi"], vec!["192.168.1.1"]);
+        assert_eq!(s.services["Ethernet"], vec!["9.9.9.9"]);
+
+        // Listing still fails but setting works: every saved service is restored anyway.
+        net.lock().unwrap().fail_set = false;
+        let restored = m.restore_system_dns().await.unwrap();
+        assert_eq!(restored, vec!["Ethernet", "Wi-Fi"]);
+        assert_eq!(net.lock().unwrap().services["Wi-Fi"], vec!["192.168.1.1"]);
+        assert_eq!(load_saved(&m.saved_dns_path()), SavedState::Absent);
+
+        // Disabled after being switched: restored as well; a vanished one is dropped.
+        net.lock().unwrap().fail_list = false;
+        net.lock()
+            .unwrap()
+            .services
+            .insert("USB LAN".into(), vec!["10.0.0.1".into()]);
+        m.apply_system_dns(&cfg, false).await.unwrap();
+        {
+            let mut n = net.lock().unwrap();
+            n.disabled.insert("Wi-Fi".into());
+            n.services.remove("USB LAN");
+        }
+        assert_eq!(m.backend.list_services().await.unwrap(), vec!["Ethernet"]);
+        let restored = m.restore_system_dns().await.unwrap();
+        assert_eq!(restored, vec!["Ethernet", "Wi-Fi"]);
+        assert_eq!(net.lock().unwrap().services["Wi-Fi"], vec!["192.168.1.1"]);
+        assert_eq!(load_saved(&m.saved_dns_path()), SavedState::Absent);
+
+        // Corrupt file + listing failure: error, file kept for the next attempt.
+        std::fs::write(m.saved_dns_path(), b"{not json").unwrap();
+        net.lock().unwrap().fail_list = true;
+        assert!(m.restore_system_dns().await.is_err());
+        assert_eq!(load_saved(&m.saved_dns_path()), SavedState::Corrupt);
+        net.lock().unwrap().fail_list = false;
+        m.restore_system_dns().await.unwrap();
+        assert_eq!(load_saved(&m.saved_dns_path()), SavedState::Absent);
     }
 
     #[tokio::test]
@@ -844,5 +982,84 @@ pub(crate) mod tests {
                 Err(DnsError::Untrusted(_))
             ));
         }
+    }
+
+    // ----- speed: status caches -----
+
+    #[tokio::test]
+    async fn status_caches_blocked_count_and_healthy_probe() {
+        let d = tempfile::tempdir().unwrap();
+        let (m, _net) = fake_manager(d.path(), &[]);
+        std::fs::create_dir_all(m.runtime_dir()).unwrap();
+        let now = pb_core::now_ts();
+        let line =
+            |t: i64| format!("time:{t}\thost:127.0.0.1\tqname:ads.example\tmessage:ads.example\n");
+        let log = m.runtime_dir().join(BLOCKED_LOG_FILE);
+        std::fs::write(&log, line(now - 10)).unwrap();
+        // A resolver answering every query.
+        let srv = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let listen = srv.local_addr().unwrap().to_string();
+        let resolver = tokio::spawn(async move {
+            let mut buf = [0u8; 512];
+            while let Ok((n, peer)) = srv.recv_from(&mut buf).await {
+                let resp = crate::packet::tests::make_response(&buf[..n], 0);
+                let _ = srv.send_to(&resp, peer).await;
+            }
+        });
+        let cfg = DnsConfig {
+            enabled: true,
+            listen,
+            ..Default::default()
+        };
+        let st = m.status(&cfg).await;
+        assert!(st.running);
+        assert_eq!(st.queries_blocked_24h, Some(1));
+
+        // New log lines and a dead resolver: both answers still come from the caches.
+        std::fs::write(&log, format!("{}{}", line(now - 10), line(now - 5))).unwrap();
+        resolver.abort();
+        let _ = resolver.await;
+        let st = m.status(&cfg).await;
+        assert!(st.running, "a healthy probe is trusted for PROBE_OK_TTL");
+        assert_eq!(st.queries_blocked_24h, Some(1), "count cached");
+
+        // Restoring the system DNS (disable / fail-open) drops the probe cache; failures are never cached.
+        m.restore_system_dns().await.unwrap();
+        let started = std::time::Instant::now();
+        assert!(!m.status(&cfg).await.running);
+        assert!(!m.status(&cfg).await.running);
+        assert!(started.elapsed() < Duration::from_secs(3));
+
+        // The count is recomputed once its cache expires.
+        m.blocked_24h.invalidate();
+        assert_eq!(m.status(&cfg).await.queries_blocked_24h, Some(2));
+    }
+
+    #[tokio::test]
+    async fn status_probe_cache_is_per_listen_address() {
+        let d = tempfile::tempdir().unwrap();
+        let (m, _net) = fake_manager(d.path(), &[]);
+        let srv = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let good = srv.local_addr().unwrap().to_string();
+        tokio::spawn(async move {
+            let mut buf = [0u8; 512];
+            while let Ok((n, peer)) = srv.recv_from(&mut buf).await {
+                let resp = crate::packet::tests::make_response(&buf[..n], 0);
+                let _ = srv.send_to(&resp, peer).await;
+            }
+        });
+        // A port nobody listens on.
+        let dead = {
+            let s = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+            s.local_addr().unwrap().to_string()
+        };
+        let on = |listen: &str| DnsConfig {
+            enabled: true,
+            listen: listen.to_string(),
+            ..Default::default()
+        };
+        assert!(m.status(&on(&good)).await.running);
+        assert!(!m.status(&on(&dead)).await.running);
+        assert!(m.status(&on(&good)).await.running);
     }
 }

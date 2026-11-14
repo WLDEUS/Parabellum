@@ -246,6 +246,67 @@ pub enum Request {
 
     /// Start receiving [`EventEnvelope`]s on this connection. -> `null`
     Subscribe,
+
+    // ----- Intelligence -----
+    /// Domain model, behavioural baseline and model inventory. -> [`IntelligenceStatus`]
+    IntelStatus,
+    /// Score one domain now (read-only, nothing recorded). -> [`DomainVerdictInfo`]
+    IntelScoreDomain { domain: String },
+    /// Never flag / block this domain again (removed from the ML blocklist). Admin. -> [`IntelligenceStatus`]
+    IntelAllowDomain { domain: String },
+    /// Add a reported anomaly to the baseline ("C'est normal"). Admin. -> [`IntelligenceStatus`]
+    IntelMarkNormal { anomaly_id: String },
+    /// Forget everything learnt and start a new learning period. Admin. -> [`IntelligenceStatus`]
+    IntelResetBaseline,
+
+    // ----- Local network (LAN inventory) -----
+    /// Devices of the current network (or of the known network `network_id`) and the scan state.
+    /// -> [`LanStatus`]
+    LanStatus {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        network_id: Option<String>,
+    },
+    /// Scan the current network now; progress and result are pushed as `lan` events. `active`: absent =
+    /// the policy (active only on trusted, non-captive networks), `true` = active even on an untrusted
+    /// network (the user asked), `false` = system caches only. -> [`LanStatus`]
+    LanScan {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        active: Option<bool>,
+    },
+    /// Rename a device (empty name = clear) and / or mark it known. Marking known hides it from the
+    /// "unknown" list: admin. -> [`LanDevice`]
+    LanSetDevice {
+        network_id: String,
+        mac: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        trusted: Option<bool>,
+    },
+    /// Forget a device (reported as new if it comes back). -> `null`
+    LanForgetDevice { network_id: String, mac: String },
+    /// Check the 20 most common TCP ports of an online device of the current network (only on request).
+    /// -> [`LanDevice`]
+    LanPorts { mac: String },
+
+    // ----- Permissions audit -----
+    /// Privacy permissions (system and console-user TCC databases), resolved and risk-scored. `refresh`
+    /// re-runs the audit (at most every 30 s). Reveals data macOS reserves to Full Disk Access holders:
+    /// only for the installed app / CLI (mutating class). -> [`PermissionsReport`]
+    PermissionsAudit {
+        #[serde(default)]
+        refresh: bool,
+    },
+
+    // ----- Travel mode -----
+    /// -> [`TravelStatus`]
+    TravelStatus,
+    /// Harden for public Wi-Fi: VPN always on + kill switch, DNS blocking, firewall on + stealth (+ block all
+    /// incoming if configured). The previous state is saved and restored by `travel_disable`. -> [`TravelStatus`]
+    TravelEnable,
+    /// Put back what travel mode changed (settings you changed meanwhile are kept). Lowers protection:
+    /// admin. -> [`TravelStatus`]
+    TravelDisable,
 }
 
 fn default_true() -> bool {
@@ -280,7 +341,14 @@ impl Request {
             | Request::PrivacyDraft { .. }
             | Request::PrivacyComplaint { .. }
             | Request::PrivacyStartRemoval { .. } => true,
+            // Intelligence: allow-listing and teaching the baseline weaken detection.
+            Request::IntelAllowDomain { .. }
+            | Request::IntelMarkNormal { .. }
+            | Request::IntelResetBaseline => true,
             Request::SetNetworkTrust { trusted, .. } => *trusted,
+            Request::LanSetDevice { trusted, .. } => *trusted == Some(true),
+            // ----- Travel mode -----
+            Request::TravelDisable => true,
             Request::PrivacyGetProfile { reveal } => *reveal,
             Request::SetDns { enabled } => !enabled,
             Request::SetProtection { paused_minutes } => *paused_minutes > 0,
@@ -296,6 +364,9 @@ impl Request {
                     | AlertAction::ReportFalsePositive
                     | AlertAction::ResumeProcess
                     | AlertAction::TrustNetwork
+                    | AlertAction::AllowDomain
+                    | AlertAction::MarkNormal
+                    | AlertAction::TrustLanDevice
             ),
             _ => false,
         }
@@ -331,6 +402,11 @@ impl Request {
                 | Request::PrivacySummary
                 | Request::BreachList
                 | Request::AliasList
+                | Request::IntelStatus
+                | Request::IntelScoreDomain { .. }
+                | Request::LanStatus { .. }
+                // ----- Travel mode -----
+                | Request::TravelStatus
         )
     }
 }
@@ -441,6 +517,8 @@ pub enum DaemonEvent {
     Quarantined(QuarantineEntry),
     /// VPN state, kill switch, current network or leak test changed.
     Vpn(VpnStatus),
+    /// LAN scan progress / result.
+    Lan(LanStatus),
 }
 
 /// Alias kept for documentation symmetry with the module docs.
@@ -619,6 +697,101 @@ mod tests {
         let line = String::from_utf8(encode_line(&DaemonEvent::Vpn(VpnStatus::default())).unwrap())
             .unwrap();
         assert!(line.starts_with(r#"{"event":"vpn","data":{"#));
+    }
+
+    #[test]
+    fn intelligence_requests() {
+        let r: RequestEnvelope = serde_json::from_str(r#"{"id":1,"cmd":"intel_status"}"#).unwrap();
+        assert_eq!(r.request, Request::IntelStatus);
+        assert!(!r.request.is_mutating() && !r.request.requires_admin());
+        let r: RequestEnvelope =
+            serde_json::from_str(r#"{"id":2,"cmd":"intel_score_domain","domain":"a.b"}"#).unwrap();
+        assert!(!r.request.is_mutating() && !r.request.requires_admin());
+        for req in [
+            Request::IntelAllowDomain {
+                domain: "a.b".into(),
+            },
+            Request::IntelMarkNormal {
+                anomaly_id: "x".into(),
+            },
+            Request::IntelResetBaseline,
+        ] {
+            assert!(req.is_mutating() && req.requires_admin(), "{req:?}");
+        }
+        for action in [AlertAction::AllowDomain, AlertAction::MarkNormal] {
+            assert!(Request::ResolveAlert {
+                alert_id: 1,
+                action
+            }
+            .requires_admin());
+        }
+        assert_eq!(
+            serde_json::to_string(&AlertAction::MarkNormal).unwrap(),
+            "\"mark_normal\""
+        );
+    }
+
+    #[test]
+    fn lan_and_permissions_requests() {
+        let r: RequestEnvelope = serde_json::from_str(r#"{"id":1,"cmd":"lan_status"}"#).unwrap();
+        assert_eq!(r.request, Request::LanStatus { network_id: None });
+        assert!(!r.request.is_mutating() && !r.request.requires_admin());
+        let r: RequestEnvelope = serde_json::from_str(r#"{"id":2,"cmd":"lan_scan"}"#).unwrap();
+        assert_eq!(r.request, Request::LanScan { active: None });
+        assert!(r.request.is_mutating() && !r.request.requires_admin());
+        let set = |trusted| Request::LanSetDevice {
+            network_id: "gw:00:11:22:33:44:55".into(),
+            mac: "aa:bb:cc:dd:ee:ff".into(),
+            name: None,
+            trusted,
+        };
+        assert!(set(Some(true)).requires_admin());
+        assert!(!set(Some(false)).requires_admin() && !set(None).requires_admin());
+        assert!(set(None).is_mutating());
+        let s = serde_json::to_string(&RequestEnvelope {
+            id: 3,
+            auth: None,
+            request: set(None),
+        })
+        .unwrap();
+        assert_eq!(
+            s,
+            r#"{"id":3,"cmd":"lan_set_device","network_id":"gw:00:11:22:33:44:55","mac":"aa:bb:cc:dd:ee:ff"}"#
+        );
+        assert!(Request::LanPorts { mac: "x".into() }.is_mutating());
+        let r: RequestEnvelope =
+            serde_json::from_str(r#"{"id":4,"cmd":"permissions_audit"}"#).unwrap();
+        assert_eq!(r.request, Request::PermissionsAudit { refresh: false });
+        assert!(r.request.is_mutating() && !r.request.requires_admin());
+        assert!(Request::ResolveAlert {
+            alert_id: 1,
+            action: AlertAction::TrustLanDevice
+        }
+        .requires_admin());
+        let line = String::from_utf8(encode_line(&DaemonEvent::Lan(LanStatus::default())).unwrap())
+            .unwrap();
+        assert!(line.starts_with(r#"{"event":"lan","data":{"#));
+    }
+
+    #[test]
+    fn travel_requests() {
+        let r: RequestEnvelope = serde_json::from_str(r#"{"id":1,"cmd":"travel_status"}"#).unwrap();
+        assert_eq!(r.request, Request::TravelStatus);
+        assert!(!r.request.is_mutating() && !r.request.requires_admin());
+        let r: RequestEnvelope = serde_json::from_str(r#"{"id":2,"cmd":"travel_enable"}"#).unwrap();
+        assert!(r.request.is_mutating() && !r.request.requires_admin());
+        let r: RequestEnvelope =
+            serde_json::from_str(r#"{"id":3,"cmd":"travel_disable"}"#).unwrap();
+        assert!(r.request.is_mutating() && r.request.requires_admin());
+        assert!(!Request::ResolveAlert {
+            alert_id: 1,
+            action: AlertAction::EnableTravelMode
+        }
+        .requires_admin());
+        assert_eq!(
+            serde_json::to_string(&AlertAction::EnableTravelMode).unwrap(),
+            "\"enable_travel_mode\""
+        );
     }
 
     #[test]

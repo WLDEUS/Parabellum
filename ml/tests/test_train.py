@@ -68,3 +68,60 @@ def test_run_with_fake_pb_features_and_min_data_guard(tmp_path):
     assert train.run(args2) == 0
     assert len((tmp_path / "out2" / "metrics.jsonl").read_text().splitlines()) == 2
     assert json.loads((tmp_path / "out2" / "decision.json").read_text())["n_neg"] == 50
+
+
+def test_train_and_gate_time_split_calibration_and_script_kind(tmp_path):
+    rows = synth_rows(400, 2500, dated=True)
+    res = train.train_and_gate(rows, NAMES, 1, 1_792_929_600, tmp_path / "m", None, "script")
+    assert res["trained"] and res["promoted"], res
+    assert res["calibration"] in ("platt", "isotonic") and res["split"]["dated_pos"] == 400
+    assert not (tmp_path / "m" / "macho_model.json").exists()
+    meta = json.loads((tmp_path / "m" / "script_model_meta.json").read_text())
+    assert meta["calibration"]["method"] == res["calibration"]
+    m = meta["metrics"]
+    for k in ("roc_auc", "pr_auc", "tpr_at_threshold", "fpr_at_threshold", "tpr_at_fpr_0_1", "brier"):
+        assert m[k] is not None and 0.0 <= m[k] <= 1.0, k
+    assert m["holdout_pos"] == 80 and m["families"] == 12 and m["holdout_since"] > 1_790_000_000
+    assert "auc" not in m  # pb-core reads `roc_auc` (alias `auc` for old metas: never both)
+    assert (tmp_path / "m" / "script_model.json").is_file() and (tmp_path / "m" / "script_model.txt").is_file()
+    # The current script model is found under its own names.
+    again = train.train_and_gate(rows, NAMES, 1, 1_792_929_600, tmp_path / "m2", tmp_path / "m", "script")
+    assert again["current_note"] == "ok"
+
+
+def test_run_script_kind_with_fake_pb_features(tmp_path):
+    fake = tmp_path / "pb-features"
+    fake.write_text(
+        textwrap.dedent(f"""\
+        #!{sys.executable}
+        import json, sys
+        args = sys.argv[1:]
+        assert args[:2] == ["--kind", "script"], args
+        if args[2:] == ["--names"]:
+            print(json.dumps({NAMES!r}))
+        elif args[2:] == ["--features-version"]:
+            print(3)
+        """)
+    )
+    fake.chmod(0o755)
+    extra = tmp_path / "extra.jsonl"
+    extra.write_text(
+        "\n".join(
+            json.dumps({"sha256": r.sha256, "label": 0, "features_version": 3, "features": r.features})
+            for r in synth_rows(0, 20, seed=5)
+        )
+        + "\n"
+    )
+    out = tmp_path / "out"
+    args = train.parse_args(
+        [
+            *("--kind", "script", "--pb-features", str(fake), "--out", str(out)),
+            *("--extra-clean", str(extra), "--no-malware", "--now", "1"),
+        ]
+    )
+    assert train.run(args) == 0
+    d = json.loads((out / "script_decision.json").read_text())
+    assert d["kind"] == "script" and d["features_version"] == 3 and d["n_neg"] == 20
+    assert "100 positives" in d["reason"] and "2000 negatives" in d["reason"]
+    assert (out / "script_dataset.csv.gz").is_file() and (out / "script_metrics.jsonl").is_file()
+    assert not (out / "dataset.csv.gz").exists()

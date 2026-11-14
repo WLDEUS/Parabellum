@@ -734,6 +734,29 @@ pub async fn resolve_alert(
             alert.status = AlertStatus::Resolved;
             alert.actions.clear();
         }
+        // Intelligence
+        AlertAction::AllowDomain | AlertAction::MarkNormal => {
+            crate::intel::resolve_alert_action(ctx, &mut alert, action).await?;
+        }
+        // ----- Local network -----
+        AlertAction::TrustLanDevice => {
+            let net = alert.network_id.clone().ok_or_else(|| missing("réseau"))?;
+            let mac = alert
+                .device_id
+                .as_deref()
+                .and_then(|d| d.strip_prefix(crate::lan::ALERT_DEVICE_PREFIX))
+                .map(str::to_string)
+                .ok_or_else(|| missing("appareil"))?;
+            crate::lan::set_device(ctx, &net, &mac, None, Some(true)).await?;
+            alert.status = AlertStatus::Resolved;
+            alert.actions.clear();
+        }
+        // ----- Travel mode -----
+        AlertAction::EnableTravelMode => {
+            crate::travel::enable(ctx, false).await?;
+            alert.status = AlertStatus::Resolved;
+            alert.actions.clear();
+        }
     }
     // Re-read: the sub-actions may have updated this alert (e.g. restore resolves linked alerts).
     let fresh_id = alert.id;

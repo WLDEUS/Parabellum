@@ -210,14 +210,32 @@ def verify_files(directory: Path, manifest: Mapping[str, object]) -> list[str]:
     return bad
 
 
-def sanity_problems(stats: Stats, previous: Mapping[str, object] | None, max_drop: float) -> list[str]:
-    """Reasons to refuse publishing (keep yesterday's release)."""
+#: Stats the sanity guard compares with the previous bundle and with the configured minimums.
+GUARDED_STATS = ("malware_hashes", "blocked_domains", "yara_rules")
+
+
+def sanity_problems(
+    stats: Stats,
+    previous: Mapping[str, object] | None,
+    max_drop: float,
+    minimums: Mapping[str, int] | None = None,
+) -> list[str]:
+    """Reasons to refuse publishing (keep yesterday's release).
+
+    ``minimums`` are absolute floors (``[bundle] min_*`` in sources.toml) that hold even without a
+    previous bundle to compare with, so a night where both the release download and the upstream
+    feeds fail cannot ship a gutted bundle.
+    """
     problems: list[str] = []
     if stats.malware_hashes == 0 and stats.blocked_domains == 0 and stats.yara_rules == 0:
         problems.append("bundle is empty (no hashes, no domains, no YARA rules)")
+    for key, floor in (minimums or {}).items():
+        new = int(getattr(stats, key))
+        if floor > 0 and new < floor:
+            problems.append(f"{key} = {new} is below the minimum {floor}")
     if not previous:
         return problems
-    for key in ("malware_hashes", "blocked_domains"):
+    for key in GUARDED_STATS:
         try:
             old = int(previous.get(key, 0) or 0)  # type: ignore[call-overload]
         except (TypeError, ValueError):
@@ -226,3 +244,9 @@ def sanity_problems(stats: Stats, previous: Mapping[str, object] | None, max_dro
         if old > 0 and new < old * (1.0 - max_drop):
             problems.append(f"{key} dropped from {old} to {new} (> {max_drop:.0%})")
     return problems
+
+
+def newest_version(*versions: str | None) -> str | None:
+    """The greatest well-formed ``YYYY.MM.DD.N`` among ``versions`` (None if none parses)."""
+    parsed = [(v, t) for v in versions if v and (t := parse_version(v))]
+    return max(parsed, key=lambda vt: vt[1])[0] if parsed else None

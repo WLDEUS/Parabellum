@@ -8,7 +8,9 @@ name: Weekly ML training
 
 on:
   schedule:
-    - cron: "41 4 * * 0" # Sundays 04:41 UTC
+    # Sundays 17:41 UTC: done (timeout 120 min) before nightly-db.yml (21:17 UTC), which downloads
+    # ml-latest at its start, so the Sunday night bundle ships the newly promoted model.
+    - cron: "41 17 * * 0"
   workflow_dispatch:
     inputs:
       max_new_samples:
@@ -19,6 +21,20 @@ on:
         description: Do not download samples this run
         type: boolean
         default: false
+      allow_dataset_shrink:
+        description: Publish a dataset smaller than the published one (e.g. after a feature layout change)
+        type: boolean
+        default: false
+      # --- ml-files: script classifier ---
+      kind:
+        description: Which classifier(s) to train
+        type: choice
+        options: [both, macho, script]
+        default: both
+      refeaturize_max:
+        description: Re-download up to N positives stored with an older feature layout (after a FEATURES_VERSION bump)
+        type: number
+        default: 0
 
 permissions:
   contents: write
@@ -73,20 +89,113 @@ jobs:
       - name: Download dataset, metrics and current model
         run: |
           mkdir -p prev current
-          gh release download ml-dataset -D prev --clobber -p dataset.csv.gz -p metrics.jsonl || echo "no dataset yet"
-          gh release download ml-latest -D current --clobber -p macho_model.json -p model_meta.json || echo "no current model"
+          # Only a 404 means "no release yet"; any other failure fails the job (a transient 502 must
+          # not publish an empty dataset over weeks of features, nor skip the "TPR >= current" gate).
+          release_exists() {
+            local err
+            if err="$(gh api "repos/$GH_REPO/releases/tags/$1" --silent 2>&1)"; then return 0; fi
+            [[ "$err" == *"HTTP 404"* ]] && return 1
+            echo "::error::cannot query release $1: $err"
+            exit 1
+          }
+          if release_exists ml-dataset; then
+            gh release download ml-dataset -D prev --clobber -p dataset.csv.gz -p metrics.jsonl -p decision.json
+          else
+            echo "::notice::no ml-dataset release yet"
+          fi
+          if release_exists ml-latest; then
+            gh release download ml-latest -D current --clobber -p macho_model.json -p model_meta.json
+          else
+            echo "::notice::no current model yet"
+          fi
       - name: Train
+        if: inputs.kind != 'script'
         env:
           ABUSECH_AUTH_KEY: ${{ secrets.ABUSECH_AUTH_KEY }}
           NO_MALWARE: ${{ (inputs.no_malware || vars.ML_FETCH_MALWARE == '0') && '--no-malware' || '' }}
           MAX_NEW: ${{ inputs.max_new_samples || 300 }}
+          ALLOW_SHRINK: ${{ inputs.allow_dataset_shrink && '--allow-dataset-shrink' || '' }}
         run: |
-          # shellcheck disable=SC2086 # NO_MALWARE is empty or one flag
+          # shellcheck disable=SC2086 # NO_MALWARE / ALLOW_SHRINK are empty or one flag
           python -m ml.train --pb-features target/release/pb-features --out out/ml \
             --dataset-in prev/dataset.csv.gz --metrics-in prev/metrics.jsonl --current-model current \
-            --corpus-cache .cache/corpus --max-new-samples "$MAX_NEW" $NO_MALWARE
+            --decision-in prev/decision.json --refeaturize-max "${{ inputs.refeaturize_max || 0 }}" \
+            --corpus-cache .cache/corpus --max-new-samples "$MAX_NEW" $NO_MALWARE $ALLOW_SHRINK
       - name: Publish
+        if: inputs.kind != 'script'
         run: bash ml/publish.sh out/ml
+      # --- ml-files: script classifier (same gate, separate files: script_*) ---
+      - name: Restore script corpus cache
+        if: "!cancelled() && inputs.kind != 'macho'"
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/script-corpus
+          key: script-corpus-v1-${{ hashFiles('ml/data/script_corpus.toml') }}-${{ github.run_id }}
+          restore-keys: |
+            script-corpus-v1-${{ hashFiles('ml/data/script_corpus.toml') }}-
+            script-corpus-v1-
+      - name: Download script dataset and current script model
+        if: "!cancelled() && inputs.kind != 'macho'"
+        run: |
+          mkdir -p prev current
+          # Same rule as the Mach-O step: only a 404 means "nothing published yet", and a file
+          # missing from an existing release is fine only until the first script run publishes it.
+          release_exists() {
+            local err
+            if err="$(gh api "repos/$GH_REPO/releases/tags/$1" --silent 2>&1)"; then return 0; fi
+            [[ "$err" == *"HTTP 404"* ]] && return 1
+            echo "::error::cannot query release $1: $err"
+            exit 1
+          }
+          asset_exists() {
+            gh api "repos/$GH_REPO/releases/tags/$1" --jq '.assets[].name' | grep -qx "$2"
+          }
+          if release_exists ml-dataset && asset_exists ml-dataset script_dataset.csv.gz; then
+            gh release download ml-dataset -D prev --clobber -p script_dataset.csv.gz -p script_metrics.jsonl -p script_decision.json
+          else
+            echo "::notice::no script dataset yet"
+          fi
+          if release_exists ml-latest && asset_exists ml-latest script_model.json; then
+            gh release download ml-latest -D current --clobber -p script_model.json -p script_model_meta.json
+          else
+            echo "::notice::no current script model yet"
+          fi
+      - name: Train scripts
+        if: "!cancelled() && inputs.kind != 'macho'"
+        env:
+          ABUSECH_AUTH_KEY: ${{ secrets.ABUSECH_AUTH_KEY }}
+          NO_MALWARE: ${{ (inputs.no_malware || vars.ML_FETCH_MALWARE == '0') && '--no-malware' || '' }}
+          MAX_NEW: ${{ inputs.max_new_samples || 300 }}
+          REFEATURIZE: ${{ inputs.refeaturize_max || 0 }}
+          ALLOW_SHRINK: ${{ inputs.allow_dataset_shrink && '--allow-dataset-shrink' || '' }}
+        run: |
+          # shellcheck disable=SC2086 # NO_MALWARE / ALLOW_SHRINK are empty or one flag
+          python -m ml.train --kind script --pb-features target/release/pb-features --out out/ml-script \
+            --dataset-in prev/script_dataset.csv.gz --metrics-in prev/script_metrics.jsonl --current-model current \
+            --decision-in prev/script_decision.json $ALLOW_SHRINK \
+            --corpus-cache .cache/corpus --script-corpus-cache .cache/script-corpus \
+            --max-new-samples "$MAX_NEW" --refeaturize-max "$REFEATURIZE" $NO_MALWARE
+      - name: Publish scripts
+        if: "!cancelled() && inputs.kind != 'macho'"
+        run: bash ml/publish.sh out/ml-script script
+      - name: Save script corpus cache
+        if: always() && inputs.kind != 'macho' && hashFiles('.cache/script-corpus/**') != ''
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/script-corpus
+          key: script-corpus-v1-${{ hashFiles('ml/data/script_corpus.toml') }}-${{ github.run_id }}
+      - name: Script summary
+        if: always() && inputs.kind != 'macho'
+        run: |
+          [[ -f out/ml-script/script_decision.json ]] || exit 0
+          python - <<'PY'
+          import json, os
+          d = json.load(open("out/ml-script/script_decision.json"))
+          msg = f"ML scripts: trained={d.get('trained')} promoted={d.get('promoted')} pos={d.get('n_pos')} neg={d.get('n_neg')} — {d.get('reason', '')}"
+          print(f"::notice title=ml-train-scripts::{msg}")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("## ML training (scripts)\n```json\n" + json.dumps(d, indent=2) + "\n```\n")
+          PY
       - name: Summary
         if: always()
         run: |

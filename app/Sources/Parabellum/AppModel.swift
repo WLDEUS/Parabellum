@@ -20,10 +20,24 @@ struct Banner: Identifiable, Equatable {
 
 /// Sidebar sections of the main window.
 enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
-    case dashboard, scan, alerts, quarantine, persistence, devices, network, vpn, behavior, privacy, components, report
-    case settings
+    case dashboard, scan, alerts, quarantine, behavior, intelligence
+    case network, vpn, lan
+    case persistence, devices, permissions, cleaning
+    case privacy, vault
+    case components, report, settings
 
     var id: String { rawValue }
+
+    /// Sidebar group (order of `allCases` inside each group).
+    var group: SidebarGroup {
+        switch self {
+        case .dashboard, .scan, .alerts, .quarantine, .behavior, .intelligence: return .protection
+        case .network, .vpn, .lan: return .network
+        case .persistence, .devices, .permissions, .cleaning: return .system
+        case .privacy, .vault: return .privacy
+        case .components, .report, .settings: return .maintenance
+        }
+    }
 
     var title: String {
         switch self {
@@ -40,6 +54,11 @@ enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
         case .components: return "Composants"
         case .report: return "Rapport"
         case .settings: return "Réglages"
+        case .intelligence: return "Intelligence"
+        case .lan: return "Réseau local"
+        case .permissions: return "Permissions"
+        case .cleaning: return "Nettoyage"
+        case .vault: return "Coffre"
         }
     }
 
@@ -58,8 +77,31 @@ enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
         case .components: return "puzzlepiece.extension"
         case .report: return "chart.bar.xaxis"
         case .settings: return "gearshape"
+        case .intelligence: return "brain.head.profile"
+        case .lan: return "wifi.router"
+        case .permissions: return "checklist.checked"
+        case .cleaning: return "sparkles"
+        case .vault: return "lock.rectangle.stack"
         }
     }
+}
+
+enum SidebarGroup: String, CaseIterable, Identifiable {
+    case protection, network, system, privacy, maintenance
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .protection: return "Protection"
+        case .network: return "Réseau"
+        case .system: return "Système"
+        case .privacy: return "Vie privée"
+        case .maintenance: return "Maintenance"
+        }
+    }
+
+    var sections: [SidebarSection] { SidebarSection.allCases.filter { $0.group == self } }
 }
 
 /// Owns the daemon client and every piece of state shown by the UI. Views stay thin and call these methods.
@@ -128,11 +170,16 @@ final class AppModel: ObservableObject {
 
     // Updates
     @Published private(set) var updateInProgress = false
+    /// Target of the update this app started ("Tout mettre à jour" reports one event per step, then the
+    /// combined result: only the latter ends the spinner).
+    private var requestedUpdateTarget: UpdateTarget?
     @Published private(set) var lastUpdate: UpdateResult?
 
     // UI
     @Published var section: SidebarSection? = .dashboard
-    @Published var banner: Banner?
+    @Published var banner: Banner? {
+        didSet { bannerDidChange(oldValue) }
+    }
     @Published var showOnboarding = false
     @Published private(set) var inFlight: Set<String> = []
     @Published private(set) var notificationStatus: UNAuthorizationStatus = .notDetermined
@@ -146,6 +193,29 @@ final class AppModel: ObservableObject {
     private var started = false
     private var notifiedAlertIds: Set<Int64> = []
     private static let maxRecentJobs = 50
+
+    // Feature stores: one ObservableObject per feature, kept here so their data survives section switches.
+    // Views observe them directly (`@ObservedObject var store: XStore`), passing `model.x`.
+    private(set) lazy var lan = LanStore(model: self)
+    private(set) lazy var permissionsAudit = PermissionsStore(model: self)
+    private(set) lazy var vault = VaultStore(model: self)
+    private(set) lazy var cleaning = CleaningStore(model: self)
+    private(set) lazy var intelligence = IntelligenceStore(model: self)
+    private(set) lazy var travel = TravelStore(model: self)
+
+    // speed: stale-while-revalidate bookkeeping (AppModel+Freshness.swift). Deliberately not @Published:
+    // it must never re-render the window.
+    var freshness = FreshnessTracker()
+    var prefetchTask: Task<Void, Never>?
+
+    // review fixes: banner visibility / expiry, connection history.
+    /// The main window is on screen (set by its appear / disappear hooks).
+    private(set) var mainWindowVisible = false
+    /// The menu bar window is open (set by MenuBarContentView).
+    var menuBarVisible = false
+    private var bannerExpiry: Task<Void, Never>?
+    /// Connected at least once: on a later disconnection the screens stay mounted (unsaved edits kept).
+    @Published private(set) var hasConnectedOnce = false
 
     init(client: DaemonClient = DaemonClient()) {
         self.client = client
@@ -169,6 +239,10 @@ final class AppModel: ObservableObject {
             showOnboarding = true
             showMainWindow()
         }
+        // Travel mode: apply / restore the per-user part when the daemon's state changes.
+        travel.activate()
+        // Desktop widget (optional extension): keep its data file fresh.
+        WidgetBridge.shared.start(model: self)
     }
 
     /// Event connection: drives `connection`, keeps state in sync, triggers notifications.
@@ -233,11 +307,13 @@ final class AppModel: ObservableObject {
             window.close()
             return
         }
+        mainWindowVisible = true
         NSApp.setActivationPolicy(.regular)
         NSApp.activate()
     }
 
     func mainWindowDisappeared() {
+        mainWindowVisible = false
         NSApp.setActivationPolicy(.accessory)
     }
 
@@ -309,28 +385,50 @@ final class AppModel: ObservableObject {
         switch item {
         case .connected:
             connection = .connected
+            if !hasConnectedOnce {
+                hasConnectedOnce = true
+            }
             Task { await refreshAfterConnect() }
         case .disconnected(let error):
+            cancelPrefetch()
             connection = .unreachable(error.errorDescription ?? "Service injoignable")
             updateInProgress = false
+            requestedUpdateTarget = nil
+            // A restarting daemon cancels its jobs without reaching us: reloaded on reconnect.
+            liveJobs.removeAll()
+            installingComponents.removeAll()
         case .event(let event):
             handle(event)
         }
     }
 
     private func handle(_ event: DaemonEvent) {
+        invalidateForEvent(event)
         switch event {
         case .alert(let alert):
             handleAlert(alert)
         case .scanProgress(let job), .scanFinished(let job):
             handleJob(job)
         case .statusChanged(let newStatus):
-            status = newStatus
+            if status != newStatus {
+                status = newStatus
+            }
         case .device(let deviceEvent):
             handleDevice(deviceEvent)
         case .updateFinished(let result):
             lastUpdate = result
+            if let requested = requestedUpdateTarget, result.target != requested {
+                // Intermediate step of a longer update (or a background run): status only.
+                Task { await refreshStatus() }
+                return
+            }
+            let wasOurs = requestedUpdateTarget != nil
+            requestedUpdateTarget = nil
             updateInProgress = false
+            guard wasOurs || !result.ok else {
+                Task { await refreshStatus() }
+                return
+            }
             if result.ok {
                 let version = result.newDbVersion.map { " — base \($0)" } ?? ""
                 banner = Banner(message: "Mise à jour terminée\(version).", isError: false)
@@ -352,6 +450,8 @@ final class AppModel: ObservableObject {
             upsert(entry, into: &quarantine)
         case .vpn(let newStatus):
             vpnStatus = newStatus
+        case .lan(let lanStatus):
+            lan.apply(lanStatus)
         case .unknown:
             break
         }
@@ -402,16 +502,6 @@ final class AppModel: ObservableObject {
             list.insert(item, at: 0)
         } else {
             list.append(item)
-        }
-    }
-
-    private func refreshAfterConnect() async {
-        await refreshStatus()
-        await loadConfig()
-        await loadAlerts()
-        await loadVpnStatus()
-        if let section, section != .dashboard, section != .alerts, section != .settings {
-            await refresh(section: section)
         }
     }
 
@@ -473,63 +563,74 @@ final class AppModel: ObservableObject {
     }
 
     func report(_ error: Error) {
+        if let described = describe(error) {
+            banner = Banner(message: described.message, isError: described.isError)
+        }
+    }
+
+    /// Banners disappear on their own (errors stay longer). An error raised while neither the main window
+    /// nor the menu is on screen (background update, action whose window was closed) is also posted as a
+    /// notification, or nobody would ever see it.
+    private func bannerDidChange(_ previous: Banner?) {
+        guard banner?.id != previous?.id else { return }
+        bannerExpiry?.cancel()
+        bannerExpiry = nil
+        guard let banner else { return }
+        if banner.isError && !menuBarVisible && !(mainWindowVisible && NSApp.isActive) {
+            let notifications = self.notifications
+            Task { await notifications.postMessage(title: "Parabellum", body: banner.message) }
+        }
+        let seconds: UInt64 = banner.isError ? 20 : 6
+        let id = banner.id
+        bannerExpiry = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: seconds * 1_000_000_000)
+            guard !Task.isCancelled, let self, self.banner?.id == id else { return }
+            withAnimation(.snappy) {
+                self.banner = nil
+            }
+        }
+    }
+
+    /// User-facing text of an error (nil for a cancellation, which is not reported).
+    func describe(_ error: Error) -> (message: String, isError: Bool)? {
         if error is CancellationError {
-            return
+            return nil
         }
         if let authError = error as? AdminAuthorizationError {
             // Cancelling the password prompt is a normal choice: discreet, not an error.
-            banner = Banner(message: authError.errorDescription ?? "Action annulée.", isError: authError != .cancelled)
-            return
+            return (authError.errorDescription ?? "Action annulée.", authError != .cancelled)
         }
         if let clientError = error as? DaemonClientError {
             if case .daemon(let ipcError) = clientError, ipcError.code == .permissionDenied {
-                banner = Banner(
-                    message: "\(ipcError.message) — les commandes qui modifient l'état ne sont acceptées que depuis l'app installée dans /Applications.",
-                    isError: true
+                return (
+                    "\(ipcError.message) — les commandes qui modifient l'état ne sont acceptées que depuis l'app installée dans /Applications.",
+                    true
                 )
-                return
             }
-            banner = Banner(message: clientError.errorDescription ?? "Erreur", isError: true)
-            return
+            return (clientError.errorDescription ?? "Erreur", true)
         }
-        banner = Banner(message: error.localizedDescription, isError: true)
+        return (error.localizedDescription, true)
     }
 
     // MARK: - Loading
 
-    func refresh(section: SidebarSection) async {
-        switch section {
-        case .dashboard: await refreshStatus()
-        case .scan: await loadJobs()
-        case .alerts: await loadAlerts()
-        case .quarantine: await loadQuarantine()
-        case .persistence: await loadPersistence()
-        case .devices: await loadDevices()
-        case .network: await loadAdblock()
-        case .vpn: await loadVpn()
-        case .behavior: await loadGuard()
-        case .privacy: await loadPrivacy()
-        case .components: await loadComponents()
-        case .report: await loadReport()
-        case .settings: await loadConfig()
-        }
-    }
-
     func refreshStatus() async {
-        await perform("status", quiet: true) {
-            self.status = try await self.call(.status, as: StatusInfo.self)
+        await fetch("status", .status, as: StatusInfo.self) { newStatus in
+            if self.status != newStatus {
+                self.status = newStatus
+            }
         }
     }
 
     func loadAlerts() async {
-        await perform("alerts", quiet: true) {
-            let list = try await self.call(
-                .listAlerts(limit: 200, includeResolved: self.includeResolvedAlerts),
-                as: [SecurityAlert].self
-            )
-            self.alerts = list
+        // Toggling "Ouvertes / Toutes" quickly starts overlapping loads: only the latest one applies.
+        let request = Request.listAlerts(limit: 200, includeResolved: includeResolvedAlerts)
+        await fetch("alerts", request, as: [SecurityAlert].self) { list in
             for alert in list {
                 self.notifiedAlertIds.insert(alert.id)
+            }
+            if self.alerts != list {
+                self.alerts = list
             }
         }
     }
@@ -538,64 +639,101 @@ final class AppModel: ObservableObject {
     /// `withSecrets` asks for administrator approval first and returns them in clear.
     @discardableResult
     func loadConfig(withSecrets: Bool = false) async -> Bool {
-        let loaded: Void? = await perform(withSecrets ? "config-secrets" : "config", quiet: !withSecrets) {
+        // One freshness key for both variants: a load started later supersedes an earlier one.
+        let ticket = freshness.begin("config")
+        let loaded: (raw: JSONValue, config: Config)? = await perform(withSecrets ? "config-secrets" : "config", quiet: !withSecrets) {
             let raw = try await self.call(.getConfig, as: JSONValue.self, forceAuth: withSecrets)
-            self.config = try raw.decode(as: Config.self)
-            self.rawConfig = raw
+            let decoded = try raw.decode(as: Config.self)
+            return (raw: raw, config: decoded)
         }
-        return loaded != nil
+        guard let loaded else {
+            if freshness.isLatest("config", ticket: ticket) {
+                freshness.markFailed("config")
+            }
+            return false
+        }
+        // The secrets were asked for explicitly (admin prompt): always applied, and they supersede any
+        // older load still in flight.
+        guard withSecrets || freshness.isLatest("config", ticket: ticket) else { return true }
+        if withSecrets {
+            _ = freshness.begin("config")
+        }
+        if config != loaded.config {
+            config = loaded.config
+        }
+        rawConfig = loaded.raw
+        freshness.markFresh("config")
+        return true
     }
 
     func loadJobs() async {
-        await perform("jobs", quiet: true) {
-            let jobs = try await self.call(.listJobs(limit: 20), as: [ScanJobSummary].self)
-            self.recentJobs = jobs
+        await fetch("jobs", .listJobs(limit: 20), as: [ScanJobSummary].self) { jobs in
+            if self.recentJobs != jobs {
+                self.recentJobs = jobs
+            }
+            // Rebuilt, not merged: a job that ended while we were disconnected must disappear.
+            var live: [String: ScanJobSummary] = [:]
             for job in jobs where job.state.isActive {
-                self.liveJobs[job.jobId] = job
+                live[job.jobId] = job
+            }
+            if self.liveJobs != live {
+                self.liveJobs = live
             }
         }
     }
 
     func loadJobDetail(_ jobId: String) async {
-        await perform("job-\(jobId)", quiet: false) {
-            self.jobDetails[jobId] = try await self.call(.getJob(jobId: jobId), as: ScanJobDetail.self)
+        await fetch("job-\(jobId)", .getJob(jobId: jobId), as: ScanJobDetail.self, quiet: false) { detail in
+            self.jobDetails[jobId] = detail
         }
     }
 
     func loadQuarantine() async {
-        await perform("quarantine", quiet: true) {
-            self.quarantine = try await self.call(.listQuarantine, as: [QuarantineEntry].self)
+        await fetch("quarantine", .listQuarantine, as: [QuarantineEntry].self) { list in
+            if self.quarantine != list {
+                self.quarantine = list
+            }
         }
     }
 
     func loadPersistence() async {
-        await perform("persistence", quiet: true) {
-            self.persistence = try await self.call(.listPersistence(onlyNew: false), as: [PersistenceItem].self)
+        await fetch("persistence", .listPersistence(onlyNew: false), as: [PersistenceItem].self) { list in
+            if self.persistence != list {
+                self.persistence = list
+            }
         }
     }
 
     func loadDevices() async {
-        await perform("devices", quiet: true) {
-            self.devices = try await self.call(.listDevices(kind: nil), as: [DeviceInfo].self)
+        await fetch("devices", .listDevices(kind: nil), as: [DeviceInfo].self) { list in
+            if self.devices != list {
+                self.devices = list
+            }
         }
     }
 
     func loadComponents() async {
-        await perform("components", quiet: true) {
-            self.components = try await self.call(.listComponents, as: [ComponentStatus].self)
+        await fetch("components", .listComponents, as: [ComponentStatus].self) { list in
+            if self.components != list {
+                self.components = list
+            }
         }
     }
 
     func loadAdblock() async {
-        await perform("adblock", quiet: true) {
-            self.adblock = try await self.call(.adblockStatus, as: AdblockStatus.self)
+        await fetch("adblock", .adblockStatus, as: AdblockStatus.self) { value in
+            if self.adblock != value {
+                self.adblock = value
+            }
         }
     }
 
     func loadReport() async {
-        let offset = reportWeekOffset
-        await perform("report", quiet: true) {
-            self.weeklyReport = try await self.call(.weeklyReport(weekOffset: offset), as: WeeklyReport.self)
+        // Changing week quickly starts overlapping loads: only the latest (current week offset) applies.
+        await fetch("report", .weeklyReport(weekOffset: reportWeekOffset), as: WeeklyReport.self) { report in
+            if self.weeklyReport != report {
+                self.weeklyReport = report
+            }
         }
     }
 
@@ -651,7 +789,7 @@ final class AppModel: ObservableObject {
     static let applicationsPath = "/Applications"
 
     /// Mounted volumes under /Volumes that are not the internal disk (USB keys, external disks, DMGs).
-    static func externalVolumes() -> [URL] {
+    nonisolated static func externalVolumes() -> [URL] {
         let keys: [URLResourceKey] = [.volumeIsInternalKey, .volumeNameKey]
         let volumes = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys, options: [.skipHiddenVolumes]) ?? []
         return volumes.filter { url in
@@ -751,14 +889,34 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// BadUSB panel: applies the decision and returns nil on success, else the message to show in the
+    /// panel itself (which stays open: the user must not believe a keyboard is blocked when it is not).
+    func decideKeyboardTrust(_ deviceId: String, trust: DeviceTrust) async -> String? {
+        var failure: String?
+        let updated = await perform("device-\(deviceId)", quiet: true) {
+            do {
+                return try await self.call(.setDeviceTrust(deviceId: deviceId, trust: trust), as: DeviceInfo.self)
+            } catch {
+                failure = self.describe(error)?.message ?? "Action annulée."
+                throw error
+            }
+        }
+        guard let updated else { return failure ?? "Échec de l'opération." }
+        upsert(updated, into: &devices, atTop: false)
+        return nil
+    }
+
     // MARK: - Components, updates, protection
 
     func installComponent(_ name: String) async {
+        // Marked before sending: the component event (event connection) can arrive before the response.
+        let wasInstalling = installingComponents.contains(name)
+        installingComponents.insert(name)
         let started = await perform("install-\(name)") {
             try await self.call(.installComponent(name: name), as: JobStarted.self)
         }
-        if started != nil {
-            installingComponents.insert(name)
+        if started == nil && !wasInstalling {
+            installingComponents.remove(name)
         }
     }
 
@@ -772,11 +930,22 @@ final class AppModel: ObservableObject {
     }
 
     func updateNow(_ target: UpdateTarget) async {
+        // Set before sending: the `update_finished` event (event connection) can arrive before the response
+        // and must find the update marked as ours, or the spinner would never stop.
+        let previous = (inProgress: updateInProgress, target: requestedUpdateTarget)
+        updateInProgress = true
+        requestedUpdateTarget = target
         let started = await perform("update") {
             try await self.call(.updateNow(target: target), as: JobStarted.self)
         }
-        if started != nil {
-            updateInProgress = true
+        guard started != nil else {
+            if requestedUpdateTarget == target {
+                updateInProgress = previous.inProgress
+                requestedUpdateTarget = previous.target
+            }
+            return
+        }
+        if updateInProgress && requestedUpdateTarget == target {
             banner = Banner(message: "Mise à jour lancée (\(target.label.lowercased()))…", isError: false)
         }
     }
@@ -808,8 +977,10 @@ final class AppModel: ObservableObject {
     }
 
     func loadPosture(refresh: Bool = false) async {
-        await perform("posture", quiet: !refresh) {
-            self.posture = try await self.call(.posture(refresh: refresh), as: [PostureCheck].self)
+        await fetch("posture", .posture(refresh: refresh), as: [PostureCheck].self, quiet: !refresh) { list in
+            if self.posture != list {
+                self.posture = list
+            }
         }
     }
 
@@ -847,6 +1018,9 @@ final class AppModel: ObservableObject {
             let raw = try await self.call(.setConfig(draft, preserving: preserved), as: JSONValue.self)
             self.config = try raw.decode(as: Config.self)
             self.rawConfig = raw
+            // Supersedes any configuration load still in flight (it would bring back the old values).
+            _ = self.freshness.begin("config")
+            self.freshness.markFresh("config")
         }
         if saved != nil {
             banner = Banner(message: "Réglages enregistrés.", isError: false)

@@ -15,9 +15,11 @@ struct ComponentsView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        // Sorted once per render (used twice below).
+        let rows = self.rows
+        return VStack(spacing: 0) {
             if rows.isEmpty {
-                if model.isBusy("components") {
+                if model.isFirstLoad("components") {
                     ProgressView("Chargement des composants…")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
@@ -95,12 +97,12 @@ struct ComponentsView: View {
                 .disabled(model.updateInProgress || model.isBusy("update"))
                 .help("Tout mettre à jour")
                 RefreshButton(isLoading: model.isBusy("components")) {
-                    Task { await model.loadComponents() }
+                    Task { await model.refresh(section: .components, force: true) }
                 }
             }
         }
-        .task {
-            await model.loadComponents()
+        .onAppear {
+            model.revalidateSection(.components)
         }
     }
 

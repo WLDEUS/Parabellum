@@ -67,6 +67,8 @@ impl VpnHooks for DaemonVpnHooks {
         if let Some(ctx) = self.ctx.upgrade() {
             ctx.bus.publish(DaemonEvent::Vpn(status.clone()));
             ctx.status_dirty.notify_one();
+            // ----- Travel mode -----
+            crate::travel::on_vpn_status(&ctx, status);
         }
     }
 
@@ -109,6 +111,7 @@ impl VpnHooks for DaemonVpnHooks {
             .ctx
             .upgrade()
             .ok_or_else(|| VpnError::Unavailable("arrêt en cours".into()))?;
+        let _write = ctx.config_write.lock().await;
         let mut cfg = (*ctx.config()).clone();
         cfg.vpn.trusted_networks = ids;
         cfg.validate()

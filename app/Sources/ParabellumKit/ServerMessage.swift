@@ -13,6 +13,8 @@ public enum DaemonEvent: Sendable, Equatable {
     case quarantined(QuarantineEntry)
     /// VPN state, kill switch, current network or leak test changed.
     case vpn(VpnStatus)
+    /// LAN scan progress / result.
+    case lan(LanStatus)
     /// An event name this build does not know (newer daemon); its payload is ignored.
     case unknown(String)
 
@@ -28,6 +30,7 @@ public enum DaemonEvent: Sendable, Equatable {
         case .component: return "component"
         case .quarantined: return "quarantined"
         case .vpn: return "vpn"
+        case .lan: return "lan"
         case .unknown(let name): return name
         }
     }
@@ -60,6 +63,8 @@ extension DaemonEvent: Decodable {
             self = .quarantined(try c.decode(QuarantineEntry.self, forKey: .data))
         case "vpn":
             self = .vpn(try c.decode(VpnStatus.self, forKey: .data))
+        case "lan":
+            self = .lan(try c.decode(LanStatus.self, forKey: .data))
         default:
             self = .unknown(name)
         }

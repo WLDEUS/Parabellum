@@ -47,6 +47,8 @@ pub struct Daemon {
 pub async fn start(opts: DaemonOptions) -> anyhow::Result<Daemon> {
     let as_root = !opts.dev_mode && crate::system::is_root();
     setup::prepare_dirs(&opts.paths, as_root)?;
+    // The caller holds the instance lock (main acquires it first).
+    setup::wipe_tmp(&opts.paths)?;
     let loaded = setup::load_config(&opts.paths);
     let store = Store::open(&opts.paths.state_db())?;
     let now = pb_core::now_ts();
@@ -184,6 +186,8 @@ pub async fn start(opts: DaemonOptions) -> anyhow::Result<Daemon> {
     if opts.start_monitors {
         tasks.push(tokio::spawn(crate::guard::run(ctx.clone())));
     }
+    // Intelligence: before the DNS supervisor (the query tap must exist when the proxy starts).
+    tasks.extend(crate::intel::start(&ctx));
     tasks.push(tokio::spawn(dns_startup(ctx.clone())));
     if let Some(h) = ctx
         .backends
@@ -199,6 +203,11 @@ pub async fn start(opts: DaemonOptions) -> anyhow::Result<Daemon> {
         tasks.push(tokio::spawn(scheduler::dns_stats_loop(ctx.clone())));
         tasks.push(tokio::spawn(crate::spyware::schedule_loop(ctx.clone())));
         tasks.push(tokio::spawn(crate::posture::daily_loop(ctx.clone())));
+        // speed: first posture answer ready before the app asks.
+        tasks.push(tokio::spawn(crate::posture::warm_up(ctx.clone())));
+        // ----- Local network & permissions audit -----
+        tasks.push(tokio::spawn(crate::lan::run_loop(ctx.clone())));
+        tasks.push(tokio::spawn(crate::permissions::periodic_loop(ctx.clone())));
     }
     let c2 = ctx.clone();
     tokio::spawn(async move {

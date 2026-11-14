@@ -165,6 +165,16 @@ jobs:
       - name: swift test
         working-directory: app
         run: swift test 2>&1 | tee ../ci-logs/swift-test.log
+      # Optional desktop widget (WidgetKit extension built with swiftc): reported, never blocking — the app
+      # and the .pkg are built without it when this fails (e.g. older Xcode on the runner).
+      - name: Widget extension (optional)
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          scripts/build-widget.sh --check 2>&1 | tee ci-logs/widget.log || {
+            echo "::warning::desktop widget not built (optional): see ci-logs/widget.log"
+            exit 1
+          }
       # Stable code-signing identity (keeps Full Disk Access across updates). Not on PRs: PR builds
       # never see the signing key and are signed ad hoc.
       - name: Code-signing identity (certificate from secrets, else ad hoc)

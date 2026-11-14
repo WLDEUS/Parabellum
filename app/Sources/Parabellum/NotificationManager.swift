@@ -47,6 +47,8 @@ final class NotificationManager {
     /// Actions that make sense straight from a notification (others need the app).
     private static let notificationActions: [AlertAction] = [
         .killProcess, .quarantine, .allow, .approvePersistence, .trustDevice, .blockDevice, .removePersistence,
+        // Travel mode
+        .enableTravelMode,
     ]
 
     private weak var model: AppModel?
@@ -90,6 +92,19 @@ final class NotificationManager {
         }
     }
 
+    /// A plain message (an error no window could show). Best effort, like alerts.
+    func postMessage(title: String, body: String) async {
+        guard let center else { return }
+        let status = await authorizationStatus()
+        guard status == .authorized || status == .provisional else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.threadIdentifier = "pb.message"
+        let request = UNNotificationRequest(identifier: "pb.message.\(UUID().uuidString)", content: content, trigger: nil)
+        try? await center.add(request)
+    }
+
     func post(_ alert: SecurityAlert) async {
         guard let center else { return }
         let status = await authorizationStatus()
@@ -101,7 +116,7 @@ final class NotificationManager {
         content.body = alert.message
         content.sound = .default
         content.threadIdentifier = alert.kind.rawValue
-        content.categoryIdentifier = registerCategory(for: alert, in: center)
+        content.categoryIdentifier = await registerCategory(for: alert, in: center)
         content.userInfo = [NotificationKeys.alertId: NSNumber(value: alert.id)]
 
         let request = UNNotificationRequest(identifier: "pb.alert.\(alert.id)", content: content, trigger: nil)
@@ -113,7 +128,9 @@ final class NotificationManager {
     }
 
     /// One category per combination of actions (categories are fixed sets of buttons).
-    private func registerCategory(for alert: SecurityAlert, in center: UNUserNotificationCenter) -> String {
+    /// Registration is asynchronous in macOS: wait until the category is visible before posting, or the first
+    /// notification of a new combination shows no buttons.
+    private func registerCategory(for alert: SecurityAlert, in center: UNUserNotificationCenter) async -> String {
         let actions = alert.knownActions.filter { Self.notificationActions.contains($0) }.prefix(3)
         let identifier = "pb.alert." + (actions.isEmpty ? "view" : actions.map { $0.rawValue }.joined(separator: "+"))
         if categories[identifier] == nil {
@@ -132,6 +149,13 @@ final class NotificationManager {
                 options: []
             )
             center.setNotificationCategories(Set(categories.values))
+            for _ in 0..<20 {
+                let registered = await center.notificationCategories()
+                if registered.contains(where: { $0.identifier == identifier }) {
+                    break
+                }
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
         }
         return identifier
     }

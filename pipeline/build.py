@@ -1,6 +1,7 @@
 """Nightly threat-DB bundle builder.
 
     python -m pipeline.build --out dist/db [--previous prev/parabellum-db.tar.gz] [--state prev/pipeline-state.tar.gz]
+        [--published prev/manifest.json]
         [--sources pipeline/sources.toml] [--corpus-cache .cache/corpus] [--ml-dir ml-latest]
         [--pb-features target/release/pb-features] [--build-number N] [--sign] [--allow-shrink]
 
@@ -31,15 +32,16 @@ from .bundle import (
     deterministic_tar_gz,
     load_manifest,
     make_version,
+    newest_version,
     safe_extract,
     sanity_problems,
     verify_files,
     write_manifest,
 )
-from .corpus import CorpusItem, ensure_corpus, iter_files, load_spec
+from .corpus import CorpusItem, ensure_corpus, expected_entries, iter_files, load_spec, spec_fingerprint
 from .detection import measure
 from .domains import Exclusions, prune_subdomains, render, render_domain_set
-from .fpgate import fp_rate, run_fp_gate
+from .fpgate import corpus_problems, fp_rate, run_fp_gate
 from .hashes import (
     HashIndex,
     is_sha256,
@@ -70,6 +72,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--previous", type=Path, help="previous bundle (.tar.gz, already signature-checked) or directory")
     p.add_argument("--state", type=Path, help="previous pipeline-state.tar.gz or directory")
+    p.add_argument(
+        "--published", type=Path, help="manifest.json currently on db-latest (version floor, fallback baseline)"
+    )
     p.add_argument("--sources", type=Path, default=REPO_ROOT / "pipeline" / "sources.toml")
     p.add_argument("--corpus-spec", type=Path, default=REPO_ROOT / "pipeline" / "data" / "clean_corpus.toml")
     p.add_argument("--corpus-cache", type=Path, help="clean corpus cache dir (FP gate is skipped without it)")
@@ -107,6 +112,16 @@ def gha(level: str, message: str) -> None:
     """GitHub Actions annotation (visible in the check run without reading the logs)."""
     if os.environ.get("GITHUB_ACTIONS") == "true":
         print(f"::{level}::{message.replace(chr(10), ' ')[:900]}", flush=True)
+
+
+def _read_json(path: Path | None) -> dict[str, object] | None:
+    if path is None or not path.is_file():
+        return None
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return doc if isinstance(doc, dict) else None
 
 
 def _read_lines(path: Path) -> list[str]:
@@ -182,6 +197,7 @@ def build(args: argparse.Namespace, http: Fetcher | None = None) -> int:
         "zbt_release",
         "privacy_brokers",
         "component_pin",
+        "oui_list",
     }
     payloads, infos, errors = fetch_all(
         ctx, state_dir, prev_dir, last_success, only=lambda s: not (args.offline and s.fetcher in network_fetchers)
@@ -225,6 +241,8 @@ def build(args: argparse.Namespace, http: Fetcher | None = None) -> int:
     }
     rejected_fp = 0
     fp: float | None = None
+    gate_problems: list[str] = []
+    gate_state: dict[str, object] | None = None
     corpus_items: list[CorpusItem] = []
     ml_scorer = None
     ml_dir_for_scoring = None
@@ -265,6 +283,18 @@ def build(args: argparse.Namespace, http: Fetcher | None = None) -> int:
             scores = ml_scorer(gate.macho_files)
             ml_flagged = sum(1 for s in scores.values() if s >= ml_scorer.threshold)
         fp = fp_rate(gate.files_scanned, 0, 0, ml_flagged)
+        gate_state = {
+            "spec": spec_fingerprint(spec),
+            "corpus_entries": len(corpus_items),
+            "files_scanned": gate.files_scanned,
+        }
+        gate_problems = corpus_problems(
+            expected_entries(spec),
+            gate_state,
+            gate.unscannable,
+            _read_json(state_dir / "fp_gate.json") if state_dir else None,
+            settings.corpus_min_available,
+        )
         report["fp_gate"] = {
             "corpus_entries": len(corpus_items),
             "files_scanned": gate.files_scanned,
@@ -274,6 +304,8 @@ def build(args: argparse.Namespace, http: Fetcher | None = None) -> int:
             "malware_hashes_removed_as_clean": removed,
             "ml_flagged": ml_flagged,
             "scan_errors": gate.timeouts,
+            "corpus_expected": expected_entries(spec),
+            "unscannable": gate.unscannable,
         }
     else:
         log.warning("no --corpus-cache: FP gate skipped")
@@ -337,7 +369,11 @@ def build(args: argparse.Namespace, http: Fetcher | None = None) -> int:
         detection_rate=detection_rate,
         fp_rate=fp,
     )
-    prev_version = str(prev_manifest.get("version", "")) if prev_manifest else None
+    published = _read_json(args.published)
+    prev_version = newest_version(
+        str(prev_manifest.get("version", "")) if prev_manifest else None,
+        str(published.get("version", "")) if published else None,
+    )
     manifest = Manifest(
         version=make_version(now, prev_version, args.build_number or None),
         built_at=now,
@@ -349,8 +385,18 @@ def build(args: argparse.Namespace, http: Fetcher | None = None) -> int:
     report["version"] = manifest.version
     report["stats"] = stats.to_json()
 
-    prev_stats = prev_manifest.get("stats") if prev_manifest else None
-    problems = sanity_problems(stats, prev_stats if isinstance(prev_stats, dict) else None, settings.sanity_max_drop)
+    # Baseline: the previous bundle, else (unreadable / bad signature) the published manifest.
+    baseline = prev_manifest or published
+    prev_stats = baseline.get("stats") if baseline else None
+    minimums = {
+        "malware_hashes": settings.min_malware_hashes,
+        "blocked_domains": settings.min_blocked_domains,
+        "yara_rules": settings.min_yara_rules,
+    }
+    problems = sanity_problems(
+        stats, prev_stats if isinstance(prev_stats, dict) else None, settings.sanity_max_drop, minimums
+    )
+    problems += gate_problems
     report["sanity_problems"] = problems
     (out / "report.json").write_text(json.dumps(report, indent=2, default=str) + "\n", encoding="utf-8")
     if problems and not args.allow_shrink:
@@ -389,6 +435,8 @@ def build(args: argparse.Namespace, http: Fetcher | None = None) -> int:
             (state_out / "domains" / f"{name}.txt").write_text(render(doms), encoding="ascii")
         elif state_dir and (state_dir / "domains" / f"{name}.txt").is_file():
             shutil.copy2(state_dir / "domains" / f"{name}.txt", state_out / "domains" / f"{name}.txt")
+    if gate_state is not None:
+        (state_out / "fp_gate.json").write_text(json.dumps(gate_state, sort_keys=True) + "\n", encoding="utf-8")
     (state_out / "sources.json").write_text(json.dumps(new_success, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     deterministic_tar_gz(state_out, out / STATE_FILE)
 

@@ -88,15 +88,39 @@ pub async fn run(ctx: Arc<Ctx>) {
     let mut catch_up = last.map(|t| now - t > 86_400).unwrap_or(true);
     let mut hour = ctx.config().updates.daily_hour;
     let mut next = next_daily(&Local::now(), hour, jitter(20 * 60));
+    let mut last_attempt = 0i64;
     loop {
+        // Tokio timers stop while the Mac sleeps (monotonic uptime clock): never sleep longer than
+        // `WALL_CLOCK_CHECK`, and decide against the wall clock, so a laptop asleep at 03:00 updates soon
+        // after waking instead of hours later.
         let wait = if catch_up {
             STARTUP_UPDATE_DELAY
         } else {
-            next.map(to_duration).unwrap_or(Duration::from_secs(3600))
+            next.map(to_duration)
+                .unwrap_or(WALL_CLOCK_CHECK)
+                .min(WALL_CLOCK_CHECK)
         };
         tokio::select! {
             _ = tokio::time::sleep(wait) => {
+                let now = Local::now();
+                let due = catch_up || next.map(|n| now >= n).unwrap_or(false);
+                let stale = if due {
+                    false
+                } else {
+                    let last_ok = ctx
+                        .store
+                        .run(|s| s.kv_get_i64(KV_LAST_DB_SUCCESS))
+                        .await
+                        .ok()
+                        .flatten()
+                        .unwrap_or(0);
+                    db_update_overdue(now.timestamp(), last_ok, last_attempt)
+                };
+                if !due && !stale {
+                    continue;
+                }
                 catch_up = false;
+                last_attempt = now.timestamp();
                 daily_run(&ctx).await;
                 next = next_daily(&Local::now(), ctx.config().updates.daily_hour, jitter(20 * 60));
             }
@@ -113,6 +137,15 @@ pub async fn run(ctx: Arc<Ctx>) {
             }
         }
     }
+}
+
+/// Longest single sleep of the scheduler, so the wall clock is re-read after the Mac wakes.
+const WALL_CLOCK_CHECK: Duration = Duration::from_secs(10 * 60);
+
+/// The DB has not been updated for over 26 h and no attempt was made in the last 6 h: catch up now
+/// (missed daily slot, long sleep), without retrying a failing update every 10 minutes.
+pub fn db_update_overdue(now: i64, last_success: i64, last_attempt: i64) -> bool {
+    now - last_success > 26 * 3600 && now - last_attempt > 6 * 3600
 }
 
 /// Wait (bounded) while on low battery. Returns false on shutdown.
@@ -182,20 +215,24 @@ impl Drop for UpdateRunGuard<'_> {
 
 /// Run the requested update steps (one at a time daemon-wide). Each step is logged and published as an
 /// `update_finished` event; `All` additionally publishes a combined result.
+/// Marks an update as running; `Busy` if one already is. Pair with [`run_claimed_updates`].
+pub fn claim_update(ctx: &Arc<Ctx>) -> Result<(), IpcError> {
+    ctx.update_running
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .map(|_| ())
+        .map_err(|_| IpcError::new(ErrorCode::Busy, "une mise à jour est déjà en cours"))
+}
+
 pub async fn run_updates(
     ctx: &Arc<Ctx>,
     target: UpdateTarget,
 ) -> Result<Vec<UpdateResult>, IpcError> {
-    if ctx
-        .update_running
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err()
-    {
-        return Err(IpcError::new(
-            ErrorCode::Busy,
-            "une mise à jour est déjà en cours",
-        ));
-    }
+    claim_update(ctx)?;
+    Ok(run_claimed_updates(ctx, target).await)
+}
+
+/// Runs the update after a successful [`claim_update`] (the claim is released at the end).
+pub async fn run_claimed_updates(ctx: &Arc<Ctx>, target: UpdateTarget) -> Vec<UpdateResult> {
     let _guard = UpdateRunGuard(ctx);
     let started = pb_core::now_ts();
     let steps: &[UpdateTarget] = match target {
@@ -234,7 +271,7 @@ pub async fn run_updates(
         ctx.bus.publish(DaemonEvent::UpdateFinished(combined));
     }
     ctx.status_dirty.notify_one();
-    Ok(results)
+    results
 }
 
 async fn update_db_step(ctx: &Arc<Ctx>) -> UpdateResult {
@@ -322,6 +359,8 @@ async fn after_db_change(ctx: &Arc<Ctx>, before: &DbStatus, messages: &mut Vec<S
         hash_retro_check(ctx, 30).await;
     }
     crate::spyware::after_db_update(ctx).await;
+    // Intelligence: the bundle may carry a new domain model.
+    crate::intel::reload_model(ctx).await;
 }
 
 /// Alert when the DB has not been updated successfully for more than 3 days (deduplicated per day).
@@ -691,6 +730,15 @@ mod tests {
             next_daily(&now, 0, 0).unwrap(),
             Utc.with_ymd_and_hms(2026, 10, 26, 0, 0, 0).unwrap()
         );
+    }
+
+    #[test]
+    fn overdue_db_update() {
+        let h = 3600;
+        assert!(!db_update_overdue(100 * h, 90 * h, 0));
+        assert!(db_update_overdue(100 * h, 70 * h, 0));
+        assert!(!db_update_overdue(100 * h, 70 * h, 97 * h));
+        assert!(db_update_overdue(100 * h, 70 * h, 93 * h));
     }
 
     #[test]

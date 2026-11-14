@@ -47,7 +47,9 @@ pub struct EsLoggerOptions {
     /// a `close` for every file close on the system, which costs CPU in eslogger and here, and
     /// FSEvents + `create`/`rename` already cover the watched locations.
     pub include_close: bool,
-    /// Lines beyond this rate are dropped without being parsed (counted and reported).
+    /// Budget of file events forwarded per second, counted after filtering (excess counted and
+    /// reported). Exec, persistence and mount events are never rate limited. Lines beyond
+    /// [`PARSE_BUDGET_FACTOR`] times this rate are dropped without being parsed (CPU guard).
     pub max_events_per_sec: u32,
     /// Longer lines are discarded.
     pub max_line_bytes: usize,
@@ -482,6 +484,49 @@ impl<R: AsyncBufRead + Unpin> LineReader<R> {
     }
 }
 
+/// Lines parsed per second, as a multiple of `max_events_per_sec` (file event floods from builds).
+pub(crate) const PARSE_BUDGET_FACTOR: u32 = 8;
+
+/// `event_type` values that bypass every rate limit: exec, btm_launch_item_add, mount, unmount.
+const PRIORITY_EVENT_TYPES: &[u64] = &[9, 117, 23, 24];
+
+/// Event kinds (key of the `event` object) matching [`PRIORITY_EVENT_TYPES`].
+const PRIORITY_EVENT_KEYS: &[&str] = &["exec", "btm_launch_item_add", "mount", "unmount"];
+
+fn find(hay: &[u8], needle: &[u8]) -> Option<usize> {
+    hay.windows(needle.len()).position(|w| w == needle)
+}
+
+/// Cheap look at the raw line (no JSON parse): is it an event that must never be dropped?
+/// Checks `"event_type":<n>` (near the start of every eslogger line), else the kind key of the
+/// `event` object. An unescaped quote can only delimit a key (quotes inside JSON strings are escaped).
+pub(crate) fn is_priority_line(line: &[u8]) -> bool {
+    const TYPE_KEY: &[u8] = b"\"event_type\":";
+    if let Some(i) = find(line, TYPE_KEY) {
+        let digits: Vec<u8> = line[i + TYPE_KEY.len()..]
+            .iter()
+            .skip_while(|b| **b == b' ')
+            .take_while(|b| b.is_ascii_digit())
+            .take(6)
+            .copied()
+            .collect();
+        if let Some(t) = std::str::from_utf8(&digits)
+            .ok()
+            .and_then(|d| d.parse::<u64>().ok())
+        {
+            return PRIORITY_EVENT_TYPES.contains(&t);
+        }
+    }
+    const EVENT_KEY: &[u8] = b"\"event\":{\"";
+    let Some(i) = find(line, EVENT_KEY) else {
+        return false;
+    };
+    let rest = &line[i + EVENT_KEY.len()..];
+    PRIORITY_EVENT_KEYS
+        .iter()
+        .any(|k| rest.len() > k.len() && rest.starts_with(k.as_bytes()) && rest[k.len()] == b'"')
+}
+
 /// Fixed-window rate limiter (events per second).
 #[derive(Debug)]
 pub(crate) struct RateLimiter {
@@ -695,6 +740,10 @@ async fn run_child(ctx: &mut MonitorContext, opts: &EsLoggerOptions) -> Outcome 
         opts.max_line_bytes,
     );
     let mut limiter = RateLimiter::new(opts.max_events_per_sec, Instant::now());
+    let mut parse_guard = RateLimiter::new(
+        opts.max_events_per_sec.saturating_mul(PARSE_BUDGET_FACTOR),
+        Instant::now(),
+    );
     let mut channel_drops: u64 = 0;
     let mut reported_drops: u64 = 0;
     let mut healthy = false;
@@ -738,7 +787,7 @@ async fn run_child(ctx: &mut MonitorContext, opts: &EsLoggerOptions) -> Outcome 
                     let cfg = ctx.config.borrow().clone();
                     filter = EsFilter::new(&cfg, user.as_ref().map(|u| u.home.as_path()), &ctx.paths.root);
                 }
-                let total = limiter.dropped + channel_drops;
+                let total = limiter.dropped + parse_guard.dropped + channel_drops;
                 if total > reported_drops {
                     send_health(&ctx.tx, MONITOR_ESLOGGER, true, format!("{} événement(s) eslogger ignoré(s) (débit trop élevé)", total - reported_drops)).await;
                     reported_drops = total;
@@ -751,12 +800,14 @@ async fn run_child(ctx: &mut MonitorContext, opts: &EsLoggerOptions) -> Outcome 
                             healthy = true;
                             send_health(&ctx.tx, MONITOR_ESLOGGER, true, "eslogger actif").await;
                         }
-                        if !limiter.allow(Instant::now()) {
+                        // Exec / persistence / mount lines are never dropped; the file event budget is
+                        // spent on events that pass the filter (a build flood must not hide ransomware).
+                        if !is_priority_line(&reader.line) && !parse_guard.allow(Instant::now()) {
                             continue;
                         }
                         let Some(ev) = parse_line(&reader.line) else { continue };
-                        match dispatch(ev, &filter, &ctx.tx) {
-                            Dispatch::Sent | Dispatch::Skipped => {}
+                        match dispatch(ev, &filter, &ctx.tx, Some(&mut limiter)) {
+                            Dispatch::Sent | Dispatch::Skipped | Dispatch::RateLimited => {}
                             Dispatch::Dropped => channel_drops += 1,
                             Dispatch::Closed => break Outcome::Shutdown,
                         }
@@ -797,9 +848,44 @@ enum Dispatch {
     Skipped,
     Dropped,
     Closed,
+    /// Accepted file event over the per-second budget (counted in the limiter).
+    RateLimited,
 }
 
-fn dispatch(ev: EsEvent, filter: &EsFilter, tx: &mpsc::Sender<MonitorEvent>) -> Dispatch {
+/// Intelligence (behaviour baseline): an Apple shell / script interpreter started by a non-Apple program.
+/// Apple-to-Apple launches (Terminal → zsh…) stay filtered out, so the volume remains small.
+fn interpreter_from_third_party(target: &EsProcessInfo, parent: Option<&EsProcessInfo>) -> bool {
+    const INTERPRETERS: &[&str] = &[
+        "sh",
+        "bash",
+        "zsh",
+        "dash",
+        "ksh",
+        "tcsh",
+        "csh",
+        "python3",
+        "perl",
+        "perl5.34",
+        "perl5.30",
+        "ruby",
+        "osascript",
+        "tclsh",
+        "swift",
+        "jsc",
+        "awk",
+    ];
+    let name = target.path.rsplit('/').next().unwrap_or("");
+    INTERPRETERS.contains(&name)
+        && parent.is_some_and(|p| !p.is_platform_binary && !p.path.is_empty())
+}
+
+/// `file_budget`: applied to file events that pass the filter only.
+fn dispatch(
+    ev: EsEvent,
+    filter: &EsFilter,
+    tx: &mpsc::Sender<MonitorEvent>,
+    file_budget: Option<&mut RateLimiter>,
+) -> Dispatch {
     let out = match ev {
         EsEvent::BtmLaunchItemAdd => {
             persistence_trigger().notify_one();
@@ -817,7 +903,8 @@ fn dispatch(ev: EsEvent, filter: &EsFilter, tx: &mpsc::Sender<MonitorEvent>) -> 
             if target.pid == filter.own_pid
                 || Path::new(&target.path).starts_with(&filter.own_root)
                 || (target.is_platform_binary
-                    && !crate::sensitive::platform_exec_of_interest(&target.path, &args))
+                    && !crate::sensitive::platform_exec_of_interest(&target.path, &args)
+                    && !interpreter_from_third_party(&target, parent.as_ref()))
             {
                 return Dispatch::Skipped;
             }
@@ -841,6 +928,11 @@ fn dispatch(ev: EsEvent, filter: &EsFilter, tx: &mpsc::Sender<MonitorEvent>) -> 
                     .is_some_and(|f| filter.accept_file(f, process.as_ref()));
             if is_dir || !accepted {
                 return Dispatch::Skipped;
+            }
+            if let Some(b) = file_budget {
+                if !b.allow(Instant::now()) {
+                    return Dispatch::RateLimited;
+                }
             }
             MonitorEvent::FileActivity {
                 path,
@@ -1045,7 +1137,7 @@ mod tests {
         let lines = fixture();
         for l in &lines {
             if let Some(ev) = parse_line(l) {
-                let _ = dispatch(ev, &f, &tx);
+                let _ = dispatch(ev, &f, &tx, None);
             }
         }
         let mut got = Vec::new();
@@ -1057,13 +1149,98 @@ mod tests {
         assert_eq!(got.len(), 4, "{got:?}");
         assert!(matches!(got[0], MonitorEvent::ProcessExec { .. }));
         assert!(matches!(
-            dispatch(EsEvent::Mount, &f, &tx),
+            dispatch(EsEvent::Mount, &f, &tx, None),
             Dispatch::Skipped
         ));
         assert!(matches!(
-            dispatch(EsEvent::BtmLaunchItemAdd, &f, &tx),
+            dispatch(EsEvent::BtmLaunchItemAdd, &f, &tx, None),
             Dispatch::Skipped
         ));
+    }
+
+    #[test]
+    fn priority_lines_are_recognised_without_parsing() {
+        let mut priority = 0;
+        for l in fixture() {
+            let text = String::from_utf8_lossy(&l);
+            let expect = PRIORITY_EVENT_KEYS
+                .iter()
+                .any(|k| text.contains(&format!("\"event\":{{\"{k}\"")));
+            priority += usize::from(expect);
+            assert_eq!(
+                is_priority_line(&l),
+                expect,
+                "{}",
+                text.chars().take(80).collect::<String>()
+            );
+        }
+        assert_eq!(
+            priority, 7,
+            "4 exec lines (one minimal) + btm + mount + unmount"
+        );
+        // A quoted key inside an argument string is escaped, so it cannot fake a priority line.
+        assert!(!is_priority_line(
+            br#"{"args":["\"event_type\":9"],"event_type":13}"#
+        ));
+        assert!(is_priority_line(br#"{"event_type": 9}"#));
+        assert!(!is_priority_line(b"{}"));
+        assert!(is_priority_line(br#"{"event":{"exec":{}}}"#));
+        assert!(!is_priority_line(br#"{"event":{"execx":{}}}"#));
+        assert!(!is_priority_line(br#"{"event":{"rename":{}}}"#));
+    }
+
+    /// The file budget is spent on accepted file events only; exec events never hit it.
+    #[tokio::test]
+    async fn file_budget_counts_accepted_events_only() {
+        let cfg = pb_core::config::Config::default();
+        let f = EsFilter::new(&cfg, Some(Path::new("/Users/q")), Path::new("/pbroot"));
+        let (tx, mut rx) = mpsc::channel(64);
+        let mut budget = RateLimiter::new(1, Instant::now());
+        let file = |path: &str| EsEvent::File {
+            path: path.into(),
+            from: None,
+            source: FileEventSource::EsRename,
+            process: None,
+            is_dir: false,
+        };
+        // Build noise outside watched folders does not consume the budget.
+        for i in 0..100 {
+            let ev = file(&format!("/Users/q/dev/target/debug/deps/x{i}.o"));
+            assert!(matches!(
+                dispatch(ev, &f, &tx, Some(&mut budget)),
+                Dispatch::Skipped
+            ));
+        }
+        let ev = file("/private/tmp/a.locked");
+        assert!(matches!(
+            dispatch(ev, &f, &tx, Some(&mut budget)),
+            Dispatch::Sent
+        ));
+        let ev = file("/private/tmp/b.locked");
+        assert!(matches!(
+            dispatch(ev, &f, &tx, Some(&mut budget)),
+            Dispatch::RateLimited
+        ));
+        assert_eq!(budget.dropped, 1);
+        // Budget exhausted: an exec still goes through.
+        let ev = EsEvent::Exec {
+            target: EsProcessInfo {
+                pid: 7,
+                path: "/private/tmp/.x/payload".into(),
+                ..Default::default()
+            },
+            args: vec!["payload".into()],
+            parent: None,
+        };
+        assert!(matches!(
+            dispatch(ev, &f, &tx, Some(&mut budget)),
+            Dispatch::Sent
+        ));
+        let mut n = 0;
+        while rx.try_recv().is_ok() {
+            n += 1;
+        }
+        assert_eq!(n, 2);
     }
 
     #[tokio::test]
@@ -1088,14 +1265,33 @@ mod tests {
             ],
             parent: Some(proc_info("/private/tmp/.x/payload", false)),
         };
-        assert!(matches!(dispatch(ev, &f, &tx), Dispatch::Sent));
+        assert!(matches!(dispatch(ev, &f, &tx, None), Dispatch::Sent));
         // Ordinary platform exec: skipped.
         let ev = EsEvent::Exec {
             target: proc_info("/bin/ls", true),
             args: vec!["ls".into()],
             parent: None,
         };
-        assert!(matches!(dispatch(ev, &f, &tx), Dispatch::Skipped));
+        assert!(matches!(dispatch(ev, &f, &tx, None), Dispatch::Skipped));
+        // Shell started by a third-party program (behaviour baseline): forwarded; by Apple: skipped.
+        let ev = EsEvent::Exec {
+            target: proc_info("/bin/zsh", true),
+            args: vec!["zsh".into(), "-c".into(), "true".into()],
+            parent: Some(proc_info(
+                "/Applications/Editor.app/Contents/MacOS/Editor",
+                false,
+            )),
+        };
+        assert!(matches!(dispatch(ev, &f, &tx, None), Dispatch::Sent));
+        let ev = EsEvent::Exec {
+            target: proc_info("/bin/zsh", true),
+            args: vec!["zsh".into()],
+            parent: Some(proc_info(
+                "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
+                true,
+            )),
+        };
+        assert!(matches!(dispatch(ev, &f, &tx, None), Dispatch::Skipped));
         // Credential store copied to a staging folder outside the watched paths: forwarded.
         let ev = EsEvent::File {
             path: "/private/var/folders/xy/T/stage/Login Data".into(),
@@ -1104,7 +1300,7 @@ mod tests {
             process: Some(proc_info("/private/tmp/.x/payload", false)),
             is_dir: false,
         };
-        assert!(matches!(dispatch(ev, &f, &tx), Dispatch::Sent));
+        assert!(matches!(dispatch(ev, &f, &tx, None), Dispatch::Sent));
         // The browser updating its own store: skipped.
         let ev = EsEvent::File {
             path: "/Users/q/Library/Application Support/Google/Chrome/Default/Login Data".into(),
@@ -1113,7 +1309,7 @@ mod tests {
             process: None,
             is_dir: false,
         };
-        assert!(matches!(dispatch(ev, &f, &tx), Dispatch::Skipped));
+        assert!(matches!(dispatch(ev, &f, &tx, None), Dispatch::Skipped));
         // Rename out of a watched folder: forwarded with its origin.
         let ev = EsEvent::File {
             path: "/Volumes/Exfil/report.docx".into(),
@@ -1122,7 +1318,7 @@ mod tests {
             process: None,
             is_dir: false,
         };
-        assert!(matches!(dispatch(ev, &f, &tx), Dispatch::Sent));
+        assert!(matches!(dispatch(ev, &f, &tx, None), Dispatch::Sent));
         let mut n = 0;
         while let Ok(ev) = rx.try_recv() {
             n += 1;
@@ -1130,7 +1326,7 @@ mod tests {
                 assert_eq!(f, "/Users/q/Documents/report.docx");
             }
         }
-        assert_eq!(n, 3);
+        assert_eq!(n, 4);
     }
 
     #[cfg(not(target_os = "macos"))]

@@ -110,6 +110,7 @@ pub fn needs_admin(cmd: &Command) -> bool {
     admin_probe(cmd)
         .map(|r| r.requires_admin())
         .unwrap_or(false)
+        || crate::audit::needs_admin(cmd)
 }
 
 /// Run a parsed command line; returns the process exit code.
@@ -170,11 +171,21 @@ fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
     if crate::protect::is_local(&cli.command) {
         return crate::protect::local(cli, io);
     }
+    // Coffre & effacement sûr: local, never through the daemon.
+    if let Command::Vault(args) = &cli.command {
+        return crate::vault::command::run(cli, io, args);
+    }
+    if crate::audit::is_local(&cli.command) {
+        return crate::audit::local(cli, io);
+    }
     let mut c = connect(cli)?;
     match &cli.command {
         Command::Vpn { action } => return crate::protect::vpn(cli, io, &mut c, action),
         Command::Guard { action } => return crate::protect::guard(cli, io, &mut c, action),
+        Command::Intel { action } => return crate::intel::intel(cli, io, &mut c, action),
         Command::Privacy { action } => return crate::protect::privacy(cli, io, &mut c, action),
+        // ----- Travel mode -----
+        Command::Travel { state } => return crate::travel::run(cli, io, &mut c, *state),
         Command::Ping => {
             let p: PingResponse = c.call(Request::Ping)?;
             emit(cli, io, &p, |p| {
@@ -434,6 +445,13 @@ fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
                 }
                 io.out.flush()?;
             }
+        }
+        // Coffre & effacement sûr (handled above, before connecting).
+        Command::Vault(args) => return crate::vault::command::run(cli, io, args),
+        // ----- Local network & permissions audit -----
+        Command::Lan { action } => return crate::audit::lan(cli, io, &mut c, action),
+        Command::Permissions { action } => {
+            return crate::audit::permissions(cli, io, &mut c, action)
         }
     }
     Ok(EXIT_OK)

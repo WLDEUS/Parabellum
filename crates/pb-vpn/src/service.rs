@@ -1053,6 +1053,10 @@ impl VpnService {
     }
 
     fn publish(&self, rt: &Runtime, cfg: &Config) {
+        self.store_networks_snapshot(
+            rt.networks
+                .list(&cfg.vpn.trusted_networks, rt.current_network.as_deref()),
+        );
         let s = self.build_status(rt, cfg);
         let changed = {
             let mut g = self.status.lock().unwrap_or_else(|e| e.into_inner());

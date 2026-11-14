@@ -16,10 +16,11 @@ struct Pill: View {
             Text(text)
         }
         .font(.caption.weight(.semibold))
-        .padding(.horizontal, 7)
-        .padding(.vertical, 2)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
         .foregroundStyle(color)
-        .background(color.opacity(0.15), in: Capsule())
+        .background(color.opacity(0.14), in: Capsule(style: .continuous))
+        .overlay(Capsule(style: .continuous).strokeBorder(color.opacity(0.28), lineWidth: 0.6))
     }
 }
 
@@ -116,8 +117,12 @@ struct BannerView: View {
             .buttonStyle(.borderless)
             .help("Fermer")
         }
-        .padding(10)
-        .background((banner.isError ? Color.orange : Color.green).opacity(0.12))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .glassSurface(cornerRadius: 14, tint: banner.isError ? .orange : .green)
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .transition(.move(edge: .top).combined(with: .opacity))
     }
 }
 
@@ -127,18 +132,28 @@ struct Card<Content: View>: View {
     var symbol: String?
     @ViewBuilder let content: () -> Content
 
+    var tint: Color = Brand.accent
+
     var body: some View {
-        GroupBox {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                if let symbol {
+                    Image(systemName: symbol)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(tint)
+                        .frame(width: 28, height: 28)
+                        .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                Text(title)
+                    .font(.system(.headline, design: .rounded))
+                Spacer(minLength: 0)
+            }
             content()
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(6)
-        } label: {
-            if let symbol {
-                Label(title, systemImage: symbol).font(.headline)
-            } else {
-                Text(title).font(.headline)
-            }
         }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassSurface()
     }
 }
 

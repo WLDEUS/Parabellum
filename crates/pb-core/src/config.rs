@@ -37,6 +37,13 @@ pub struct Config {
     pub data_removal: DataRemovalConfig,
     pub breach: BreachConfig,
     pub aliases: AliasConfig,
+    /// Intelligence: domain model + behavioural anomaly detection.
+    pub intelligence: IntelligenceConfig,
+    // ----- Local network & permissions audit -----
+    pub lan: LanConfig,
+    pub permissions: PermissionsAuditConfig,
+    // ----- Travel mode -----
+    pub travel: TravelConfig,
 }
 
 impl Config {
@@ -211,6 +218,34 @@ impl Config {
         }
         if !self.aliases.base_url.is_empty() && !self.aliases.base_url.starts_with("https://") {
             return invalid("aliases.base_url must use https");
+        }
+        // ----- Intelligence -----
+        let i = &self.intelligence;
+        if !(1..=60).contains(&i.learning_days) {
+            return invalid("intelligence.learning_days must be 1..60");
+        }
+        if !(0.5..=0.99).contains(&i.anomaly_threshold) {
+            return invalid("intelligence.anomaly_threshold must be within 0.5..0.99");
+        }
+        if !(1..=100).contains(&i.max_anomaly_alerts_per_day) {
+            return invalid("intelligence.max_anomaly_alerts_per_day must be 1..100");
+        }
+        if i.domain_allowlist.len() > 1000 {
+            return invalid("intelligence.domain_allowlist: at most 1000 domains");
+        }
+        for d in &i.domain_allowlist {
+            if !d.contains('.') || !is_host_or_ip(d) || d.chars().any(|c| c.is_ascii_uppercase()) {
+                return Err(ConfigError::Invalid(format!(
+                    "intelligence.domain_allowlist: invalid lowercase domain: {d}"
+                )));
+            }
+        }
+        // ----- Local network & permissions audit -----
+        if !(5..=24 * 60).contains(&self.lan.scan_interval_minutes) {
+            return invalid("lan.scan_interval_minutes must be 5..1440");
+        }
+        if !(1..=24 * 7).contains(&self.permissions.interval_hours) {
+            return invalid("permissions.interval_hours must be 1..168");
         }
         Ok(())
     }
@@ -793,9 +828,151 @@ pub struct AliasConfig {
     pub domain: String,
 }
 
+// ----- Intelligence -----
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct IntelligenceConfig {
+    /// Score every never-seen domain with the phishing / malicious-domain model (needs DNS blocking:
+    /// query names come from the local dnscrypt-proxy; scored in memory, never written to disk).
+    pub domain_model: bool,
+    /// Alert when a domain looks malicious.
+    pub domain_alerts: bool,
+    /// Opt-in: add high-confidence model verdicts to the DNS blocklist (never on the model's rules-only
+    /// fallback).
+    pub block_ml_domains: bool,
+    /// Domains (and their subdomains) the model never flags or blocks ("Autoriser ce domaine").
+    pub domain_allowlist: Vec<String>,
+    /// Learn this Mac's normal behaviour (eslogger) and report novelties. Stays on the Mac.
+    pub behavior_anomaly: bool,
+    /// Learning period before anything is reported, days.
+    pub learning_days: u32,
+    /// Minimum anomaly score reported (0.5 = sensitive, 0.9 = quiet).
+    pub anomaly_threshold: f32,
+    /// At most this many anomaly alerts per day.
+    pub max_anomaly_alerts_per_day: u32,
+}
+
+impl Default for IntelligenceConfig {
+    fn default() -> Self {
+        Self {
+            domain_model: true,
+            domain_alerts: true,
+            block_ml_domains: false,
+            domain_allowlist: vec![],
+            behavior_anomaly: true,
+            learning_days: 7,
+            anomaly_threshold: 0.75,
+            max_anomaly_alerts_per_day: 10,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Local network inventory & permissions audit
+// ---------------------------------------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LanConfig {
+    /// Inventory of the devices of the current network (periodic scan, alerts on trusted networks).
+    pub enabled: bool,
+    /// Periodic scan, minutes (skipped on low battery and while offline).
+    pub scan_interval_minutes: u32,
+    /// On trusted, non-captive networks the periodic scan is active (rate-limited sweep of the /24, IPv6
+    /// all-nodes ping, Bonjour). Untrusted networks are only read from the system caches (ARP / NDP):
+    /// sweeping a public Wi-Fi can look hostile. A scan asked from the app may be active anywhere.
+    pub active_on_trusted: bool,
+    /// Alert when an unknown device joins a trusted network.
+    pub alert_new_devices: bool,
+}
+
+impl Default for LanConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            scan_interval_minutes: 15,
+            active_on_trusted: true,
+            alert_new_devices: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PermissionsAuditConfig {
+    /// Periodic audit of the privacy permissions (TCC) with alerts on new high-risk grants.
+    pub enabled: bool,
+    pub interval_hours: u32,
+    /// Alert when a new high-risk grant appears (unsigned / ad-hoc app with Accessibility, Screen Recording,
+    /// Full Disk Access, Input Monitoring…).
+    pub alert_high_risk: bool,
+}
+
+impl Default for PermissionsAuditConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            interval_hours: 24,
+            alert_high_risk: true,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Travel mode
+// ---------------------------------------------------------------------------------------------
+
+/// `[travel]`: one-click hardening for public Wi-Fi ("Mode Voyage").
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TravelConfig {
+    /// On a network that is not in `vpn.trusted_networks`, raise an alert offering travel mode.
+    pub suggest_on_untrusted: bool,
+    /// Enable travel mode by itself on untrusted networks (and restore when back on a trusted one, if it
+    /// was enabled that way).
+    pub auto_enable: bool,
+    /// Also make the application firewall block every incoming connection (AirPlay receiver, sharing…).
+    pub block_all_incoming: bool,
+    /// Turn AirDrop off while travelling (done by the app, as the user).
+    pub airdrop_off: bool,
+    /// Turn Bluetooth off while travelling (done by the app, as the user; disconnects AirPods, keyboards…).
+    pub bluetooth_off: bool,
+}
+
+impl Default for TravelConfig {
+    fn default() -> Self {
+        Self {
+            suggest_on_untrusted: true,
+            auto_enable: false,
+            block_all_incoming: false,
+            airdrop_off: true,
+            bluetooth_off: false,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn intelligence_section_validates() {
+        let c = Config::default();
+        assert!(c.intelligence.domain_model && !c.intelligence.block_ml_domains);
+        assert!(Config::from_toml("[intelligence]\nlearning_days = 0\n").is_err());
+        assert!(Config::from_toml("[intelligence]\nanomaly_threshold = 0.2\n").is_err());
+        assert!(Config::from_toml("[intelligence]\nmax_anomaly_alerts_per_day = 0\n").is_err());
+        assert!(
+            Config::from_toml("[intelligence]\ndomain_allowlist = [\"example.com\"]\n").is_ok()
+        );
+        assert!(
+            Config::from_toml("[intelligence]\ndomain_allowlist = [\"Example.com\"]\n").is_err()
+        );
+        assert!(Config::from_toml("[intelligence]\ndomain_allowlist = [\"localhost\"]\n").is_err());
+        let c = Config::from_toml("[intelligence]\nblock_ml_domains = true\n").unwrap();
+        assert!(c.intelligence.block_ml_domains && c.intelligence.learning_days == 7);
+    }
 
     #[test]
     fn protection_sections_validate() {
@@ -849,6 +1026,9 @@ mod tests {
         let c = Config::from_toml("[dns]\nenabled = true\n").unwrap();
         assert!(c.dns.enabled);
         assert_eq!(c.scan, ScanConfig::default());
+        assert_eq!(c.travel, TravelConfig::default());
+        let t = Config::from_toml("[travel]\nauto_enable = true\n").unwrap();
+        assert!(t.travel.auto_enable && t.travel.suggest_on_untrusted && !t.travel.bluetooth_off);
     }
 
     #[test]
@@ -862,6 +1042,23 @@ mod tests {
         assert!(Config::from_toml("[security]\nspyware_scan_hour = 24\n").is_err());
         let c = Config::from_toml("[security]\nspyware_scan_weekly = false\n").unwrap();
         assert!(!c.security.spyware_scan_weekly && c.security.posture_checks);
+    }
+
+    #[test]
+    fn lan_and_permissions_sections() {
+        let c = Config::default();
+        assert!(
+            c.lan.enabled
+                && c.lan.scan_interval_minutes == 15
+                && c.permissions.interval_hours == 24
+        );
+        assert!(Config::from_toml("[lan]\nscan_interval_minutes = 1\n").is_err());
+        assert!(Config::from_toml(
+            "[lan]\nscan_interval_minutes = 60\nactive_on_trusted = false\n"
+        )
+        .is_ok());
+        assert!(Config::from_toml("[permissions]\ninterval_hours = 0\n").is_err());
+        assert!(Config::from_toml("[permissions]\nalert_high_risk = false\n").is_ok());
     }
 
     #[test]

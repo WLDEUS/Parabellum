@@ -250,6 +250,18 @@ pub enum AlertAction {
     ResumeProcess,
     /// Mark the network named in the alert (`network_id`) as trusted.
     TrustNetwork,
+    // ----- Intelligence -----
+    /// "Autoriser ce domaine": never flag / block the domain of this domain-model alert again.
+    AllowDomain,
+    /// "C'est normal": add the behaviour of this anomaly alert to the baseline.
+    MarkNormal,
+    // ----- Local network -----
+    /// "Je connais cet appareil": mark the LAN device of the alert (`device_id` = `lan:<mac>`, on
+    /// `network_id`) as known.
+    TrustLanDevice,
+    // ----- Travel mode -----
+    /// Enable travel mode (VPN always on, kill switch, DNS blocking, stealth firewall).
+    EnableTravelMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -510,6 +522,87 @@ pub struct DbStatus {
     pub clamav_version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ml_model_version: Option<String>,
+    // --- ML model info (ml-files) ---
+    /// The ML classifiers of the threat DB as seen by the engine (Mach-O, scripts). Empty when the
+    /// daemon predates this field or no engine is loaded.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub models: Vec<ModelInfo>,
+}
+
+// --- ML model info (ml-files) ---
+
+/// One ML classifier shipped in the threat DB (`DbStatus.models`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct ModelInfo {
+    /// `macho` | `script`.
+    pub name: String,
+    /// French UI label, e.g. `Classifieur Mach-O`.
+    pub display_name: String,
+    /// Loaded and used by the engine (when `ml.enabled`).
+    pub loaded: bool,
+    /// Model version label (training date `YYYY.MM.DD`, or `sha256:…`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// Feature layout version compiled into the daemon.
+    pub features_version: u32,
+    /// Effective decision threshold on the raw score (max of the model's and `ml.suspicious_threshold`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threshold: Option<f32>,
+    /// Number of trees.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trees: Option<u32>,
+    /// Probability calibration method (`platt`, `isotonic`) when the model ships one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub calibration: Option<String>,
+    /// Unix time of the training run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trained_at: Option<i64>,
+    /// Holdout metrics recorded by the trainer.
+    #[serde(default)]
+    pub metrics: ModelMetrics,
+    /// Why the model is not loaded (French), when it is present but unusable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Holdout evaluation of a model (`ml/*model_meta.json` `metrics`); every field optional.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ModelMetrics {
+    /// ROC AUC (older metadata calls it `auc`).
+    #[serde(alias = "auc", skip_serializing_if = "Option::is_none")]
+    pub roc_auc: Option<f64>,
+    /// Area under the precision-recall curve (average precision).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pr_auc: Option<f64>,
+    /// Detection rate at the shipped threshold.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tpr_at_threshold: Option<f64>,
+    /// False-positive rate at the shipped threshold.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fpr_at_threshold: Option<f64>,
+    /// Best detection rate reachable with at most 0.1 % false positives on the holdout.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tpr_at_fpr_0_1: Option<f64>,
+    /// Brier score of the calibrated probability on the holdout.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub brier: Option<f64>,
+    /// Malicious / clean samples in the whole dataset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub n_pos: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub n_neg: Option<u64>,
+    /// Malicious / clean samples in the holdout.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub holdout_pos: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub holdout_neg: Option<u64>,
+    /// Holdout = malicious samples first seen at or after this Unix time (time split).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub holdout_since: Option<i64>,
+    /// Distinct malware families in the dataset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub families: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -620,6 +713,10 @@ pub struct StatusInfo {
     pub uptime_secs: u64,
     /// Resident memory of the daemon, bytes.
     pub rss_bytes: u64,
+    // ----- Travel mode -----
+    /// Travel mode is on (details: `travel_status`).
+    #[serde(default)]
+    pub travel_active: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -988,6 +1085,491 @@ pub struct EmailAlias {
     pub provider: crate::config::AliasProvider,
     pub created_at: i64,
     pub active: bool,
+}
+
+// ---------------------------------------------------------------------------------------------
+// Intelligence: domain model, behavioural baseline, model inventory
+// ---------------------------------------------------------------------------------------------
+
+/// What an anomaly is about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnomalyKind {
+    /// Launched a program it never launched before.
+    Exec,
+    /// Launched a shell / script interpreter it never launched before.
+    Interpreter,
+    /// Was launched by an unusual parent.
+    LaunchedBy,
+    /// Wrote to a category of location it never wrote to before.
+    File,
+    /// Ran at an unusual time of day.
+    Hour,
+}
+
+/// One behavioural novelty (after the learning period).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BehaviorAnomaly {
+    pub id: String,
+    pub ts: i64,
+    /// Executable (path with the home folder shown as `~`).
+    pub process: String,
+    pub kind: AnomalyKind,
+    /// French one-line description of the main novelty.
+    pub summary: String,
+    /// French descriptions of every novelty of the event.
+    #[serde(default)]
+    pub details: Vec<String>,
+    /// 0..1
+    pub score: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alert_id: Option<i64>,
+    pub marked_normal: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct BehaviorStatus {
+    pub enabled: bool,
+    /// Still learning (nothing reported yet).
+    pub learning: bool,
+    /// 0..1
+    pub learning_progress: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub learning_started_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub learning_until: Option<i64>,
+    pub events_observed: u64,
+    /// Executables with a profile.
+    pub profiles: u32,
+    /// Distinct behaviours known on this Mac.
+    pub behaviors: u32,
+    pub anomalies_24h: u32,
+    pub anomalies_7d: u32,
+    /// Size of the baseline file on disk.
+    pub baseline_bytes: u64,
+    /// Newest first.
+    #[serde(default)]
+    pub recent_anomalies: Vec<BehaviorAnomaly>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+/// A never-seen domain the model found suspicious.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FlaggedDomain {
+    pub domain: String,
+    pub registrable: String,
+    /// 0..1
+    pub score: f32,
+    pub first_seen: i64,
+    pub last_seen: i64,
+    pub hits: u32,
+    /// French explanations (brand imitated, random-looking name, abused TLD…).
+    #[serde(default)]
+    pub reasons: Vec<String>,
+    /// In the ML DNS blocklist.
+    pub blocked: bool,
+    /// Allowed by the user ("Autoriser ce domaine").
+    pub allowed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alert_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct DomainIntelStatus {
+    pub enabled: bool,
+    /// DNS blocking is on: query names go through the local proxy and can be scored.
+    pub dns_active: bool,
+    /// A trained model is loaded (otherwise conservative rules only).
+    pub model_loaded: bool,
+    pub block_enabled: bool,
+    pub alert_threshold: f32,
+    pub block_threshold: f32,
+    /// Distinct names scored since the daemon started / in the last 24 h.
+    pub scored_total: u64,
+    pub scored_24h: u64,
+    pub flagged_total: u64,
+    /// Domains currently in the ML blocklist.
+    pub blocked_count: u32,
+    /// Highest scores first.
+    #[serde(default)]
+    pub top_flagged: Vec<FlaggedDomain>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+/// A predictive model and its evaluation (the Mach-O / script models are added by their owners).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct IntelModelInfo {
+    /// `domain`, `behavior`, `macho`, `script`…
+    pub id: String,
+    /// French display name.
+    pub name: String,
+    pub loaded: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threshold: Option<f32>,
+    /// Evaluation metrics recorded by the trainer (`auc`, `tpr_at_threshold`, `fpr_at_threshold`…).
+    #[serde(default)]
+    pub metrics: BTreeMap<String, f64>,
+    /// French one-liner (what it does, where it runs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct IntelligenceStatus {
+    pub behavior: BehaviorStatus,
+    pub domains: DomainIntelStatus,
+    #[serde(default)]
+    pub models: Vec<IntelModelInfo>,
+}
+
+/// Result of scoring one domain on demand.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DomainVerdictInfo {
+    pub domain: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registrable: Option<String>,
+    /// `None` when the name is not scored (see `skipped`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score: Option<f32>,
+    pub flagged: bool,
+    pub would_block: bool,
+    /// `model` or `heuristic`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skipped: Option<String>,
+    #[serde(default)]
+    pub reasons: Vec<String>,
+    pub allowed: bool,
+}
+
+// ---------------------------------------------------------------------------------------------
+// Local network inventory ("Réseau local")
+// ---------------------------------------------------------------------------------------------
+
+/// Best guess of what a device of the local network is (vendor, Bonjour services, ports, names).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum LanDeviceType {
+    Router,
+    Computer,
+    Phone,
+    Tablet,
+    Tv,
+    Speaker,
+    Printer,
+    Camera,
+    Nas,
+    Console,
+    Iot,
+    #[default]
+    Unknown,
+}
+
+/// How the last scan of a network was done.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum LanScanMode {
+    /// Only the system caches (ARP / NDP): no packet sent. Default on untrusted networks.
+    #[default]
+    Passive,
+    /// Light sweep of the subnet (one UDP datagram per address, rate-limited), IPv6 all-nodes ping and
+    /// Bonjour browsing, then the caches.
+    Active,
+}
+
+/// A device seen on a local network (identified by its MAC address on that network).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LanDevice {
+    /// Lowercase `aa:bb:cc:dd:ee:ff` (the device id on its network).
+    pub mac: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ipv4: Option<String>,
+    #[serde(default)]
+    pub ipv6: Vec<String>,
+    /// Bonjour host name (`Apple-TV.local`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hostname: Option<String>,
+    /// Bonjour service instance name (`Salon`, `Imprimante du bureau`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mdns_name: Option<String>,
+    /// Name given by the user.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Manufacturer from the IEEE OUI list (none for private addresses).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vendor: Option<String>,
+    /// Locally administered address ("adresse privée" of iOS / Android / macOS / Windows): no vendor, and
+    /// the same device may come back with another address.
+    #[serde(default)]
+    pub private_mac: bool,
+    #[serde(default)]
+    pub device_type: LanDeviceType,
+    /// Model announced over Bonjour (`AppleTV11,1`, `HP LaserJet …`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// Bonjour service types (`_airplay._tcp`…).
+    #[serde(default)]
+    pub services: Vec<String>,
+    /// Open TCP ports found by the last on-demand check.
+    #[serde(default)]
+    pub open_ports: Vec<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ports_checked_at: Option<i64>,
+    pub first_seen: i64,
+    pub last_seen: i64,
+    /// Seen by the last scan.
+    #[serde(default)]
+    pub online: bool,
+    /// The user knows this device ("Je connais cet appareil").
+    #[serde(default)]
+    pub trusted: bool,
+    /// Present at the first scan of the network (never alerted on).
+    #[serde(default)]
+    pub baseline: bool,
+    #[serde(default)]
+    pub is_gateway: bool,
+    /// This Mac.
+    #[serde(default)]
+    pub is_self: bool,
+}
+
+/// A network with its devices.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LanNetwork {
+    /// `gw:<router MAC>` (same fingerprint as the VPN / network guard).
+    pub id: String,
+    pub name: String,
+    pub interface: String,
+    /// `192.168.1.0/24`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subnet: Option<String>,
+    /// In `vpn.trusted_networks`.
+    pub trusted: bool,
+    pub current: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_scan: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_scan_mode: Option<LanScanMode>,
+    pub devices: Vec<LanDevice>,
+}
+
+/// Short view of a known network.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LanNetworkSummary {
+    pub id: String,
+    pub name: String,
+    pub trusted: bool,
+    pub current: bool,
+    pub devices: u32,
+    /// Devices not marked as known.
+    pub unknown: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_scan: Option<i64>,
+}
+
+/// `lan_status` answer, also pushed as the `lan` event while a scan runs and when it ends.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct LanStatus {
+    /// `lan.enabled`.
+    pub enabled: bool,
+    pub scanning: bool,
+    /// 0.0 – 1.0 while scanning.
+    pub progress: f32,
+    /// Current step (French), while scanning.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase: Option<String>,
+    /// The current network (or the one asked for).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network: Option<LanNetwork>,
+    #[serde(default)]
+    pub networks: Vec<LanNetworkSummary>,
+    /// Why the last scan was passive / did not run (French).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    pub interval_minutes: u32,
+}
+
+// ---------------------------------------------------------------------------------------------
+// Permissions audit (TCC grants, browser extensions)
+// ---------------------------------------------------------------------------------------------
+
+/// `auth_value` of a TCC row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TccAuthValue {
+    Denied,
+    Allowed,
+    /// Partial access (Photos "limited", Location "when in use"…).
+    Limited,
+    #[default]
+    Unknown,
+}
+
+/// One privacy permission recorded by macOS (a row of a `TCC.db`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TccGrant {
+    /// Stable id: 16 hex chars of the SHA-256 of `scope|service|client|target`.
+    pub id: String,
+    /// `kTCCServiceCamera`…
+    pub service: String,
+    /// French label (`Caméra`).
+    pub service_label: String,
+    /// Bundle id, or executable path when `client_is_path`.
+    pub client: String,
+    pub client_is_path: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_path: Option<String>,
+    /// `Some(false)`: the app is no longer on this Mac (stale grant); `None`: could not tell.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub installed: Option<bool>,
+    pub auth: TccAuthValue,
+    /// From the system database (`/Library/…/TCC.db`) rather than the user's.
+    pub system_wide: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_modified: Option<i64>,
+    /// Automation (`AppleEvents`): bundle id of the app it may control.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signing: Option<SigningInfo>,
+    pub risk: Severity,
+    /// Why this risk (French).
+    #[serde(default)]
+    pub reasons: Vec<String>,
+    /// System Settings pane where the user revokes it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settings_url: Option<String>,
+}
+
+/// `permissions_audit` answer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct PermissionsReport {
+    pub generated_at: i64,
+    pub grants: Vec<TccGrant>,
+    pub system_db_read: bool,
+    pub user_db_read: bool,
+    /// Installed configuration profiles (from the persistence inventory): they can grant permissions
+    /// silently (PPPC payloads).
+    #[serde(default)]
+    pub configuration_profiles: Vec<String>,
+    /// What could not be read (French).
+    #[serde(default)]
+    pub errors: Vec<String>,
+}
+
+/// A browser extension (`parabellum permissions extensions --json`, run as the user).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BrowserExtension {
+    /// `<browser>:<profile>:<extension id>`.
+    pub id: String,
+    /// `chrome`, `brave`, `edge`, `arc`, `chromium`, `vivaldi`, `firefox`, `safari`.
+    pub browser: String,
+    pub profile: String,
+    pub extension_id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    /// Installed from the browser's store (Chrome Web Store, addons.mozilla.org, App Store).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_store: Option<bool>,
+    /// Loaded from a folder (developer mode / temporary add-on).
+    pub unpacked: bool,
+    /// API permissions (`cookies`, `nativeMessaging`…).
+    #[serde(default)]
+    pub permissions: Vec<String>,
+    /// Sites it can read and change (`<all_urls>`, `https://*.example.com/*`).
+    #[serde(default)]
+    pub host_permissions: Vec<String>,
+    pub risk: Severity,
+    #[serde(default)]
+    pub reasons: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
+/// `parabellum permissions extensions --json`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ExtensionsReport {
+    pub generated_at: i64,
+    pub extensions: Vec<BrowserExtension>,
+    #[serde(default)]
+    pub errors: Vec<String>,
+}
+
+/// One TCC client resolved by `parabellum permissions resolve --json` (run as the console user for the
+/// daemon, so root never reads app bundles in user-writable folders).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppIdentity {
+    /// Bundle id or path, as asked.
+    pub client: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// `Some(false)` = not found on this Mac.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub installed: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signing: Option<SigningInfo>,
+}
+
+/// `parabellum permissions reset <service> <bundle id> --json`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TccResetResult {
+    pub ok: bool,
+    pub service: String,
+    pub bundle_id: String,
+    pub message: String,
+}
+
+// ---------------------------------------------------------------------------------------------
+// Travel mode
+// ---------------------------------------------------------------------------------------------
+
+/// One setting travel mode changed (and will put back).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TravelItem {
+    /// `vpn_mode`, `kill_switch`, `dns`, `firewall`, `stealth`, `block_all`.
+    pub id: String,
+    /// French label, e.g. `VPN toujours actif`.
+    pub label: String,
+}
+
+/// State of travel mode ("Mode Voyage").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct TravelStatus {
+    pub active: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub since: Option<i64>,
+    /// Enabled by the daemon on an untrusted network (`travel.auto_enable`), not by hand.
+    #[serde(default)]
+    pub automatic: bool,
+    /// Name of the network it was enabled on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network: Option<String>,
+    /// Settings changed by travel mode (restored when it is turned off).
+    #[serde(default)]
+    pub changes: Vec<TravelItem>,
+    /// What could not be done (VPN not configured, firewall unreadable…), French.
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    /// Outcome of the last change (e.g. settings you modified meanwhile and that were kept), French.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    /// The Mac is on a network that is not trusted right now.
+    #[serde(default)]
+    pub untrusted_network: bool,
 }
 
 #[cfg(test)]
