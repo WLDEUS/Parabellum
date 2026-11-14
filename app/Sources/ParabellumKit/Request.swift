@@ -134,6 +134,11 @@ public enum Request: Sendable, Equatable {
     /// → `EmailAlias`
     case aliasCreate(label: String)
 
+    // Activity report
+    /// `week` / `month`: `offset` 0 = current one. `custom`: `from` → `to` (`YYYY-MM-DD`, inclusive).
+    /// → `ActivityReport`
+    case report(period: ReportPeriod, offset: Int = 0, from: String? = nil, to: String? = nil)
+
     /// Wire name (`cmd`).
     public var command: String {
         switch self {
@@ -195,6 +200,8 @@ public enum Request: Sendable, Equatable {
         case .breachCheckNow: return "breach_check_now"
         case .aliasList: return "alias_list"
         case .aliasCreate: return "alias_create"
+        // Activity report
+        case .report: return "report"
         }
     }
 
@@ -207,6 +214,9 @@ public enum Request: Sendable, Equatable {
             return false
         case .vpnStatus, .vpnListServices, .listNetworks, .guardStatus, .listSnapshots, .privacyListBrokers,
              .privacyListRequests, .privacySummary, .breachList, .aliasList:
+            return false
+        // Activity report
+        case .report:
             return false
         case let .privacyGetProfile(reveal):
             return reveal
@@ -364,6 +374,16 @@ public enum Request: Sendable, Equatable {
             o["days"] = .int(Int64(days))
         case let .posture(refresh):
             o["refresh"] = .bool(refresh)
+        // Activity report
+        case let .report(period, offset, from, to):
+            o["period"] = .string(period.rawValue)
+            o["offset"] = .int(Int64(offset))
+            if let from {
+                o["from"] = .string(from)
+            }
+            if let to {
+                o["to"] = .string(to)
+            }
         }
         return .object(o)
     }

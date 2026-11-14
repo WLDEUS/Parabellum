@@ -304,6 +304,8 @@ public struct SecurityAlert: Codable, Sendable, Hashable, Identifiable {
     /// Network / VPN alerts: `gw:<router MAC>`.
     public let networkId: String?
     public let status: AlertStatus
+    /// App section the alert leads to (`report?period=month&month=2026-10`), see `SectionLink`.
+    public let openSection: String?
     /// Actions the UI should offer for this alert.
     public let actions: [AlertAction]
 
@@ -320,6 +322,7 @@ public struct SecurityAlert: Codable, Sendable, Hashable, Identifiable {
         case processPath = "process_path"
         case networkId = "network_id"
         case status, actions
+        case openSection = "open_section"
     }
 }
 

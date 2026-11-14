@@ -70,6 +70,9 @@ final class ProtocolTests: XCTestCase {
             .aliasCreate(label: "boutique"),
             .resolveAlert(alertId: 31, action: .killProcess),
             .resolveAlert(alertId: 31, action: .resumeProcess),
+            // Activity report
+            .report(period: .month, offset: 1),
+            .report(period: .custom, offset: 0, from: "2026-10-01", to: "2026-10-15"),
         ]
     }
 
