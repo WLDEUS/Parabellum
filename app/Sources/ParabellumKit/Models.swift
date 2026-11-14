@@ -285,6 +285,8 @@ public enum AlertAction: String, TolerantEnum {
     case allowDomain = "allow_domain"
     /// "C'est normal" (behaviour anomaly alert).
     case markNormal = "mark_normal"
+    /// "Je connais cet appareil" (LAN device of the alert).
+    case trustLanDevice = "trust_lan_device"
     case unknown
     public static let fallback: AlertAction = .unknown
     public init(from decoder: Decoder) throws { self = try Self.decodeTolerantly(from: decoder) }

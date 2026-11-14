@@ -197,6 +197,7 @@ def build(args: argparse.Namespace, http: Fetcher | None = None) -> int:
         "zbt_release",
         "privacy_brokers",
         "component_pin",
+        "oui_list",
     }
     payloads, infos, errors = fetch_all(
         ctx, state_dir, prev_dir, last_success, only=lambda s: not (args.offline and s.fetcher in network_fetchers)

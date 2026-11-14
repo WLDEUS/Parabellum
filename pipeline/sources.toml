@@ -377,3 +377,17 @@ kind = "ml"
 fetcher = "ml_domain_local"
 url = "https://github.com/WLDEUS/Parabellum/releases/tag/ml-domain-latest"
 license = "MIT (model); Tranco-derived popular list, see above"
+
+
+# ------------------------------------------------------------------------------------------------
+# Local network inventory (lan/oui.tsv): MAC vendor prefixes from the IEEE Registration Authority public
+# listings (MA-L required, MA-M / MA-S best effort). Public registry data, no licence restriction stated.
+
+[[source]]
+name = "ieee-oui"
+kind = "lan"
+fetcher = "oui_list"
+url = "https://standards-oui.ieee.org/oui/oui.csv"
+license = "IEEE Registration Authority public listing"
+registries = ["MA-L", "MA-M", "MA-S"]
+min_entries = 20000

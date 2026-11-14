@@ -39,6 +39,8 @@
 //!                                     "signer_fingerprint":"C24E…A53C"}
 //! privacy/brokers.json                [`BrokersFile`]: organisations to send GDPR erasure requests to (Datenanfragen
 //!                                     CC0 + Eraser MIT, both fetched at pinned commits), optional
+//! lan/oui.tsv                         IEEE MA-L / MA-M / MA-S vendor prefixes for the LAN inventory (`<hex prefix>\t<vendor>`,
+//!                                     sorted), optional
 //! components/pins.json                [`ComponentPins`]: third-party binaries without a vendor signature we can check
 //!                                     on the Mac (sing-box): the pipeline verifies the vendor's GitHub build
 //!                                     provenance attestation (Sigstore) and pins the archive SHA-256 here, so the
@@ -66,6 +68,8 @@ pub const ZBT_SIGNER_FINGERPRINT: &str = "C24EC92B12D6670A2516065F9B4D575499AFA5
 pub const PRIVACY_BROKERS: &str = "privacy/brokers.json";
 /// Pinned third-party components inside the bundle (see the layout above).
 pub const COMPONENT_PINS: &str = "components/pins.json";
+/// IEEE MAC vendor prefixes (`lan/oui.tsv`): `<6, 7 or 9 uppercase hex digits>\t<vendor>` per line, sorted.
+pub const LAN_OUI: &str = "lan/oui.tsv";
 
 /// `privacy/brokers.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

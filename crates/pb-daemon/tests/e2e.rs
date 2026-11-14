@@ -387,16 +387,16 @@ async fn monitor_events_realtime_devices_persistence() {
     }
     let ctx = d.ctx().clone();
     wait_for(|| (!eicar.exists()).then_some(()), "real-time quarantine").await;
-    let alerts = wait_for(
+    // Other subsystems (LAN, intelligence…) may raise their own alerts first: look for the malware one.
+    let malware = wait_for(
         || {
-            let a = ctx.store.list_alerts(10, false).ok()?;
-            (!a.is_empty()).then_some(a)
+            let a = ctx.store.list_alerts(50, false).ok()?;
+            a.into_iter().find(|a| a.kind == AlertKind::Malware)
         },
-        "alert",
+        "malware alert",
     )
     .await;
-    assert_eq!(alerts[0].kind, AlertKind::Malware);
-    assert!(alerts[0].quarantine_id.is_some());
+    assert!(malware.quarantine_id.is_some());
     assert!(ctx
         .store
         .files_seen_since(0, 10)

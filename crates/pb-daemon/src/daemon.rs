@@ -205,6 +205,9 @@ pub async fn start(opts: DaemonOptions) -> anyhow::Result<Daemon> {
         tasks.push(tokio::spawn(crate::posture::daily_loop(ctx.clone())));
         // speed: first posture answer ready before the app asks.
         tasks.push(tokio::spawn(crate::posture::warm_up(ctx.clone())));
+        // ----- Local network & permissions audit -----
+        tasks.push(tokio::spawn(crate::lan::run_loop(ctx.clone())));
+        tasks.push(tokio::spawn(crate::permissions::periodic_loop(ctx.clone())));
     }
     let c2 = ctx.clone();
     tokio::spawn(async move {

@@ -76,6 +76,12 @@
     "learning_days": 7,
     "max_anomaly_alerts_per_day": 10
   },
+  "lan": {
+    "active_on_trusted": true,
+    "alert_new_devices": true,
+    "enabled": true,
+    "scan_interval_minutes": 15
+  },
   "ml": {
     "enabled": true,
     "only_untrusted": true,
@@ -88,6 +94,11 @@
   "notifications": {
     "enabled": true,
     "min_severity": "medium"
+  },
+  "permissions": {
+    "alert_high_risk": true,
+    "enabled": true,
+    "interval_hours": 24
   },
   "persistence": {
     "enabled": true,

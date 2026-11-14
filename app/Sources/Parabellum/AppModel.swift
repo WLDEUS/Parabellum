@@ -446,6 +446,8 @@ final class AppModel: ObservableObject {
             upsert(entry, into: &quarantine)
         case .vpn(let newStatus):
             vpnStatus = newStatus
+        case .lan(let lanStatus):
+            lan.apply(lanStatus)
         case .unknown:
             break
         }

@@ -195,6 +195,80 @@ pub enum Command {
     /// Coffre chiffré (image APFS chiffrée AES-256) et effacement sûr, sans sudo. Les mots de passe
     /// sont lus sur l'entrée standard (ou demandés sans écho).
     Vault(crate::vault::command::VaultArgs),
+    // ----- Local network & permissions audit -----
+    /// Appareils du réseau local (inventaire, analyse, appareils connus).
+    Lan {
+        #[command(subcommand)]
+        action: Option<LanCmd>,
+    },
+    /// Permissions de confidentialité (TCC) et extensions de navigateur.
+    Permissions {
+        #[command(subcommand)]
+        action: Option<PermissionsCmd>,
+    },
+}
+
+// ----- Local network & permissions audit -----
+
+#[derive(Debug, Subcommand)]
+pub enum LanCmd {
+    /// Appareils du réseau actuel (ou d'un réseau connu).
+    Status {
+        /// Réseau (`gw:<adresse du routeur>`).
+        #[arg(long)]
+        network: Option<String>,
+    },
+    /// Analyser le réseau actuel maintenant.
+    Scan {
+        /// Analyse active (balayage léger + Bonjour) même sur un réseau non fiable.
+        #[arg(long, conflicts_with = "passive")]
+        active: bool,
+        /// Lire seulement les caches système (aucun paquet envoyé).
+        #[arg(long)]
+        passive: bool,
+    },
+    /// Ports TCP ouverts d'un appareil (20 ports courants).
+    Ports {
+        /// Adresse matérielle (aa:bb:cc:dd:ee:ff).
+        mac: String,
+    },
+    /// Nommer un appareil (nom vide = effacer).
+    Rename {
+        network: String,
+        mac: String,
+        name: String,
+    },
+    /// « Je connais cet appareil » (administrateur).
+    Trust { network: String, mac: String },
+    /// Ne plus considérer l'appareil comme connu.
+    Untrust { network: String, mac: String },
+    /// Oublier un appareil (signalé comme nouveau s'il revient).
+    Forget { network: String, mac: String },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum PermissionsCmd {
+    /// Permissions accordées aux apps (bases TCC du système et de l'utilisateur, via le daemon).
+    Audit {
+        /// Refaire l'audit maintenant.
+        #[arg(long)]
+        refresh: bool,
+    },
+    /// Extensions des navigateurs (Chrome, Brave, Edge, Arc, Chromium, Vivaldi, Firefox, Safari).
+    Extensions,
+    /// Retirer une permission à une app (tccutil reset, en tant qu'utilisateur).
+    Reset {
+        /// Service (`Camera`, `Microphone`, `ScreenCapture`, `Accessibility`… ou `kTCCService…`).
+        service: String,
+        /// Identifiant de l'app (com.exemple.app).
+        bundle_id: String,
+    },
+    /// (Interne) Résoudre des identifiants d'apps ou chemins : nom, emplacement, signature.
+    #[command(hide = true)]
+    Resolve {
+        #[arg(required = true)]
+        clients: Vec<String>,
+    },
 }
 
 #[derive(Debug, Args)]

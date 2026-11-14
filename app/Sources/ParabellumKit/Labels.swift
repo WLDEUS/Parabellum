@@ -131,6 +131,7 @@ extension AlertAction {
         case .trustNetwork: return "Faire confiance à ce réseau"
         case .allowDomain: return "Autoriser ce domaine"
         case .markNormal: return "C'est normal"
+        case .trustLanDevice: return "Je connais cet appareil"
         case .unknown: return "Action inconnue"
         }
     }

@@ -15,6 +15,8 @@ pub mod protect;
 pub mod vault;
 // Intelligence (domain model + behaviour baseline)
 pub mod intel;
+// ----- Local network & permissions audit -----
+pub mod audit;
 
 pub use cli::Cli;
 pub use commands::{run, Output};

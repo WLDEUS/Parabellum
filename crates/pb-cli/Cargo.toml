@@ -27,7 +27,7 @@ thiserror = { workspace = true }
 chrono = { workspace = true }
 toml = { workspace = true }
 libc = { workspace = true }
-# Coffre: hdiutil -plist output.
+# Coffre (hdiutil -plist) and permissions audit (apps' Info.plist).
 plist = { workspace = true }
 
 [dev-dependencies]

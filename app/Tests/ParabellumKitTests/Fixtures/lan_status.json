@@ -1,0 +1,91 @@
+{
+  "enabled": true,
+  "interval_minutes": 15,
+  "network": {
+    "current": true,
+    "devices": [
+      {
+        "baseline": true,
+        "device_type": "router",
+        "first_seen": 1793000000,
+        "ipv4": "192.168.1.1",
+        "ipv6": [
+          "fe80::1"
+        ],
+        "is_gateway": true,
+        "is_self": false,
+        "last_seen": 1793000900,
+        "mac": "00:24:d4:a1:b2:c3",
+        "online": true,
+        "open_ports": [],
+        "private_mac": false,
+        "services": [],
+        "trusted": false,
+        "vendor": "Freebox SAS"
+      },
+      {
+        "baseline": true,
+        "device_type": "tv",
+        "first_seen": 1793000000,
+        "hostname": "Apple-TV.local",
+        "ipv4": "192.168.1.30",
+        "ipv6": [],
+        "is_gateway": false,
+        "is_self": false,
+        "last_seen": 1793000900,
+        "mac": "90:dd:5d:11:22:33",
+        "mdns_name": "Salon",
+        "model": "AppleTV11,1",
+        "name": "Apple TV du salon",
+        "online": true,
+        "open_ports": [],
+        "private_mac": false,
+        "services": [
+          "_airplay._tcp",
+          "_raop._tcp"
+        ],
+        "trusted": true,
+        "vendor": "Apple, Inc."
+      },
+      {
+        "baseline": false,
+        "device_type": "unknown",
+        "first_seen": 1793000000,
+        "ipv4": "192.168.1.41",
+        "ipv6": [],
+        "is_gateway": false,
+        "is_self": false,
+        "last_seen": 1793000900,
+        "mac": "3a:5f:12:9c:7e:01",
+        "online": true,
+        "open_ports": [
+          62078
+        ],
+        "ports_checked_at": 1793000950,
+        "private_mac": true,
+        "services": [],
+        "trusted": false
+      }
+    ],
+    "id": "gw:00:24:d4:a1:b2:c3",
+    "interface": "en0",
+    "last_scan": 1793000900,
+    "last_scan_mode": "active",
+    "name": "Livebox-1234",
+    "subnet": "192.168.1.0/24",
+    "trusted": true
+  },
+  "networks": [
+    {
+      "current": true,
+      "devices": 3,
+      "id": "gw:00:24:d4:a1:b2:c3",
+      "last_scan": 1793000900,
+      "name": "Livebox-1234",
+      "trusted": true,
+      "unknown": 1
+    }
+  ],
+  "progress": 1.0,
+  "scanning": false
+}

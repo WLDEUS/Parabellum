@@ -780,6 +780,19 @@ pub fn event(ev: &DaemonEvent) -> String {
                 .map(|n| format!(" — réseau {}", n.name))
                 .unwrap_or_default()
         ),
+        DaemonEvent::Lan(l) => match (&l.network, l.scanning) {
+            (Some(n), true) => format!(
+                "[{now}] réseau local {} : analyse {:.0} %",
+                n.name,
+                l.progress * 100.0
+            ),
+            (Some(n), false) => format!(
+                "[{now}] réseau local {} : {} appareil(s)",
+                n.name,
+                n.devices.len()
+            ),
+            (None, _) => format!("[{now}] réseau local : aucun réseau"),
+        },
     }
 }
 

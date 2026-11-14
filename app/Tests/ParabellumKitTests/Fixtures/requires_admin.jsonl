@@ -68,3 +68,13 @@
 {"id":68,"requires_admin":true}
 {"id":69,"requires_admin":true}
 {"id":70,"requires_admin":true}
+{"id":71,"requires_admin":false}
+{"id":72,"requires_admin":false}
+{"id":73,"requires_admin":false}
+{"id":74,"requires_admin":false}
+{"id":75,"requires_admin":true}
+{"id":76,"requires_admin":false}
+{"id":77,"requires_admin":false}
+{"id":78,"requires_admin":false}
+{"id":79,"requires_admin":false}
+{"id":80,"requires_admin":true}

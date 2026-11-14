@@ -78,6 +78,17 @@ final class ProtocolTests: XCTestCase {
             .intelResetBaseline,
             .resolveAlert(alertId: 41, action: .allowDomain),
             .resolveAlert(alertId: 42, action: .markNormal),
+            // Local network & permissions audit
+            .lanStatus(),
+            .lanStatus(networkId: "gw:00:24:d4:a1:b2:c3"),
+            .lanScan(),
+            .lanScan(active: true),
+            .lanSetDevice(networkId: "gw:00:24:d4:a1:b2:c3", mac: "3a:5f:12:9c:7e:01", name: "iPhone de Camille", trusted: true),
+            .lanSetDevice(networkId: "gw:00:24:d4:a1:b2:c3", mac: "3a:5f:12:9c:7e:01", name: ""),
+            .lanForgetDevice(networkId: "gw:00:24:d4:a1:b2:c3", mac: "3a:5f:12:9c:7e:01"),
+            .lanPorts(mac: "3a:5f:12:9c:7e:01"),
+            .permissionsAudit(refresh: true),
+            .resolveAlert(alertId: 32, action: .trustLanDevice),
         ]
     }
 

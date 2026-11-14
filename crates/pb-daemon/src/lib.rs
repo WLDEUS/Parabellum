@@ -42,3 +42,6 @@ pub mod virustotal;
 pub mod vpn;
 // Intelligence (domain model + behaviour baseline)
 pub mod intel;
+// ----- Local network & permissions audit -----
+pub mod lan;
+pub mod permissions;

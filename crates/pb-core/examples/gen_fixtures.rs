@@ -775,6 +775,181 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })?,
     )?;
 
+    // ----- Local network & permissions audit -----
+    let lan_device = |mac: &str, ip: &str, t: LanDeviceType| LanDevice {
+        mac: mac.into(),
+        ipv4: Some(ip.into()),
+        ipv6: vec![],
+        hostname: None,
+        mdns_name: None,
+        name: None,
+        vendor: None,
+        private_mac: false,
+        device_type: t,
+        model: None,
+        services: vec![],
+        open_ports: vec![],
+        ports_checked_at: None,
+        first_seen: 1_793_000_000,
+        last_seen: 1_793_000_900,
+        online: true,
+        trusted: false,
+        baseline: true,
+        is_gateway: false,
+        is_self: false,
+    };
+    let mut router = lan_device("00:24:d4:a1:b2:c3", "192.168.1.1", LanDeviceType::Router);
+    router.vendor = Some("Freebox SAS".into());
+    router.is_gateway = true;
+    router.ipv6 = vec!["fe80::1".into()];
+    let mut tv = lan_device("90:dd:5d:11:22:33", "192.168.1.30", LanDeviceType::Tv);
+    tv.vendor = Some("Apple, Inc.".into());
+    tv.hostname = Some("Apple-TV.local".into());
+    tv.mdns_name = Some("Salon".into());
+    tv.model = Some("AppleTV11,1".into());
+    tv.services = vec!["_airplay._tcp".into(), "_raop._tcp".into()];
+    tv.trusted = true;
+    tv.name = Some("Apple TV du salon".into());
+    let mut phone = lan_device("3a:5f:12:9c:7e:01", "192.168.1.41", LanDeviceType::Unknown);
+    phone.private_mac = true;
+    phone.baseline = false;
+    phone.open_ports = vec![62078];
+    phone.ports_checked_at = Some(1_793_000_950);
+    let lan_status = LanStatus {
+        enabled: true,
+        scanning: false,
+        progress: 1.0,
+        phase: None,
+        network: Some(LanNetwork {
+            id: "gw:00:24:d4:a1:b2:c3".into(),
+            name: "Livebox-1234".into(),
+            interface: "en0".into(),
+            subnet: Some("192.168.1.0/24".into()),
+            trusted: true,
+            current: true,
+            last_scan: Some(1_793_000_900),
+            last_scan_mode: Some(LanScanMode::Active),
+            devices: vec![router, tv, phone],
+        }),
+        networks: vec![LanNetworkSummary {
+            id: "gw:00:24:d4:a1:b2:c3".into(),
+            name: "Livebox-1234".into(),
+            trusted: true,
+            current: true,
+            devices: 3,
+            unknown: 1,
+            last_scan: Some(1_793_000_900),
+        }],
+        message: None,
+        interval_minutes: 15,
+    };
+    w("lan_status", serde_json::to_value(&lan_status)?)?;
+    let scanning = LanStatus {
+        scanning: true,
+        progress: 0.4,
+        phase: Some("Balayage léger du sous-réseau".into()),
+        message: Some("Réseau non marqué de confiance : seuls les caches système sont lus.".into()),
+        interval_minutes: 15,
+        ..Default::default()
+    };
+    std::fs::write(
+        dir.join("lan_event.jsonl"),
+        serde_json::to_string(&DaemonEvent::Lan(scanning))? + "\n",
+    )?;
+    let adhoc = SigningInfo {
+        signed: true,
+        valid: true,
+        adhoc: true,
+        team_id: None,
+        identifier: Some("com.example.clicker".into()),
+        authority: None,
+        notarized: None,
+        apple: false,
+    };
+    let report = PermissionsReport {
+        generated_at: 1_793_001_000,
+        grants: vec![
+            TccGrant {
+                id: "0123456789abcdef".into(),
+                service: "kTCCServiceAccessibility".into(),
+                service_label: "Accessibilité".into(),
+                client: "com.example.clicker".into(),
+                client_is_path: false,
+                app_name: Some("Clicker".into()),
+                app_path: Some("/Applications/Clicker.app".into()),
+                installed: Some(true),
+                auth: TccAuthValue::Allowed,
+                system_wide: true,
+                last_modified: Some(1_792_000_000),
+                target: None,
+                target_name: None,
+                signing: Some(adhoc.clone()),
+                risk: Severity::High,
+                reasons: vec!["App signée « ad hoc » (sans identité de développeur)".into()],
+                settings_url: Some(
+                    "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+                        .into(),
+                ),
+            },
+            TccGrant {
+                id: "fedcba9876543210".into(),
+                service: "kTCCServiceAppleEvents".into(),
+                service_label: "Automatisation".into(),
+                client: "/usr/local/bin/helper".into(),
+                client_is_path: true,
+                app_name: Some("helper".into()),
+                app_path: None,
+                installed: Some(false),
+                auth: TccAuthValue::Allowed,
+                system_wide: false,
+                last_modified: None,
+                target: Some("com.apple.finder".into()),
+                target_name: Some("Finder".into()),
+                signing: None,
+                risk: Severity::Low,
+                reasons: vec![
+                    "App introuvable sur ce Mac : autorisation orpheline à réinitialiser".into(),
+                ],
+                settings_url: None,
+            },
+        ],
+        system_db_read: true,
+        user_db_read: true,
+        configuration_profiles: vec!["Profil Wi-Fi du bureau".into()],
+        errors: vec![],
+    };
+    w("permissions_report", serde_json::to_value(&report)?)?;
+    let ext = ExtensionsReport {
+        generated_at: 1_793_001_100,
+        extensions: vec![BrowserExtension {
+            id: "chrome:Personnel:cjpalhdlnbpafiamejdnhcphjbkeiagm".into(),
+            browser: "chrome".into(),
+            profile: "Personnel".into(),
+            extension_id: "cjpalhdlnbpafiamejdnhcphjbkeiagm".into(),
+            name: "uBlock Origin".into(),
+            version: Some("1.62.0".into()),
+            enabled: Some(true),
+            from_store: Some(true),
+            unpacked: false,
+            permissions: vec!["webRequest".into(), "tabs".into()],
+            host_permissions: vec!["<all_urls>".into()],
+            risk: Severity::High,
+            reasons: vec!["Peut lire et modifier toutes les pages web".into()],
+            path: None,
+        }],
+        errors: vec!["Safari : pluginkit n'a pas répondu".into()],
+    };
+    w("extensions_report", serde_json::to_value(&ext)?)?;
+    w(
+        "tcc_reset",
+        serde_json::to_value(TccResetResult {
+            ok: true,
+            service: "Camera".into(),
+            bundle_id: "us.zoom.xos".into(),
+            message: "Autorisation « Camera » retirée à us.zoom.xos.".into(),
+        })?,
+    )?;
+
     // Every request kind, as the Swift client must encode them (one per line).
     let reqs = vec![
         Request::Ping,
@@ -933,6 +1108,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Request::ResolveAlert {
             alert_id: 42,
             action: AlertAction::MarkNormal,
+        },
+        // ----- Local network & permissions audit -----
+        Request::LanStatus { network_id: None },
+        Request::LanStatus {
+            network_id: Some("gw:00:24:d4:a1:b2:c3".into()),
+        },
+        Request::LanScan { active: None },
+        Request::LanScan { active: Some(true) },
+        Request::LanSetDevice {
+            network_id: "gw:00:24:d4:a1:b2:c3".into(),
+            mac: "3a:5f:12:9c:7e:01".into(),
+            name: Some("iPhone de Camille".into()),
+            trusted: Some(true),
+        },
+        Request::LanSetDevice {
+            network_id: "gw:00:24:d4:a1:b2:c3".into(),
+            mac: "3a:5f:12:9c:7e:01".into(),
+            name: Some(String::new()),
+            trusted: None,
+        },
+        Request::LanForgetDevice {
+            network_id: "gw:00:24:d4:a1:b2:c3".into(),
+            mac: "3a:5f:12:9c:7e:01".into(),
+        },
+        Request::LanPorts {
+            mac: "3a:5f:12:9c:7e:01".into(),
+        },
+        Request::PermissionsAudit { refresh: true },
+        Request::ResolveAlert {
+            alert_id: 32,
+            action: AlertAction::TrustLanDevice,
         },
     ];
     // Which commands need administrator approval (`auth` or root), same order/ids as requests.jsonl.

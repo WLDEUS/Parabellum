@@ -30,6 +30,10 @@ public struct Config: Codable, Sendable, Hashable {
     public var aliases = AliasConfig()
     /// Intelligence: domain model + behavioural anomaly detection (`[intelligence]`).
     public var intelligence = IntelligenceConfig()
+    // ----- Local network & permissions audit -----
+    public var lan = LanConfig()
+    /// Rust `permissions`.
+    public var permissionsAudit = PermissionsAuditConfig()
 
     public init() {}
 
@@ -41,6 +45,9 @@ public struct Config: Codable, Sendable, Hashable {
         case dataRemoval = "data_removal"
         case breach, aliases
         case intelligence
+        // ----- Local network & permissions audit -----
+        case lan
+        case permissionsAudit = "permissions"
     }
 
     public init(from decoder: Decoder) throws {
@@ -64,6 +71,9 @@ public struct Config: Codable, Sendable, Hashable {
         breach = try c.decodeOr(.breach, breach)
         aliases = try c.decodeOr(.aliases, aliases)
         intelligence = try c.decodeOr(.intelligence, intelligence)
+        // ----- Local network & permissions audit -----
+        lan = try c.decodeOr(.lan, lan)
+        permissionsAudit = try c.decodeOr(.permissionsAudit, permissionsAudit)
     }
 
     /// Same rules as `Config::validate` in Rust (messages in French). Empty = valid.
@@ -98,6 +108,13 @@ public struct Config: Codable, Sendable, Hashable {
         }
         errors.append(contentsOf: protectionValidationErrors())
         errors.append(contentsOf: intelligence.validationErrors())
+        // ----- Local network & permissions audit -----
+        if lan.scanIntervalMinutes < 5 || lan.scanIntervalMinutes > 1440 {
+            errors.append("L'intervalle d'analyse du réseau local doit être compris entre 5 et 1440 minutes.")
+        }
+        if permissionsAudit.intervalHours < 1 || permissionsAudit.intervalHours > 168 {
+            errors.append("L'intervalle d'audit des permissions doit être compris entre 1 et 168 heures.")
+        }
         return errors
     }
 }
@@ -456,5 +473,57 @@ public struct NotificationsConfig: Codable, Sendable, Hashable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         enabled = try c.decodeOr(.enabled, enabled)
         minSeverity = try c.decodeOr(.minSeverity, minSeverity)
+    }
+}
+
+// MARK: - Local network & permissions audit
+
+/// `[lan]`: inventory of the devices of the current network.
+public struct LanConfig: Codable, Sendable, Hashable {
+    public var enabled: Bool = true
+    public var scanIntervalMinutes: Int = 15
+    /// Active scan (light sweep + Bonjour) on trusted, non-captive networks; caches only elsewhere.
+    public var activeOnTrusted: Bool = true
+    public var alertNewDevices: Bool = true
+
+    public init() {}
+
+    enum CodingKeys: String, CodingKey {
+        case enabled
+        case scanIntervalMinutes = "scan_interval_minutes"
+        case activeOnTrusted = "active_on_trusted"
+        case alertNewDevices = "alert_new_devices"
+    }
+
+    public init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try c.decodeOr(.enabled, enabled)
+        scanIntervalMinutes = try c.decodeOr(.scanIntervalMinutes, scanIntervalMinutes)
+        activeOnTrusted = try c.decodeOr(.activeOnTrusted, activeOnTrusted)
+        alertNewDevices = try c.decodeOr(.alertNewDevices, alertNewDevices)
+    }
+}
+
+/// `[permissions]`: periodic audit of the privacy permissions (TCC).
+public struct PermissionsAuditConfig: Codable, Sendable, Hashable {
+    public var enabled: Bool = true
+    public var intervalHours: Int = 24
+    public var alertHighRisk: Bool = true
+
+    public init() {}
+
+    enum CodingKeys: String, CodingKey {
+        case enabled
+        case intervalHours = "interval_hours"
+        case alertHighRisk = "alert_high_risk"
+    }
+
+    public init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try c.decodeOr(.enabled, enabled)
+        intervalHours = try c.decodeOr(.intervalHours, intervalHours)
+        alertHighRisk = try c.decodeOr(.alertHighRisk, alertHighRisk)
     }
 }
