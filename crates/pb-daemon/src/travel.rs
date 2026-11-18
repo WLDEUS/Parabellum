@@ -138,11 +138,16 @@ pub struct EnableOptions {
     pub vpn_usable: bool,
     /// `travel.block_all_incoming`.
     pub block_all: bool,
+    /// Automatic enable (v2-new review #8): leave the kill switch and DNS blocking as they are; they are
+    /// armed later ([`Travel::arm`]) — DNS once Internet answers (after a captive portal login), the kill
+    /// switch once the VPN has connected — so a portal page never becomes unreachable.
+    pub defer_blocking: bool,
 }
 
 pub const WARN_NO_VPN: &str = "VPN non configuré : importez un profil (ou choisissez un VPN de macOS) pour chiffrer le trafic. Le coupe-circuit n'a pas été activé pour ne pas couper Internet.";
 pub const WARN_FIREWALL_UNKNOWN: &str =
     "État du coupe-feu de macOS illisible : il n'a pas été modifié.";
+pub const WARN_DEFERRED: &str = "Blocage DNS activé dès qu'Internet répond (après l'éventuel portail de connexion du Wi-Fi), coupe-circuit dès que le VPN est connecté.";
 
 /// Target settings of travel mode, with French warnings for what is left out.
 pub fn plan_enable(current: &Settings, opts: &EnableOptions) -> (Settings, Vec<String>) {
@@ -150,11 +155,14 @@ pub fn plan_enable(current: &Settings, opts: &EnableOptions) -> (Settings, Vec<S
     let mut warnings = Vec::new();
     if opts.vpn_usable {
         t.vpn_mode = VpnMode::Always;
-        t.kill_switch = true;
+        t.kill_switch = !opts.defer_blocking || current.kill_switch;
     } else {
         warnings.push(WARN_NO_VPN.to_string());
     }
-    t.dns = true;
+    t.dns = !opts.defer_blocking || current.dns;
+    if opts.defer_blocking && (!t.dns || (opts.vpn_usable && !t.kill_switch)) {
+        warnings.push(WARN_DEFERRED.to_string());
+    }
     if current.firewall.is_some() {
         t.firewall = Some(true);
         if current.stealth.is_some() {
@@ -200,8 +208,10 @@ pub enum NetAction {
     /// Raise an alert offering travel mode.
     Suggest,
     AutoEnable,
-    /// Travel mode was enabled automatically and the Mac is back on a trusted network.
-    AutoDisable,
+    /// Travel mode was enabled automatically and the Mac is back on a trusted network: tell the user,
+    /// never lower protection by itself (a trusted network id is a gateway MAC, which an evil twin can
+    /// copy) — disabling stays an explicit, administrator-approved action.
+    OfferDisable,
 }
 
 /// Decision for a new current network (`trusted` = in `vpn.trusted_networks`).
@@ -217,7 +227,7 @@ pub fn network_action(
         Some(false) if cfg.auto_enable => NetAction::AutoEnable,
         Some(false) if cfg.suggest_on_untrusted => NetAction::Suggest,
         Some(false) => NetAction::None,
-        Some(true) if active && automatic => NetAction::AutoDisable,
+        Some(true) if active && automatic => NetAction::OfferDisable,
         Some(true) => NetAction::None,
     }
 }
@@ -241,6 +251,11 @@ pub struct Snapshot {
     pub applied: Settings,
     #[serde(default)]
     pub warnings: Vec<String>,
+    /// Deferred by an automatic enable, armed by [`Travel::arm`].
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pending_dns: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pending_kill_switch: bool,
 }
 
 /// A network as seen in the VPN status.
@@ -373,6 +388,7 @@ impl Travel {
         let opts = EnableOptions {
             vpn_usable: b.vpn_usable().await,
             block_all: false,
+            defer_blocking: automatic,
         };
         self.enable_with(b, current, opts, automatic, network, now)
             .await
@@ -395,6 +411,7 @@ impl Travel {
         let opts = EnableOptions {
             vpn_usable: b.vpn_usable().await,
             block_all,
+            defer_blocking: automatic,
         };
         self.enable_with(b, current, opts, automatic, network, now)
             .await
@@ -419,6 +436,8 @@ impl Travel {
             before: current,
             applied: target,
             warnings: warnings.clone(),
+            pending_dns: opts.defer_blocking && !target.dns,
+            pending_kill_switch: opts.defer_blocking && opts.vpn_usable && !target.kill_switch,
         };
         self.save(Some(&snap))
             .map_err(|e| format!("enregistrement de l'état du mode Voyage impossible : {e}"))?;
@@ -442,6 +461,62 @@ impl Travel {
         }
         tracing::info!(automatic, changes = ?snap.before.diff(&snap.applied), "travel mode enabled");
         Ok(self.status())
+    }
+
+    /// Something deferred by an automatic enable is still to be armed.
+    pub fn arm_pending(&self) -> bool {
+        lock(&self.snapshot)
+            .as_ref()
+            .is_some_and(|s| s.pending_dns || s.pending_kill_switch)
+    }
+
+    /// Arm what an automatic enable deferred: DNS blocking once Internet answers (`internet_ok`, or the
+    /// VPN connected), the kill switch once the VPN connected. Returns whether something is still pending.
+    pub async fn arm(
+        &self,
+        b: &dyn TravelBackend,
+        vpn_connected: bool,
+        internet_ok: bool,
+    ) -> Result<bool, String> {
+        let _op = self.op.lock().await;
+        let Some(mut snap) = lock(&self.snapshot).clone() else {
+            return Ok(false);
+        };
+        let current = b.read().await;
+        let mut target = current;
+        let arm_dns = snap.pending_dns && (internet_ok || vpn_connected);
+        let arm_ks = snap.pending_kill_switch && vpn_connected;
+        if arm_dns {
+            target.dns = true;
+        }
+        if arm_ks {
+            target.kill_switch = true;
+        }
+        if !arm_dns && !arm_ks {
+            return Ok(snap.pending_dns || snap.pending_kill_switch);
+        }
+        let warnings = b.apply(&current, &target).await;
+        let achieved = b.read().await;
+        // Only what really took effect is recorded (and restored later); a failure stays pending.
+        if arm_dns && achieved.dns {
+            snap.applied.dns = true;
+            snap.pending_dns = false;
+        }
+        if arm_ks && achieved.kill_switch {
+            snap.applied.kill_switch = true;
+            snap.pending_kill_switch = false;
+        }
+        if !snap.pending_dns && !snap.pending_kill_switch {
+            snap.warnings.retain(|w| w != WARN_DEFERRED);
+        }
+        snap.warnings.extend(warnings);
+        snap.warnings.dedup();
+        if let Err(e) = self.save(Some(&snap)) {
+            tracing::warn!(error = %e, "travel snapshot not updated");
+        }
+        *lock(&self.snapshot) = Some(snap.clone());
+        tracing::info!(arm_dns, arm_ks, "travel mode: deferred protection armed");
+        Ok(snap.pending_dns || snap.pending_kill_switch)
     }
 
     /// Disable: put back what travel mode changed (no-op when off).
@@ -738,6 +813,18 @@ pub async fn disable(ctx: &Arc<Ctx>) -> Result<TravelStatus, IpcError> {
 
 /// Called on every VPN status push: on a network change, suggest / enable / restore travel mode.
 pub fn on_vpn_status(ctx: &Arc<Ctx>, status: &VpnStatus) {
+    // Automatic travel mode: the VPN carrying traffic proves Internet works (portal passed): arm the
+    // kill switch and DNS blocking it deferred.
+    if status.state == VpnState::Connected && ctx.travel.arm_pending() {
+        let ctx = ctx.clone();
+        tokio::spawn(async move {
+            let b = DaemonBackend::new(&ctx);
+            if let Err(e) = ctx.travel.arm(&b, true, true).await {
+                tracing::warn!(error = %e, "travel mode: arming failed");
+            }
+            ctx.status_dirty.notify_one();
+        });
+    }
     let seen = status.network.as_ref().map(|n| SeenNetwork {
         id: n.id.clone(),
         name: n.name.clone(),
@@ -769,8 +856,10 @@ pub fn on_vpn_status(ctx: &Arc<Ctx>, status: &VpnStatus) {
                             Severity::Low,
                             "Mode Voyage activé automatiquement",
                             format!(
-                                "Le réseau « {} » n'est pas approuvé : VPN, coupe-circuit, blocage DNS et coupe-feu furtif \
-                                 sont actifs. Ils seront rétablis à votre retour sur un réseau approuvé.",
+                                "Le réseau « {} » n'est pas approuvé : VPN et coupe-feu furtif sont actifs ; le blocage \
+                                 DNS suit dès qu'Internet répond (après l'éventuel portail de connexion du Wi-Fi) et le \
+                                 coupe-circuit dès que le VPN est connecté. Désactivez le mode Voyage depuis Parabellum \
+                                 à votre retour.",
                                 net.name
                             ),
                         );
@@ -780,19 +869,55 @@ pub fn on_vpn_status(ctx: &Arc<Ctx>, status: &VpnStatus) {
                             Some(format!("travel-auto:{}", net.id)),
                         )
                         .await;
+                        arm_when_online(ctx).await;
                     }
                     Err(e) => tracing::warn!(error = %e.message, "automatic travel mode failed"),
                 }
             });
         }
-        NetAction::AutoDisable => {
-            tokio::spawn(async move {
-                if let Err(e) = disable(&ctx).await {
-                    tracing::warn!(error = %e.message, "automatic travel mode restore failed");
-                }
-            });
+        NetAction::OfferDisable => {
+            tokio::spawn(async move { offer_disable(&ctx, &net).await });
         }
     }
+}
+
+/// Captive-portal probe interval / attempts while DNS blocking waits for Internet (30 min).
+const ARM_PROBE_EVERY: std::time::Duration = std::time::Duration::from_secs(20);
+const ARM_PROBE_ATTEMPTS: u32 = 90;
+
+/// After an automatic enable: arm DNS blocking once Apple's captive probe answers (the VPN status push
+/// arms everything when the tunnel connects).
+async fn arm_when_online(ctx: Arc<Ctx>) {
+    use crate::lan::probe::{LanSystem, RealLanSystem};
+    let sys = RealLanSystem::default();
+    for _ in 0..ARM_PROBE_ATTEMPTS {
+        if !ctx.travel.arm_pending() || !ctx.travel.is_active() {
+            return;
+        }
+        if !sys.captive().await {
+            let b = DaemonBackend::new(&ctx);
+            match ctx.travel.arm(&b, false, true).await {
+                Ok(_) => ctx.status_dirty.notify_one(),
+                Err(e) => tracing::warn!(error = %e, "travel mode: arming DNS failed"),
+            }
+            return;
+        }
+        tokio::time::sleep(ARM_PROBE_EVERY).await;
+    }
+}
+
+/// Back on a trusted network after an automatic enable: inform, never disable by itself.
+async fn offer_disable(ctx: &Arc<Ctx>, net: &SeenNetwork) {
+    let mut a = crate::actions::alert(
+        AlertKind::Network,
+        Severity::Low,
+        format!("Réseau approuvé « {} » : mode Voyage toujours actif", net.name),
+        "Le mode Voyage, activé automatiquement, reste actif : un réseau piégé peut imiter le vôtre (même nom, \
+         même routeur). Si vous êtes bien sur votre réseau, désactivez-le depuis Parabellum (Mode Voyage).",
+    );
+    a.network_id = Some(net.id.clone());
+    a.actions = vec![AlertAction::Acknowledge];
+    crate::actions::raise_alert(ctx, a, Some(format!("travel-home:{}", net.id))).await;
 }
 
 /// Alert offering travel mode on an untrusted network (once per network per day).
@@ -912,6 +1037,7 @@ mod tests {
             &EnableOptions {
                 vpn_usable: true,
                 block_all: false,
+                ..Default::default()
             },
         );
         assert_eq!(t.vpn_mode, VpnMode::Always);
@@ -926,6 +1052,7 @@ mod tests {
             &EnableOptions {
                 vpn_usable: false,
                 block_all: true,
+                ..Default::default()
             },
         );
         assert_eq!(t.vpn_mode, VpnMode::Off);
@@ -948,6 +1075,7 @@ mod tests {
             &EnableOptions {
                 vpn_usable: true,
                 block_all: false,
+                ..Default::default()
             },
         );
         // Nothing touched since: everything goes back.
@@ -993,7 +1121,7 @@ mod tests {
         assert_eq!(network_action(&c, true, false, Some(true)), NetAction::None);
         assert_eq!(
             network_action(&c, true, true, Some(true)),
-            NetAction::AutoDisable
+            NetAction::OfferDisable
         );
         c.auto_enable = true;
         assert_eq!(
@@ -1067,7 +1195,14 @@ mod tests {
             assert_eq!(fake.get().vpn_mode, VpnMode::UntrustedNetworks);
             assert_eq!(fake.connects.load(Ordering::SeqCst), 0);
             assert!(!st.changes.iter().any(|c| c.id == "dns"));
-            assert!(st.warnings.iter().any(|w| w.contains("dns indisponible")));
+            // Automatic: DNS deferred until Internet answers; then the failure is reported.
+            assert!(st.warnings.contains(&WARN_DEFERRED.to_string()));
+            assert!(t.arm(&fake, false, true).await.unwrap(), "still pending");
+            assert!(t
+                .status()
+                .warnings
+                .iter()
+                .any(|w| w.contains("dns indisponible")));
             assert!(st.warnings.contains(&WARN_NO_VPN.to_string()));
         }
         // "Reboot": the snapshot is reloaded, travel mode is still on.
@@ -1081,6 +1216,42 @@ mod tests {
         assert!(after.dns);
         assert_eq!(after.firewall, Some(false));
         assert_eq!(after.vpn_mode, VpnMode::UntrustedNetworks);
+    }
+
+    /// v2-new review #8: an automatic enable (maybe behind a captive portal) arms DNS blocking only once
+    /// Internet answers and the kill switch only once the VPN connected; everything is restored after.
+    #[tokio::test]
+    async fn automatic_enable_defers_blocking_until_online() {
+        let d = tempfile::tempdir().unwrap();
+        let t = Travel::new(d.path());
+        let fake = Fake::new(home(), true);
+        let st = t.enable(&fake, true, net(), 10).await.unwrap();
+        assert!(st.automatic && t.arm_pending());
+        let s = fake.get();
+        assert_eq!(s.vpn_mode, VpnMode::Always);
+        assert!(
+            !s.kill_switch && !s.dns,
+            "nothing blocking before the portal login"
+        );
+        assert_eq!(s.stealth, Some(true));
+        assert!(st.warnings.contains(&WARN_DEFERRED.to_string()));
+        // Still behind the portal: nothing armed.
+        assert!(t.arm(&fake, false, false).await.unwrap());
+        assert!(!fake.get().dns);
+        // Captive probe passes: DNS armed, kill switch waits for the VPN.
+        assert!(t.arm(&fake, false, true).await.unwrap());
+        assert!(fake.get().dns && !fake.get().kill_switch);
+        // VPN connected: kill switch armed, nothing pending, persisted.
+        assert!(!t.arm(&fake, true, true).await.unwrap());
+        assert!(fake.get().kill_switch && !t.arm_pending());
+        assert!(!t.status().warnings.contains(&WARN_DEFERRED.to_string()));
+        assert!(!Travel::new(d.path()).arm_pending());
+        assert_eq!(t.status().changes.len(), 5);
+        t.disable(&fake).await.unwrap();
+        assert_eq!(fake.get(), home());
+        // A manual enable arms everything at once.
+        t.enable(&fake, false, net(), 20).await.unwrap();
+        assert!(fake.get().kill_switch && fake.get().dns && !t.arm_pending());
     }
 
     #[test]

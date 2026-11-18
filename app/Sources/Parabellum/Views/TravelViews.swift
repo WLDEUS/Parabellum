@@ -166,7 +166,7 @@ struct TravelSettingsSection: View {
         } header: {
             Text("Mode Voyage")
         } footer: {
-            Text("Activé automatiquement, il est rétabli dès le retour sur un réseau approuvé (VPN > Réseaux).")
+            Text("Activé automatiquement, le blocage DNS attend qu'Internet réponde (portail de connexion du Wi-Fi) et le coupe-circuit la connexion du VPN. De retour sur un réseau approuvé (VPN > Réseaux), une alerte vous propose de le désactiver : un réseau piégé peut imiter le vôtre.")
         }
     }
 }
