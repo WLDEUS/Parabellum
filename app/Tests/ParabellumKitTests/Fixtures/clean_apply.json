@@ -1,0 +1,30 @@
+{
+  "cleaned": 2,
+  "dry_run": false,
+  "failed": 0,
+  "freed_bytes": 1200000000,
+  "results": [
+    {
+      "bytes": 350000000,
+      "category": "caches",
+      "outcome": "moved_to_trash",
+      "path": "/Users/q/Library/Caches/com.spotify.client",
+      "trashed_as": "/Users/q/.Trash/com.spotify.client 2"
+    },
+    {
+      "bytes": 1200000000,
+      "category": "trash",
+      "outcome": "deleted",
+      "path": "/Users/q/.Trash"
+    },
+    {
+      "bytes": 0,
+      "category": "browser_caches",
+      "message": "utilisé par une application ouverte",
+      "outcome": "skipped",
+      "path": "/Users/q/Library/Caches/Google/Chrome"
+    }
+  ],
+  "skipped": 1,
+  "trashed_bytes": 350000000
+}

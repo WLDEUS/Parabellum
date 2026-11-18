@@ -82,3 +82,5 @@
 {"id":82,"cmd":"travel_enable"}
 {"id":83,"cmd":"travel_disable"}
 {"id":84,"cmd":"resolve_alert","alert_id":40,"action":"enable_travel_mode"}
+{"id":85,"cmd":"report","period":"month","offset":1}
+{"id":86,"cmd":"report","period":"custom","offset":0,"from":"2026-10-01","to":"2026-10-15"}

@@ -796,6 +796,73 @@ pub fn event(ev: &DaemonEvent) -> String {
     }
 }
 
+// ----- Activity report -----
+
+fn hours(secs: u64) -> String {
+    format!("{} h {:02}", secs / 3600, (secs % 3600) / 60)
+}
+
+pub fn activity_report(r: &ActivityReport) -> String {
+    let mut o = String::new();
+    let _ = writeln!(o, "Rapport du {} au {}", r.from_date, r.to_date);
+    let rows: Vec<(&str, String)> = vec![
+        ("Fichiers analysés", r.files_scanned.to_string()),
+        ("Analyses", r.scans.to_string()),
+        ("Menaces détectées", r.threats_detected.to_string()),
+        ("Mises en quarantaine", r.quarantined.to_string()),
+        (
+            "Faux positifs signalés",
+            r.false_positives_reported.to_string(),
+        ),
+        (
+            "Détections comportementales",
+            r.behavior_detections.to_string(),
+        ),
+        ("Nouvelles persistances", r.persistence_new.to_string()),
+        ("Nouveaux périphériques", r.devices_new.to_string()),
+        (
+            "Mises à jour de la base",
+            format!("{} (version {})", r.db_updates, opt(&r.db_version)),
+        ),
+        (
+            "Pubs et traqueurs bloqués",
+            r.dns_blocked_queries
+                .map(|n| n.to_string())
+                .unwrap_or_else(|| "-".into()),
+        ),
+        ("VPN connecté", hours(r.vpn_connected_secs)),
+        (
+            "Tests de fuite",
+            format!("{} ({} en échec)", r.leak_tests, r.leak_tests_failed),
+        ),
+        ("Alertes réseau", r.network_alerts.to_string()),
+        ("Alertes au total", r.alerts_total.to_string()),
+        (
+            "Demandes RGPD envoyées / abouties",
+            format!(
+                "{} / {}",
+                r.removal_requests_sent, r.removal_requests_completed
+            ),
+        ),
+        ("Fuites de données trouvées", r.breaches_found.to_string()),
+    ];
+    for (k, v) in rows {
+        let _ = writeln!(o, "{k:<34}: {v}");
+    }
+    let mut list = |title: &str, items: &[NamedCount]| {
+        if !items.is_empty() {
+            let _ = writeln!(o, "{title} :");
+            for d in items {
+                let _ = writeln!(o, "  {:>7}  {}", d.count, d.name);
+            }
+        }
+    };
+    list("Détections les plus fréquentes", &r.top_detections);
+    list("Domaines les plus bloqués", &r.top_blocked_domains);
+    list("Alertes par type", &r.top_alert_kinds);
+    o
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -885,6 +952,7 @@ mod tests {
             process_path: None,
             process_started_at: None,
             network_id: None,
+            open_section: None,
             status: AlertStatus::Open,
             actions: vec![AlertAction::Restore, AlertAction::ReportFalsePositive],
         };

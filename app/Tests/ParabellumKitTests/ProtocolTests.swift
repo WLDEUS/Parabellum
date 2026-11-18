@@ -94,6 +94,9 @@ final class ProtocolTests: XCTestCase {
             .travelEnable,
             .travelDisable,
             .resolveAlert(alertId: 40, action: .enableTravelMode),
+            // Activity report
+            .report(period: .month, offset: 1),
+            .report(period: .custom, offset: 0, from: "2026-10-01", to: "2026-10-15"),
         ]
     }
 

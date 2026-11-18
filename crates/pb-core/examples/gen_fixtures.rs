@@ -90,6 +90,7 @@ fn alert() -> Alert {
         process_path: None,
         process_started_at: None,
         network_id: None,
+        open_section: None,
         status: AlertStatus::Open,
         actions: vec![
             AlertAction::Restore,
@@ -348,6 +349,174 @@ fn removal_request(status: RemovalStatus) -> RemovalRequest {
         draft_path: None,
         note: None,
         last_error: None,
+    }
+}
+
+// ----- Activity report & Mac cleaning -----
+
+fn activity_report() -> ActivityReport {
+    ActivityReport {
+        period: ReportPeriod::Month,
+        start: 1_790_809_200,
+        end: 1_793_487_600,
+        from_date: "2026-10-01".into(),
+        to_date: "2026-10-31".into(),
+        elapsed_secs: 2_678_400,
+        generated_at: 1_793_500_000,
+        files_scanned: 15_234,
+        threats_detected: 2,
+        quarantined: 1,
+        false_positives_reported: 1,
+        persistence_new: 3,
+        devices_new: 2,
+        scans: 41,
+        scans_by_origin: vec![
+            NamedCount {
+                name: "realtime".into(),
+                count: 37,
+            },
+            NamedCount {
+                name: "manual".into(),
+                count: 4,
+            },
+        ],
+        top_detections: vec![NamedCount {
+            name: "MacOS.Stealer.AMOS".into(),
+            count: 2,
+        }],
+        behavior_detections: 1,
+        db_updates: 30,
+        db_version: Some("2026.10.31.1".into()),
+        component_updates: vec!["clamav 1.4.3 -> 1.5.0".into()],
+        dns_blocked_queries: Some(40_211),
+        top_blocked_domains: vec![NamedCount {
+            name: "doubleclick.net".into(),
+            count: 5_120,
+        }],
+        vpn_connected_secs: 1_512_000,
+        leak_tests: 12,
+        leak_tests_failed: 1,
+        network_alerts: 2,
+        alerts_total: 9,
+        top_alert_kinds: vec![
+            NamedCount {
+                name: "network".into(),
+                count: 4,
+            },
+            NamedCount {
+                name: "malware".into(),
+                count: 2,
+            },
+        ],
+        privacy: Some(RemovalSummary {
+            total: 40,
+            queued: 2,
+            waiting_answer: 20,
+            overdue: 3,
+            completed: 15,
+            needs_action: 0,
+            next_send_at: None,
+        }),
+        removal_requests_sent: 25,
+        removal_requests_completed: 15,
+        breaches_found: 1,
+        breach_names: vec!["ExempleShop".into()],
+        daily: vec![
+            ReportDay {
+                date: "2026-10-01".into(),
+                files_scanned: 512,
+                threats: 0,
+                quarantined: 0,
+                dns_blocked: 1_310,
+                vpn_connected_secs: 43_200,
+            },
+            ReportDay {
+                date: "2026-10-02".into(),
+                files_scanned: 498,
+                threats: 1,
+                quarantined: 1,
+                dns_blocked: 1_402,
+                vpn_connected_secs: 0,
+            },
+        ],
+    }
+}
+
+fn clean_scan() -> CleanScanReport {
+    CleanScanReport {
+        generated_at: 1_793_500_000,
+        duration_ms: 8_412,
+        home: "/Users/q".into(),
+        total_size: 9_850_000_000,
+        reclaimable_size: 4_350_000_000,
+        categories: vec![
+            CleanCategoryReport {
+                category: CleanCategory::Caches,
+                title: "Caches des applications".into(),
+                description: "Recréés automatiquement par les applications.".into(),
+                safety: CleanSafety::Safe,
+                size: 350_000_000,
+                selected_size: 350_000_000,
+                items: vec![CleanItem {
+                    id: "0a1b2c3d4e5f6071".into(),
+                    path: "/Users/q/Library/Caches/com.spotify.client".into(),
+                    name: "Spotify".into(),
+                    size: 350_000_000,
+                    files: 1_204,
+                    modified: Some(1_793_400_000),
+                    last_used: None,
+                    safety: CleanSafety::Safe,
+                    selected: true,
+                    in_use: false,
+                    bundle_id: Some("com.spotify.client".into()),
+                    note: None,
+                }],
+                truncated: false,
+                trashable: true,
+                error: None,
+            },
+            CleanCategoryReport {
+                category: CleanCategory::LargeFiles,
+                title: "Gros fichiers anciens".into(),
+                description: "Plus de 500 Mo, pas ouverts depuis 6 mois.".into(),
+                safety: CleanSafety::Review,
+                size: 5_500_000_000,
+                selected_size: 0,
+                items: vec![CleanItem {
+                    id: "1a2b3c4d5e6f7081".into(),
+                    path: "/Users/q/Documents/VM/ubuntu.qcow2".into(),
+                    name: "ubuntu.qcow2".into(),
+                    size: 5_500_000_000,
+                    files: 1,
+                    modified: Some(1_770_000_000),
+                    last_used: Some(1_770_000_000),
+                    safety: CleanSafety::Review,
+                    selected: false,
+                    in_use: false,
+                    bundle_id: None,
+                    note: Some("image de machine virtuelle".into()),
+                }],
+                truncated: false,
+                trashable: true,
+                error: None,
+            },
+            CleanCategoryReport {
+                category: CleanCategory::Trash,
+                title: "Corbeille".into(),
+                description: "Vider la corbeille est définitif.".into(),
+                safety: CleanSafety::Moderate,
+                size: 0,
+                selected_size: 0,
+                items: vec![],
+                truncated: false,
+                trashable: false,
+                error: Some(
+                    "Corbeille illisible : autorise Parabellum dans Accès complet au disque."
+                        .into(),
+                ),
+            },
+        ],
+        warnings: vec!["~/Library/Containers : accès refusé".into()],
     }
 }
 
@@ -646,6 +815,61 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 AlertAction::TrustNetwork,
             ];
             a
+        })?,
+    )?;
+
+    // ----- Activity report & Mac cleaning -----
+    w("activity_report", serde_json::to_value(activity_report())?)?;
+    w("report_alert", {
+        let mut a = alert();
+        a.id = 40;
+        a.kind = AlertKind::System;
+        a.severity = Severity::Info;
+        a.title = "Ton rapport d'octobre est prêt".into();
+        a.message = "15 234 fichiers analysés, 2 menaces, 40 211 requêtes bloquées.".into();
+        a.path = None;
+        a.sha256 = None;
+        a.quarantine_id = None;
+        a.actions = vec![AlertAction::Acknowledge];
+        a.open_section = Some("report?period=month&offset=1".into());
+        serde_json::to_value(a)?
+    })?;
+    w("clean_scan", serde_json::to_value(clean_scan())?)?;
+    w(
+        "clean_apply",
+        serde_json::to_value(CleanApplyReport {
+            dry_run: false,
+            freed_bytes: 1_200_000_000,
+            trashed_bytes: 350_000_000,
+            cleaned: 2,
+            skipped: 1,
+            failed: 0,
+            results: vec![
+                CleanItemResult {
+                    category: CleanCategory::Caches,
+                    path: "/Users/q/Library/Caches/com.spotify.client".into(),
+                    outcome: CleanOutcome::MovedToTrash,
+                    bytes: 350_000_000,
+                    trashed_as: Some("/Users/q/.Trash/com.spotify.client 2".into()),
+                    message: None,
+                },
+                CleanItemResult {
+                    category: CleanCategory::Trash,
+                    path: "/Users/q/.Trash".into(),
+                    outcome: CleanOutcome::Deleted,
+                    bytes: 1_200_000_000,
+                    trashed_as: None,
+                    message: None,
+                },
+                CleanItemResult {
+                    category: CleanCategory::BrowserCaches,
+                    path: "/Users/q/Library/Caches/Google/Chrome".into(),
+                    outcome: CleanOutcome::Skipped,
+                    bytes: 0,
+                    trashed_as: None,
+                    message: Some("utilisé par une application ouverte".into()),
+                },
+            ],
         })?,
     )?;
 
@@ -1178,6 +1402,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Request::ResolveAlert {
             alert_id: 40,
             action: AlertAction::EnableTravelMode,
+        },
+        // ----- Activity report -----
+        Request::Report {
+            period: ReportPeriod::Month,
+            offset: 1,
+            from: None,
+            to: None,
+        },
+        Request::Report {
+            period: ReportPeriod::Custom,
+            offset: 0,
+            from: Some("2026-10-01".into()),
+            to: Some("2026-10-15".into()),
         },
     ];
     // Which commands need administrator approval (`auth` or root), same order/ids as requests.jsonl.

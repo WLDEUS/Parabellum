@@ -178,6 +178,10 @@ fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
     if crate::audit::is_local(&cli.command) {
         return crate::audit::local(cli, io);
     }
+    // Nettoyage du Mac: local, never through the daemon.
+    if let Command::Clean(args) = &cli.command {
+        return crate::clean::command::run(cli, io, args);
+    }
     let mut c = connect(cli)?;
     match &cli.command {
         Command::Vpn { action } => return crate::protect::vpn(cli, io, &mut c, action),
@@ -402,9 +406,28 @@ fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
             let s: StatusInfo = c.call(Request::SetProtection { paused_minutes: 0 })?;
             emit(cli, io, &s, format::status)?;
         }
-        Command::Report { week } => {
-            let r: WeeklyReport = c.call(Request::WeeklyReport { week_offset: *week })?;
-            emit(cli, io, &r, format::report)?;
+        Command::Report {
+            week,
+            month,
+            from,
+            to,
+        } => {
+            if month.is_none() && from.is_none() {
+                let r: WeeklyReport = c.call(Request::WeeklyReport { week_offset: *week })?;
+                emit(cli, io, &r, format::report)?;
+            } else {
+                let r: ActivityReport = c.call(Request::Report {
+                    period: if month.is_some() {
+                        ReportPeriod::Month
+                    } else {
+                        ReportPeriod::Custom
+                    },
+                    offset: month.unwrap_or(0),
+                    from: from.clone(),
+                    to: to.clone(),
+                })?;
+                emit(cli, io, &r, format::activity_report)?;
+            }
         }
         Command::RetroHunt { days } => {
             let j: JobStarted = c.call(Request::RetroHunt { days: *days })?;
@@ -453,6 +476,8 @@ fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
         Command::Permissions { action } => {
             return crate::audit::permissions(cli, io, &mut c, action)
         }
+        // Nettoyage du Mac (handled above, before connecting).
+        Command::Clean(args) => return crate::clean::command::run(cli, io, args),
     }
     Ok(EXIT_OK)
 }

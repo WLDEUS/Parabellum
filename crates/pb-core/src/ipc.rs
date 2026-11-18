@@ -307,6 +307,20 @@ pub enum Request {
     /// Put back what travel mode changed (settings you changed meanwhile are kept). Lowers protection:
     /// admin. -> [`TravelStatus`]
     TravelDisable,
+
+    // ----- Activity report (week / month / custom) -----
+    /// `week` / `month`: `offset` 0 = current one, 1 = previous… `custom`: `from` → `to` (`YYYY-MM-DD`,
+    /// inclusive, at most 400 days). -> [`ActivityReport`]
+    Report {
+        #[serde(default)]
+        period: ReportPeriod,
+        #[serde(default)]
+        offset: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        from: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        to: Option<String>,
+    },
 }
 
 fn default_true() -> bool {
@@ -407,6 +421,8 @@ impl Request {
                 | Request::LanStatus { .. }
                 // ----- Travel mode -----
                 | Request::TravelStatus
+                // Activity report
+                | Request::Report { .. }
         )
     }
 }
@@ -791,6 +807,42 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&AlertAction::EnableTravelMode).unwrap(),
             "\"enable_travel_mode\""
+        );
+    }
+
+    #[test]
+    fn report_request() {
+        let r: RequestEnvelope =
+            serde_json::from_str(r#"{"id":1,"cmd":"report","period":"month","offset":1}"#).unwrap();
+        assert_eq!(
+            r.request,
+            Request::Report {
+                period: ReportPeriod::Month,
+                offset: 1,
+                from: None,
+                to: None
+            }
+        );
+        assert!(!r.request.is_mutating() && !r.request.requires_admin());
+        let r: RequestEnvelope = serde_json::from_str(r#"{"id":2,"cmd":"report"}"#).unwrap();
+        assert!(matches!(
+            r.request,
+            Request::Report {
+                period: ReportPeriod::Week,
+                offset: 0,
+                ..
+            }
+        ));
+        let s = serde_json::to_string(&Request::Report {
+            period: ReportPeriod::Custom,
+            offset: 0,
+            from: Some("2026-10-01".into()),
+            to: Some("2026-10-15".into()),
+        })
+        .unwrap();
+        assert_eq!(
+            s,
+            r#"{"cmd":"report","period":"custom","offset":0,"from":"2026-10-01","to":"2026-10-15"}"#
         );
     }
 

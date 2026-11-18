@@ -29,6 +29,12 @@ toml = { workspace = true }
 libc = { workspace = true }
 # Coffre (hdiutil -plist) and permissions audit (apps' Info.plist).
 plist = { workspace = true }
+# Nettoyage du Mac (plist above): tree walks, item ids, app archives.
+walkdir = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+zip = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+filetime = "0.2"

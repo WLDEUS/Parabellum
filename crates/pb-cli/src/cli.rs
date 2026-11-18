@@ -143,11 +143,20 @@ pub enum Command {
     },
     /// Reprendre la protection temps réel.
     Resume,
-    /// Rapport hebdomadaire.
+    /// Rapport d'activité : semaine (défaut), mois ou période personnalisée.
     Report {
         /// 0 = semaine en cours, 1 = semaine dernière…
         #[arg(long, default_value_t = 0)]
         week: u32,
+        /// Rapport mensuel : 0 = mois en cours, 1 = mois dernier…
+        #[arg(long, conflicts_with_all = ["from", "to"])]
+        month: Option<u32>,
+        /// Début de la période personnalisée (AAAA-MM-JJ).
+        #[arg(long, requires = "to")]
+        from: Option<String>,
+        /// Fin de la période personnalisée, incluse (AAAA-MM-JJ).
+        #[arg(long, requires = "from")]
+        to: Option<String>,
     },
     /// Ré-analyser les fichiers vus récemment avec la base actuelle.
     RetroHunt {
@@ -213,6 +222,10 @@ pub enum Command {
         #[arg(value_enum, default_value_t = DnsArg::Status)]
         state: DnsArg,
     },
+    // --- Nettoyage du Mac (local, as the user) ---
+    /// Nettoyage du Mac : caches, journaux, installeurs, gros fichiers, restes d'applications, corbeille.
+    /// Sans sudo ; tout va à la corbeille sauf demande contraire.
+    Clean(crate::clean::command::CleanArgs),
 }
 
 // ----- Local network & permissions audit -----
@@ -760,8 +773,14 @@ mod tests {
         ));
         assert!(matches!(
             parse(&["report", "--week", "1"]).unwrap().command,
-            Command::Report { week: 1 }
+            Command::Report { week: 1, .. }
         ));
+        assert!(matches!(
+            parse(&["report", "--month", "1"]).unwrap().command,
+            Command::Report { month: Some(1), .. }
+        ));
+        assert!(parse(&["report", "--from", "2026-10-01"]).is_err());
+        assert!(parse(&["report", "--month", "1", "--from", "a", "--to", "b"]).is_err());
         assert!(matches!(
             parse(&["vpn"]).unwrap().command,
             Command::Vpn { action: None }

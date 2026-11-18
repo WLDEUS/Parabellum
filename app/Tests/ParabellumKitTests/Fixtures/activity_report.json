@@ -1,0 +1,92 @@
+{
+  "alerts_total": 9,
+  "behavior_detections": 1,
+  "breach_names": [
+    "ExempleShop"
+  ],
+  "breaches_found": 1,
+  "component_updates": [
+    "clamav 1.4.3 -> 1.5.0"
+  ],
+  "daily": [
+    {
+      "date": "2026-10-01",
+      "dns_blocked": 1310,
+      "files_scanned": 512,
+      "quarantined": 0,
+      "threats": 0,
+      "vpn_connected_secs": 43200
+    },
+    {
+      "date": "2026-10-02",
+      "dns_blocked": 1402,
+      "files_scanned": 498,
+      "quarantined": 1,
+      "threats": 1,
+      "vpn_connected_secs": 0
+    }
+  ],
+  "db_updates": 30,
+  "db_version": "2026.10.31.1",
+  "devices_new": 2,
+  "dns_blocked_queries": 40211,
+  "elapsed_secs": 2678400,
+  "end": 1793487600,
+  "false_positives_reported": 1,
+  "files_scanned": 15234,
+  "from_date": "2026-10-01",
+  "generated_at": 1793500000,
+  "leak_tests": 12,
+  "leak_tests_failed": 1,
+  "network_alerts": 2,
+  "period": "month",
+  "persistence_new": 3,
+  "privacy": {
+    "completed": 15,
+    "needs_action": 0,
+    "overdue": 3,
+    "queued": 2,
+    "total": 40,
+    "waiting_answer": 20
+  },
+  "quarantined": 1,
+  "removal_requests_completed": 15,
+  "removal_requests_sent": 25,
+  "scans": 41,
+  "scans_by_origin": [
+    {
+      "count": 37,
+      "name": "realtime"
+    },
+    {
+      "count": 4,
+      "name": "manual"
+    }
+  ],
+  "start": 1790809200,
+  "threats_detected": 2,
+  "to_date": "2026-10-31",
+  "top_alert_kinds": [
+    {
+      "count": 4,
+      "name": "network"
+    },
+    {
+      "count": 2,
+      "name": "malware"
+    }
+  ],
+  "top_blocked_domains": [
+    {
+      "count": 5120,
+      "name": "doubleclick.net"
+    }
+  ],
+  "top_detections": [
+    {
+      "count": 2,
+      "name": "MacOS.Stealer.AMOS"
+    }
+  ],
+  "vpn_connected_secs": 1512000
+}

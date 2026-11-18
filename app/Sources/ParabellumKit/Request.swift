@@ -169,6 +169,11 @@ public enum Request: Sendable, Equatable {
     /// Restore what travel mode changed. Admin. → `TravelStatus`
     case travelDisable
 
+    // Activity report
+    /// `week` / `month`: `offset` 0 = current one. `custom`: `from` → `to` (`YYYY-MM-DD`, inclusive).
+    /// → `ActivityReport`
+    case report(period: ReportPeriod, offset: Int = 0, from: String? = nil, to: String? = nil)
+
     /// Wire name (`cmd`).
     public var command: String {
         switch self {
@@ -245,6 +250,8 @@ public enum Request: Sendable, Equatable {
         case .travelStatus: return "travel_status"
         case .travelEnable: return "travel_enable"
         case .travelDisable: return "travel_disable"
+        // Activity report
+        case .report: return "report"
         }
     }
 
@@ -264,6 +271,9 @@ public enum Request: Sendable, Equatable {
             return false
         // Travel mode
         case .travelStatus:
+            return false
+        // Activity report
+        case .report:
             return false
         case let .privacyGetProfile(reveal):
             return reveal
@@ -461,6 +471,16 @@ public enum Request: Sendable, Equatable {
             o["mac"] = .string(mac)
         case let .permissionsAudit(refresh):
             o["refresh"] = .bool(refresh)
+        // Activity report
+        case let .report(period, offset, from, to):
+            o["period"] = .string(period.rawValue)
+            o["offset"] = .int(Int64(offset))
+            if let from {
+                o["from"] = .string(from)
+            }
+            if let to {
+                o["to"] = .string(to)
+            }
         }
         return .object(o)
     }

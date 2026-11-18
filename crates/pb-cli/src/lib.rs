@@ -5,8 +5,10 @@
 //! - [`commands`]: execution + exit codes,
 //! - [`format`]: human-readable tables,
 //! - [`protect`]: `vpn`, `guard` and `privacy` commands,
-//! - [`vault`]: encrypted vault and secure delete (local, as the user).
+//! - [`vault`]: encrypted vault and secure delete (local, as the user),
+//! - [`clean`]: Mac cleaning (local, as the user).
 
+pub mod clean;
 pub mod cli;
 pub mod client;
 pub mod commands;

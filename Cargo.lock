@@ -2261,16 +2261,21 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "clap",
+ "filetime",
+ "hex",
  "libc",
  "pb-core",
  "pb-privacy",
  "plist",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "toml",
+ "walkdir",
+ "zip 2.6.1",
 ]
 
 [[package]]
