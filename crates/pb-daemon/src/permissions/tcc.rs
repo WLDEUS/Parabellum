@@ -215,6 +215,9 @@ pub struct TccRow {
     pub auth: TccAuthValue,
     pub target: Option<String>,
     pub last_modified: Option<i64>,
+    /// The grant's code requirement (`csreq`) demands code signed by Apple itself (`None`: no csreq or
+    /// not understood). See [`super::csreq`].
+    pub csreq_apple: Option<bool>,
 }
 
 pub fn auth_value(v: i64) -> TccAuthValue {
@@ -239,8 +242,8 @@ pub fn read_rows(db: &Path) -> Result<Vec<TccRow>, String> {
     let _ = c.execute_batch("PRAGMA trusted_schema = OFF;");
     let mut st = c
         .prepare(
-            "SELECT service, client, client_type, auth_value, indirect_object_identifier, last_modified \
-             FROM access LIMIT ?1",
+            "SELECT service, client, client_type, auth_value, indirect_object_identifier, last_modified, \
+             csreq FROM access LIMIT ?1",
         )
         .map_err(|e| e.to_string())?;
     let rows = st
@@ -253,6 +256,11 @@ pub fn read_rows(db: &Path) -> Result<Vec<TccRow>, String> {
                 auth: auth_value(r.get::<_, i64>(3).unwrap_or(1)),
                 target: target.filter(|t| !t.is_empty() && t != "UNUSED"),
                 last_modified: r.get::<_, i64>(5).ok().filter(|t| *t > 0),
+                csreq_apple: r
+                    .get::<_, Option<Vec<u8>>>(6)
+                    .ok()
+                    .flatten()
+                    .and_then(|b| super::csreq::requires_apple_anchor(&b)),
             })
         })
         .map_err(|e| e.to_string())?;
@@ -308,6 +316,17 @@ pub struct RiskInput<'a> {
     pub client_is_path: bool,
     pub installed: Option<bool>,
     pub signing: Option<&'a SigningInfo>,
+    /// From the grant's `csreq` ([`TccRow::csreq_apple`]).
+    pub csreq_apple: Option<bool>,
+}
+
+/// Severity of a grant by the service's impact, for clients that could not be trusted.
+fn untrusted_severity(impact: u8) -> Severity {
+    match impact {
+        3 => Severity::High,
+        2 => Severity::Medium,
+        _ => Severity::Low,
+    }
 }
 
 /// Risk of a grant and why (French).
@@ -318,14 +337,43 @@ pub fn score(i: &RiskInput<'_>) -> (Severity, Vec<String>) {
     if i.auth == TccAuthValue::Denied {
         return (Severity::Info, vec!["Accès refusé".into()]);
     }
-    if i.installed == Some(false) {
+    let power = || format!("{label} : accès puissant, à n'accorder qu'aux apps indispensables");
+    // Orphan only when the executable path is confirmed gone (the resolver lstat'ed it).
+    if i.installed == Some(false) && i.client_is_path {
         reasons.push("App introuvable sur ce Mac : autorisation orpheline à réinitialiser".into());
         return (Severity::Low, reasons);
     }
-    let apple = i.signing.map(|s| s.apple).unwrap_or(false)
-        || (i.signing.is_none() && !i.client_is_path && i.client.starts_with("com.apple."));
-    if apple {
-        return (Severity::Info, vec!["Composant d'Apple".into()]);
+    // "Apple" comes from signatures, never from a `com.apple.` bundle id (anyone can pick one). The grant's
+    // own requirement wins: it names the code tccd actually authorized.
+    let resolved_apple = i.signing.is_some_and(|s| s.apple);
+    match i.csreq_apple {
+        Some(true) => return (Severity::Info, vec!["Composant d'Apple".into()]),
+        Some(false) if resolved_apple => {
+            reasons.push(
+                "Autorisation liée à un autre programme que l'app d'Apple portant cet identifiant (imitation ?)"
+                    .into(),
+            );
+            if info.impact >= 2 {
+                reasons.push(power());
+            }
+            return (untrusted_severity(info.impact), reasons);
+        }
+        None if resolved_apple => return (Severity::Info, vec!["Composant d'Apple".into()]),
+        _ => {}
+    }
+    if i.installed != Some(true) && i.signing.is_none() {
+        // Not found in the app folders, LaunchServices or Spotlight: whoever holds this cannot be checked.
+        reasons.push(
+            "App introuvable (dossier non indexé ?) : impossible de vérifier qui détient cet accès"
+                .into(),
+        );
+        if i.client_is_path {
+            reasons.push("Exécutable isolé (hors app)".into());
+        }
+        if info.impact >= 2 {
+            reasons.push(power());
+        }
+        return (untrusted_severity(info.impact), reasons);
     }
     let untrusted = match i.signing {
         Some(s) if !s.signed => {
@@ -367,9 +415,7 @@ pub fn score(i: &RiskInput<'_>) -> (Severity, Vec<String>) {
         _ => Severity::Info,
     };
     if info.impact >= 2 {
-        reasons.push(format!(
-            "{label} : accès puissant, à n'accorder qu'aux apps indispensables"
-        ));
+        reasons.push(power());
     }
     (sev, reasons)
 }
@@ -445,8 +491,28 @@ pub(crate) mod tests {
                 ),
             ],
         );
+        {
+            let c = Connection::open(&p).unwrap();
+            c.execute(
+                "UPDATE access SET csreq = ?1 WHERE client = 'us.zoom.xos'",
+                [super::super::csreq::tests::developer_id(
+                    "us.zoom.xos",
+                    "BJ4HAAB9B3",
+                )],
+            )
+            .unwrap();
+            c.execute(
+                "UPDATE access SET csreq = ?1 WHERE client = 'com.example.Script'",
+                [super::super::csreq::tests::apple("com.example.Script")],
+            )
+            .unwrap();
+        }
         let rows = read_rows(&p).unwrap();
         assert_eq!(rows.len(), 3);
+        let csreq = |c: &str| rows.iter().find(|r| r.client == c).unwrap().csreq_apple;
+        assert_eq!(csreq("us.zoom.xos"), Some(false));
+        assert_eq!(csreq("com.example.Script"), Some(true));
+        assert_eq!(csreq("/usr/local/bin/rec"), None);
         let ae = rows
             .iter()
             .find(|r| r.service == "kTCCServiceAppleEvents")
@@ -495,6 +561,7 @@ pub(crate) mod tests {
             client_is_path: false,
             installed: Some(true),
             signing: sig,
+            csreq_apple: None,
         };
         let adhoc = signing(true, true, false, None);
         let devid = signing(true, false, false, Some(true));
@@ -533,11 +600,40 @@ pub(crate) mod tests {
         assert_eq!(score(&i).0, Severity::Info);
         let mut i = base("kTCCServiceAccessibility", None);
         i.installed = Some(false);
+        i.client = "/Users/camille/bin/gone";
+        i.client_is_path = true;
         let (sev, why) = score(&i);
         assert_eq!(sev, Severity::Low);
         assert!(why[0].contains("orpheline"));
+        // Apple is decided by the grant's csreq, not by the bundle id prefix (v2-new review #2).
         let mut i = base("kTCCServiceListenEvent", None);
         i.client = "com.apple.Terminal";
+        i.installed = None;
+        i.csreq_apple = Some(true);
+        assert_eq!(score(&i).0, Severity::Info);
+        i.csreq_apple = None;
+        let (sev, why) = score(&i);
+        assert_eq!(sev, Severity::High, "unresolved com.apple.* lookalike");
+        assert!(why[0].contains("introuvable"));
+        i.csreq_apple = Some(false);
+        assert_eq!(score(&i).0, Severity::High);
+        // An unresolved bundle id is no longer an "orphan" (malware in a non-indexed folder).
+        let mut i = base("kTCCServiceSystemPolicyAllFiles", None);
+        i.client = "com.example.hidden";
+        i.installed = Some(false);
+        assert_eq!(score(&i).0, Severity::High);
+        i.service = "kTCCServiceCamera";
+        assert_eq!(score(&i).0, Severity::Medium);
+        i.service = "kTCCServiceAddressBook";
+        assert_eq!(score(&i).0, Severity::Low);
+        // Resolved Apple app, but the grant names other code: impersonation.
+        let mut i = base("kTCCServiceAccessibility", Some(&apple));
+        i.client = "com.apple.Terminal";
+        i.csreq_apple = Some(false);
+        let (sev, why) = score(&i);
+        assert_eq!(sev, Severity::High);
+        assert!(why[0].contains("imitation"));
+        i.csreq_apple = Some(true);
         assert_eq!(score(&i).0, Severity::Info);
         let (sev, why) = score(&base("kTCCServiceAccessibility", Some(&adhoc)));
         assert_eq!(sev, Severity::High);

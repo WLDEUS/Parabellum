@@ -435,6 +435,7 @@ async fn handle_connection(ctx: Arc<Ctx>, stream: UnixStream, limits: ConnLimits
                                     ctx.bus.subscribe(),
                                     out_tx.clone(),
                                     kill.clone(),
+                                    peer.can_mutate || peer.admin,
                                 ));
                             }
                             ResponseEnvelope::ok_empty(id)
@@ -494,14 +495,22 @@ async fn respond(ctx: &Arc<Ctx>, peer: &Peer, id: u64, request: Request) -> Resp
     }
 }
 
+/// Events only the installed app/CLI (or root) may receive: same rule as the requests that return them
+/// (`Request::is_mutating`), e.g. LAN devices and history for `lan_status`.
+pub fn event_is_sensitive(ev: &DaemonEvent) -> bool {
+    matches!(ev, DaemonEvent::Lan(_))
+}
+
 fn spawn_forwarder(
     mut rx: broadcast::Receiver<DaemonEvent>,
     out: mpsc::Sender<Vec<u8>>,
     kill: Arc<Notify>,
+    trusted: bool,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         loop {
             match rx.recv().await {
+                Ok(ev) if !trusted && event_is_sensitive(&ev) => {}
                 Ok(ev) => match out.try_send(line_of(&ev)) {
                     Ok(()) => {}
                     Err(mpsc::error::TrySendError::Full(_)) => {
@@ -719,6 +728,24 @@ mod tests {
             .expect("closed after the idle timeout")
             .unwrap();
         assert_eq!(lines.next_line().await.unwrap(), None, "EOF for the client");
+    }
+
+    /// v2-new review #7: LAN events reach only the installed app/CLI (or root), like `lan_status`.
+    #[tokio::test]
+    async fn untrusted_subscribers_do_not_get_lan_events() {
+        for trusted in [false, true] {
+            let (tx, rx) = broadcast::channel(8);
+            let (out_tx, mut out_rx) = mpsc::channel(8);
+            let f = spawn_forwarder(rx, out_tx, Arc::new(Notify::new()), trusted);
+            tx.send(DaemonEvent::Lan(pb_core::model::LanStatus::default()))
+                .unwrap();
+            let comp =
+                DaemonEvent::Component(crate::spyware::component_status(Path::new("/nonexistent")));
+            tx.send(comp).unwrap();
+            let first = String::from_utf8(out_rx.recv().await.unwrap()).unwrap();
+            assert_eq!(first.starts_with(r#"{"event":"lan""#), trusted, "{first}");
+            f.abort();
+        }
     }
 
     /// A subscriber that stops reading is dropped and its slot released, even with the socket full.

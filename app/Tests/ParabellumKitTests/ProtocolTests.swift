@@ -262,6 +262,9 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(sent["dns"]?["enabled"], .bool(true))
         XCTAssertEqual(sent["updates"]?["github_token"], .string("ghp_test"))
         XCTAssertEqual(sent["realtime"]?["kill_malicious_processes"], .bool(true))
+        // v2-new review #4: the edited-from config travels as `base` (three-way merge in the daemon).
+        XCTAssertEqual(encoded["base"], raw)
+        XCTAssertNil(try JSONValue(data: Request.setConfig(config).encode(id: 5))["base"])
     }
 
     func testConfigValidationMirrorsRust() {

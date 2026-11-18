@@ -59,7 +59,7 @@ final class IntelligenceTests: XCTestCase {
         let back = try JSONDecoder().decode(Config.self, from: data)
         XCTAssertEqual(back.intelligence, config.intelligence)
 
-        XCTAssertFalse(Request.intelStatus.isMutating)
+        XCTAssertTrue(Request.intelStatus.isMutating, "flagged domains: installed app/CLI only")
         XCTAssertFalse(Request.intelScoreDomain(domain: "a.b").isMutating)
         XCTAssertTrue(Request.intelAllowDomain(domain: "a.b").requiresAdmin)
         XCTAssertTrue(Request.intelMarkNormal(anomalyId: "x").requiresAdmin)

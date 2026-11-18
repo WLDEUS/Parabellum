@@ -341,7 +341,7 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
             })
         }
         // Answered redacted like GetConfig for non-admins: the client keeps it, and sends it back as is.
-        Request::SetConfig { config } => json(&redact(&set_config(ctx, config).await?)),
+        Request::SetConfig { config, base } => json(&redact(&set_config(ctx, config, base).await?)),
         Request::SetProtection { paused_minutes } => {
             json(&set_protection(ctx, paused_minutes).await?)
         }
@@ -581,6 +581,8 @@ pub const PROTECTED_HOME_DIRS: &[&str] = &[
     "Library/Sharing",
     "Library/Trial",
     "Pictures/Photos Library.photoslibrary",
+    // Scan policy fixes (v2-new review #6): iPhone / iPad backups.
+    "Library/Application Support/MobileSync",
 ];
 
 /// Shared or removable locations any local user can already list.
@@ -592,8 +594,17 @@ pub const SHARED_SCAN_ROOTS: &[&str] =
 /// one, like the home itself or `~/Library`) and [`SHARED_SCAN_ROOTS`]. The rest (system folders,
 /// other users) needs administrator approval: job progress shows every file path.
 pub fn scan_root_allowed(path: &std::path::Path, home: Option<&std::path::Path>) -> bool {
+    scan_root_allowed_with(path, home, &|p| std::fs::symlink_metadata(p).is_ok())
+}
+
+/// [`scan_root_allowed`] with the file-existence probe used for volumes injected (tests).
+pub fn scan_root_allowed_with(
+    path: &std::path::Path,
+    home: Option<&std::path::Path>,
+    exists: &dyn Fn(&std::path::Path) -> bool,
+) -> bool {
     if SHARED_SCAN_ROOTS.iter().any(|r| path.starts_with(r)) {
-        return true;
+        return volume_scan_allowed(path, exists);
     }
     let Some(home) = home.filter(|h| h.is_absolute() && h.components().count() > 2) else {
         return false;
@@ -603,6 +614,80 @@ pub fn scan_root_allowed(path: &std::path::Path, home: Option<&std::path::Path>)
             let d = home.join(d);
             path.starts_with(&d) || d.starts_with(path)
         })
+}
+
+// Scan policy fixes (v2-new review #6)
+
+/// Path components naming Time Machine stores (local snapshots, backup bundles, mobile backups).
+const BACKUP_COMPONENTS: &[&str] = &[
+    "Backups.backupdb",
+    ".timemachine",
+    "com.apple.TimeMachine.localsnapshots",
+    ".MobileBackups",
+    ".MobileBackups.trash",
+];
+/// Present at the root of a Time Machine destination volume (HFS+ or APFS).
+const BACKUP_VOLUME_MARKERS: &[&str] = &[
+    "Backups.backupdb",
+    ".timemachine",
+    "backup_manifest.plist",
+    ".com.apple.TimeMachine.SnapshotHistory.plist",
+];
+
+/// `path` starts with `prefix`, components compared ASCII-case-insensitively (APFS default).
+fn ci_starts_with(path: &std::path::Path, prefix: &std::path::Path) -> bool {
+    let mut p = path.components();
+    prefix.components().all(|c| {
+        p.next().is_some_and(|x| {
+            x.as_os_str()
+                .to_string_lossy()
+                .eq_ignore_ascii_case(&c.as_os_str().to_string_lossy())
+        })
+    })
+}
+
+/// Under `/Volumes`: no Time Machine backup (snapshots of every user's files), and on a volume holding
+/// macOS homes (`<volume>/Users/<x>`), the same protected stores as in the peer's own home. Other
+/// paths: allowed.
+fn volume_scan_allowed(path: &std::path::Path, exists: &dyn Fn(&std::path::Path) -> bool) -> bool {
+    let Ok(rel) = path.strip_prefix("/Volumes") else {
+        return true;
+    };
+    if rel.iter().any(|c| {
+        let c = c.to_string_lossy();
+        BACKUP_COMPONENTS.iter().any(|m| c.eq_ignore_ascii_case(m))
+    }) {
+        return false;
+    }
+    // `/Volumes` itself would walk every volume, backups included.
+    let Some(vol) = rel.iter().next() else {
+        return false;
+    };
+    let name = vol.to_string_lossy();
+    let vol_root = std::path::Path::new("/Volumes").join(vol);
+    if name.starts_with("Backups of ")
+        || BACKUP_VOLUME_MARKERS
+            .iter()
+            .any(|m| exists(&vol_root.join(m)))
+    {
+        return false;
+    }
+    let users = vol_root.join("Users");
+    if ci_starts_with(&users, path) {
+        // The volume root (or its Users folder) holds the homes, hence their protected stores.
+        return !exists(&users);
+    }
+    if !ci_starts_with(path, &users) {
+        return true;
+    }
+    let Some(user) = path.iter().nth(users.iter().count()) else {
+        return false;
+    };
+    let home = users.join(user);
+    !PROTECTED_HOME_DIRS.iter().any(|d| {
+        let d = home.join(d);
+        ci_starts_with(path, &d) || ci_starts_with(&d, path)
+    })
 }
 
 async fn scan(
@@ -696,11 +781,99 @@ pub async fn set_dns(ctx: &Arc<Ctx>, enabled: bool) -> Result<DnsStatus, IpcErro
     Ok(status)
 }
 
-/// Validate, save and apply a new configuration.
-pub async fn set_config(ctx: &Arc<Ctx>, mut new: Config) -> Result<Config, IpcError> {
+/// Validate, save and apply a new configuration. With `base` (the configuration the client edited),
+/// only the fields `new` changed relative to `base` are applied onto the current configuration.
+pub async fn set_config(
+    ctx: &Arc<Ctx>,
+    mut new: Config,
+    base: Option<Config>,
+) -> Result<Config, IpcError> {
     let _write = ctx.config_write.lock().await;
     let old = ctx.config();
     unredact(&mut new, &old);
+    if let Some(mut base) = base {
+        unredact(&mut base, &old);
+        new = merge_config_changes(&old, &base, &new)?;
+    }
+    commit_config(ctx, &old, new).await
+}
+
+// Config concurrency (v2-new review #4)
+
+/// Read-modify-write of the configuration under `ctx.config_write`: `f` edits the CURRENT configuration
+/// (never a snapshot taken before the lock), then validate, save, publish and apply what changed.
+pub async fn update_config(
+    ctx: &Arc<Ctx>,
+    f: impl FnOnce(&mut Config),
+) -> Result<Config, IpcError> {
+    let _write = ctx.config_write.lock().await;
+    let old = ctx.config();
+    let mut new = (*old).clone();
+    f(&mut new);
+    if new == *old {
+        return Ok(new);
+    }
+    commit_config(ctx, &old, new).await
+}
+
+/// Like [`update_config`] without applying side effects (the caller already switched DNS itself).
+pub async fn update_config_saved_only(
+    ctx: &Arc<Ctx>,
+    f: impl FnOnce(&mut Config),
+) -> Result<Config, IpcError> {
+    let _write = ctx.config_write.lock().await;
+    let mut new = (*ctx.config()).clone();
+    f(&mut new);
+    new.validate().map_err(|e| bad(e.to_string()))?;
+    crate::setup::save_config(&ctx.paths, &new)
+        .map_err(|e| IpcError::new(ErrorCode::Internal, e.to_string()))?;
+    ctx.publish_config(new.clone());
+    Ok(new)
+}
+
+/// `current` with the changes from `base` to `new` applied (three-way merge on the JSON tree: objects
+/// field by field, anything else — arrays included — as a whole). A field changed both by the client
+/// and meanwhile by the daemon takes the client's value (the user's latest explicit choice).
+pub fn merge_config_changes(
+    current: &Config,
+    base: &Config,
+    new: &Config,
+) -> Result<Config, IpcError> {
+    let to = |c: &Config| {
+        serde_json::to_value(c).map_err(|e| IpcError::new(ErrorCode::Internal, e.to_string()))
+    };
+    let mut merged = to(current)?;
+    merge_json_changes(&mut merged, &to(base)?, &to(new)?);
+    serde_json::from_value(merged).map_err(|e| bad(e.to_string()))
+}
+
+fn merge_json_changes(current: &mut Value, base: &Value, new: &Value) {
+    if base == new {
+        return;
+    }
+    match (current, base, new) {
+        (Value::Object(cur), Value::Object(b), Value::Object(n)) => {
+            for (k, nv) in n {
+                match (b.get(k), cur.get_mut(k)) {
+                    (Some(bv), Some(cv)) => merge_json_changes(cv, bv, nv),
+                    (Some(bv), None) if bv == nv => {}
+                    _ => {
+                        cur.insert(k.clone(), nv.clone());
+                    }
+                }
+            }
+            for k in b.keys() {
+                if !n.contains_key(k) {
+                    cur.remove(k);
+                }
+            }
+        }
+        (cur, _, n) => *cur = n.clone(),
+    }
+}
+
+/// Validate, save, publish and apply `new` (caller holds `ctx.config_write`).
+async fn commit_config(ctx: &Arc<Ctx>, old: &Config, new: Config) -> Result<Config, IpcError> {
     new.validate().map_err(|e| bad(e.to_string()))?;
     crate::setup::save_config(&ctx.paths, &new)
         .map_err(|e| IpcError::new(ErrorCode::Internal, e.to_string()))?;
@@ -897,6 +1070,106 @@ mod tests {
             .any(|e| e.file_name().to_string_lossy().contains(".tmp")));
     }
 
+    /// v2-new review #4: a settings save edited from an older snapshot only applies its own changes.
+    #[test]
+    fn set_config_with_base_merges_only_changed_fields() {
+        let base = Config::default();
+        // Meanwhile the daemon (travel mode, trusted network) changed other fields.
+        let mut current = base.clone();
+        current.vpn.kill_switch = !base.vpn.kill_switch;
+        current.vpn.trusted_networks = vec!["gw:aa:bb:cc:dd:ee:ff".into()];
+        current.intelligence.domain_allowlist = vec!["boulangerie-martin.fr".into()];
+        // The app edited the scan section and one VPN field from its stale snapshot.
+        let mut new = base.clone();
+        new.scan.max_file_size_mb = base.scan.max_file_size_mb + 7;
+        new.dns.enabled = !base.dns.enabled;
+        let merged = merge_config_changes(&current, &base, &new).unwrap();
+        assert_eq!(merged.scan.max_file_size_mb, new.scan.max_file_size_mb);
+        assert_eq!(merged.dns.enabled, new.dns.enabled);
+        assert_eq!(merged.vpn.kill_switch, current.vpn.kill_switch);
+        assert_eq!(merged.vpn.trusted_networks, current.vpn.trusted_networks);
+        assert_eq!(
+            merged.intelligence.domain_allowlist,
+            current.intelligence.domain_allowlist
+        );
+        // Same field changed on both sides: the client's explicit choice wins.
+        let mut new2 = base.clone();
+        new2.vpn.trusted_networks = vec![];
+        new2.vpn.kill_switch = base.vpn.kill_switch;
+        let mut cur2 = current.clone();
+        cur2.vpn.trusted_networks = vec!["a".into()];
+        let mut base2 = base.clone();
+        base2.vpn.trusted_networks = vec!["b".into()];
+        let merged = merge_config_changes(&cur2, &base2, &new2).unwrap();
+        assert!(merged.vpn.trusted_networks.is_empty());
+        assert_eq!(
+            merged.vpn.kill_switch, cur2.vpn.kill_switch,
+            "unchanged by the client"
+        );
+        // Optional fields removed by the client are removed.
+        let mut b3 = base.clone();
+        b3.privacy.virustotal_api_key = Some("k".into());
+        let mut c3 = b3.clone();
+        c3.updates.daily_hour = 3;
+        let n3 = base.clone();
+        let merged = merge_config_changes(&c3, &b3, &n3).unwrap();
+        assert_eq!(merged.privacy.virustotal_api_key, None);
+        assert_eq!(merged.updates.daily_hour, 3);
+    }
+
+    #[tokio::test]
+    async fn update_config_edits_the_current_config_and_set_config_base_keeps_it() {
+        let d = tempfile::tempdir().unwrap();
+        let paths = pb_core::paths::Paths::with_root(d.path());
+        crate::setup::prepare_dirs(&paths, false).unwrap();
+        let ctx = Arc::new(Ctx::new(
+            paths,
+            true,
+            crate::store::Store::open_in_memory().unwrap(),
+            crate::backends::Backends::unavailable(),
+            Config::default(),
+        ));
+        let snapshot = (*ctx.config()).clone();
+        update_config(&ctx, |c| {
+            c.vpn.trusted_networks = vec!["gw:aa:bb:cc:dd:ee:01".into()]
+        })
+        .await
+        .unwrap();
+        update_config(&ctx, |c| {
+            c.intelligence.domain_allowlist = vec!["example.org".into()]
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            ctx.config().vpn.trusted_networks,
+            vec!["gw:aa:bb:cc:dd:ee:01".to_string()]
+        );
+        // The app saves a change made on its stale snapshot, sending that snapshot as `base`.
+        let mut draft = redact(&snapshot);
+        draft.updates.daily_hour = (snapshot.updates.daily_hour + 1) % 24;
+        let saved = set_config(&ctx, draft.clone(), Some(redact(&snapshot)))
+            .await
+            .unwrap();
+        assert_eq!(saved.updates.daily_hour, draft.updates.daily_hour);
+        for cfg in [
+            (*ctx.config()).clone(),
+            Config::load(&ctx.paths.config_file()).unwrap(),
+        ] {
+            assert_eq!(
+                cfg.vpn.trusted_networks,
+                vec!["gw:aa:bb:cc:dd:ee:01".to_string()]
+            );
+            assert_eq!(
+                cfg.intelligence.domain_allowlist,
+                vec!["example.org".to_string()]
+            );
+            assert_eq!(cfg.updates.daily_hour, draft.updates.daily_hour);
+        }
+        // Without base: whole replacement (CLI `config set`).
+        set_config(&ctx, snapshot.clone(), None).await.unwrap();
+        assert!(ctx.config().vpn.trusted_networks.is_empty());
+    }
+
     #[test]
     fn scan_root_policy() {
         use std::path::Path;
@@ -940,6 +1213,54 @@ mod tests {
         for (p, want) in cases {
             assert_eq!(scan_root_allowed(Path::new(p), Some(home)), *want, "{p}");
         }
+        assert!(!scan_root_allowed(
+            Path::new("/Users/camille/Library/Application Support/MobileSync/Backup"),
+            Some(home)
+        ));
+    }
+
+    /// v2-new review #6: Time Machine volumes and other macOS homes on external volumes.
+    #[test]
+    fn scan_root_policy_volumes() {
+        use std::path::Path;
+        let home = Some(Path::new("/Users/camille"));
+        let present = [
+            "/Volumes/Sauvegarde/Backups.backupdb",
+            "/Volumes/Ancien Mac/Users",
+        ];
+        let exists = |p: &Path| present.iter().any(|x| Path::new(x) == p);
+        let ok = |p: &str| scan_root_allowed_with(Path::new(p), home, &exists);
+        assert!(ok("/Volumes/CLE USB"));
+        assert!(!ok("/Volumes/CLE USB/Users/x/Library/Messages"));
+        assert!(ok("/Volumes/CLE USB/Users/x/Documents"));
+        assert!(!ok("/Volumes"));
+        assert!(!ok("/Volumes/Sauvegarde"));
+        assert!(!ok("/Volumes/Sauvegarde/Backups.backupdb/Mac/Latest"));
+        assert!(!ok("/Volumes/Backups of MacBook Pro"));
+        assert!(!ok(
+            "/Volumes/com.apple.TimeMachine.localsnapshots/Backups.backupdb/x"
+        ));
+        assert!(!ok(
+            "/Volumes/.timemachine/ABCD/2026-11-18-101010.backup/Data"
+        ));
+        assert!(!ok("/Volumes/CLE USB/.MobileBackups"));
+        // macOS homes on a volume: protected stores stay protected, the rest is scannable.
+        assert!(!ok("/Volumes/Ancien Mac"));
+        assert!(!ok("/Volumes/Ancien Mac/Users"));
+        assert!(!ok("/Volumes/Ancien Mac/Users/dominique"));
+        assert!(!ok("/Volumes/Ancien Mac/Users/dominique/Library"));
+        assert!(!ok(
+            "/Volumes/Ancien Mac/Users/dominique/Library/Messages/chat.db"
+        ));
+        assert!(
+            !ok("/Volumes/Ancien Mac/users/Dominique/library/mail"),
+            "case-insensitive"
+        );
+        assert!(!ok(
+            "/Volumes/Ancien Mac/Users/dominique/Library/Application Support/MobileSync"
+        ));
+        assert!(ok("/Volumes/Ancien Mac/Users/dominique/Downloads"));
+        assert!(ok("/Volumes/Ancien Mac/Applications"));
         // Unknown home: shared locations only; a bogus home grants nothing.
         assert!(scan_root_allowed(Path::new("/Applications"), None));
         assert!(!scan_root_allowed(

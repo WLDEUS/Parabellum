@@ -53,6 +53,8 @@ pub struct DnsManager {
     trust_boundary: PathBuf,
     /// `queries_blocked_24h` (tails up to 64 MB of query logs): recomputed at most once a minute.
     blocked_24h: TtlCell<Option<u64>>,
+    /// Serializes `blocked_24h` refreshes (v2-new review #5).
+    blocked_24h_refresh: tokio::sync::Mutex<()>,
     /// Listen address whose last probe answered: a healthy proxy is not re-probed for a few seconds
     /// (failed probes are never cached, so a toggle sees the proxy come up at once).
     probe_ok: TtlCell<String>,
@@ -181,6 +183,7 @@ impl DnsManager {
             runtime: std::sync::Mutex::new(RuntimeInfo::default()),
             trust_boundary: PathBuf::from("/"),
             blocked_24h: TtlCell::new(BLOCKED_COUNT_TTL),
+            blocked_24h_refresh: tokio::sync::Mutex::new(()),
             probe_ok: TtlCell::new(PROBE_OK_TTL),
             query_tap: std::sync::Mutex::new(None),
         }
@@ -597,6 +600,8 @@ impl DnsManager {
     /// Blocked queries of the last 24 h, from the query logs (off the async workers, cached).
     async fn blocked_queries_24h(&self) -> Option<u64> {
         let dir = self.runtime_dir();
+        // Single flight: concurrent status calls wait for one tail instead of each starting one.
+        let _refresh = self.blocked_24h_refresh.lock().await;
         self.blocked_24h
             .get_or_refresh(|| async move {
                 let since = pb_core::now_ts() - 86_400;
@@ -632,7 +637,7 @@ impl DnsManager {
 
 /// uid/gid of a user (`getpwnam_r`).
 #[cfg(unix)]
-fn lookup_user(name: &str) -> Option<(u32, u32)> {
+pub(crate) fn lookup_user(name: &str) -> Option<(u32, u32)> {
     let cname = std::ffi::CString::new(name).ok()?;
     let mut buf = vec![0 as libc::c_char; 16 * 1024];
     // SAFETY: `passwd` is plain old data; zeroed is a valid initial value for an out-parameter.

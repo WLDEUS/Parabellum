@@ -89,16 +89,11 @@ fn child_alive(p: &mut Option<Proc>) -> bool {
 /// The directory belongs to the proxy user: no symlink, no FIFO, no hard link (to a root-only file).
 fn last_log_line(dir: &Path) -> Option<String> {
     use std::io::{Read, Seek, SeekFrom};
-    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
-    let mut f = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
-        .open(dir.join("dnscrypt-proxy.log"))
-        .ok()?;
+    let mut f = crate::querylog::open_untrusted_log(
+        &dir.join("dnscrypt-proxy.log"),
+        &crate::querylog::log_owners(),
+    )?;
     let meta = f.metadata().ok()?;
-    if !meta.is_file() || meta.nlink() != 1 {
-        return None;
-    }
     let len = meta.len();
     f.seek(SeekFrom::Start(len.saturating_sub(4096))).ok()?;
     let mut buf = Vec::new();

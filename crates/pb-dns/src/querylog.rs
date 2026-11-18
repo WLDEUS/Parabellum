@@ -35,6 +35,31 @@ pub fn query_name(line: &str) -> Option<String> {
     Some(q.to_ascii_lowercase())
 }
 
+/// Opens a log file of the proxy-writable runtime directory for reading as root without trusting it:
+/// no symlink (`O_NOFOLLOW`), no hang on a FIFO (`O_NONBLOCK`), then `fstat` on the opened descriptor —
+/// a regular file with a single link (a hard link to a root-only file is refused) owned by one of `owners`.
+pub fn open_untrusted_log(path: &Path, owners: &[u32]) -> Option<std::fs::File> {
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+    let f = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
+        .open(path)
+        .ok()?;
+    let meta = f.metadata().ok()?;
+    (meta.is_file() && meta.nlink() == 1 && owners.contains(&meta.uid())).then_some(f)
+}
+
+/// Owners accepted for the proxy's logs: us (root in the daemon, the test user in tests) and the
+/// unprivileged proxy user.
+pub fn log_owners() -> Vec<u32> {
+    // SAFETY: geteuid has no preconditions and cannot fail.
+    let mut v = vec![unsafe { libc::geteuid() }];
+    if let Some((uid, _)) = crate::manager::lookup_user(crate::manager::PROXY_USER) {
+        v.push(uid);
+    }
+    v
+}
+
 fn log_files(dir: &Path, base: &str) -> Vec<PathBuf> {
     let stem = base.trim_end_matches(".log");
     let Ok(rd) = std::fs::read_dir(dir) else {
@@ -109,8 +134,9 @@ fn for_each_tail(dir: &Path, base: &str, mut f: impl FnMut(&str)) -> bool {
     if files.is_empty() {
         return false;
     }
+    let owners = log_owners();
     for f_path in files {
-        let Ok(mut file) = std::fs::File::open(&f_path) else {
+        let Some(mut file) = open_untrusted_log(&f_path, &owners) else {
             continue;
         };
         let len = file.metadata().map(|m| m.len()).unwrap_or(0);
@@ -204,5 +230,50 @@ mod tests {
             1
         );
         assert_eq!(line_qname("time:1\tqname:\tmessage:x"), None);
+    }
+
+    /// v2-new review #5: the runtime directory belongs to the proxy user; links and FIFOs planted there
+    /// must neither leak root-only files nor hang the reader.
+    #[test]
+    fn refuses_links_and_fifos() {
+        let d = tempfile::tempdir().unwrap();
+        let log = d.path().join("blocked.log");
+        let secret = d.path().join("secret");
+        std::fs::write(
+            &secret,
+            "time:1761400000\thost:x\tqname:root-only.example\tmessage:x\n",
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(&secret, &log).unwrap();
+        assert!(top_blocked_between(d.path(), "blocked.log", 0, i64::MAX, 10).is_empty());
+        std::fs::remove_file(&log).unwrap();
+        std::fs::hard_link(&secret, &log).unwrap();
+        assert!(top_blocked_between(d.path(), "blocked.log", 0, i64::MAX, 10).is_empty());
+        assert!(
+            open_untrusted_log(&log, &log_owners()).is_none(),
+            "hard link"
+        );
+        std::fs::remove_file(&log).unwrap();
+        let c = std::ffi::CString::new(log.as_os_str().as_encoded_bytes()).unwrap();
+        // SAFETY: valid NUL-terminated path.
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
+        assert!(
+            open_untrusted_log(&log, &log_owners()).is_none(),
+            "FIFO, without blocking"
+        );
+        std::fs::remove_file(&log).unwrap();
+        std::fs::write(
+            &log,
+            "time:1761400000\thost:x\tqname:ads.example\tmessage:x\n",
+        )
+        .unwrap();
+        assert!(
+            open_untrusted_log(&log, &[u32::MAX - 1]).is_none(),
+            "foreign owner"
+        );
+        assert_eq!(
+            top_blocked_between(d.path(), "blocked.log", 0, i64::MAX, 10),
+            vec![("ads.example".to_string(), 1)]
+        );
     }
 }

@@ -3,8 +3,10 @@ import Foundation
 import ParabellumKit
 
 /// Runs `parabellum://` links (Shortcuts "Ouvrir l'URL", Raycast, Alfred, `open parabellum://…`).
-/// Parsing is strict (`ParabellumURL.parse`); protection-lowering actions go through the usual
-/// administrator prompt of `AppModel.call`, so a link alone can never weaken protection.
+/// Parsing is strict (`ParabellumURL.parse`). Any process can open a link, so protection-lowering actions
+/// ask for an in-app confirmation naming the action and then a fresh administrator authorization (never
+/// the one cached for ~5 min after an in-app action), and no link retries `auth_required` with a prompt
+/// (`URLActionPolicy`).
 @MainActor
 enum URLActionRunner {
     static func handle(_ url: URL, model: AppModel) async {
@@ -13,8 +15,28 @@ enum URLActionRunner {
             model.banner = Banner(message: "Lien Parabellum refusé : \(error.message)", isError: true)
             model.showMainWindow()
         case .success(let action):
-            await run(action, model: model)
+            let policy = action.policy
+            if policy.requiresConfirmation && !confirm(policy) {
+                model.banner = Banner(message: "Action du lien annulée.", isError: false)
+                return
+            }
+            await model.runURLAction(policy: policy) {
+                await run(action, model: model)
+            }
         }
+    }
+
+    /// In-app confirmation (the system prompt that follows cannot be driven by synthetic input either).
+    private static func confirm(_ policy: URLActionPolicy) -> Bool {
+        NSApp.activate()
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = policy.confirmationTitle ?? "Un lien demande de réduire la protection."
+        alert.informativeText = "N'importe quelle app ou page web peut ouvrir un lien parabellum://. "
+            + "Ne continuez que si c'est vous qui l'avez lancé (raccourci, Raycast, Alfred…)."
+        alert.addButton(withTitle: "Annuler")
+        alert.addButton(withTitle: "Continuer")
+        return alert.runModal() == .alertSecondButtonReturn
     }
 
     private static func run(_ action: ParabellumURLAction, model: AppModel) async {

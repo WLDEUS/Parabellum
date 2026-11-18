@@ -35,6 +35,10 @@ sha2 = { workspace = true }
 hex = { workspace = true }
 zip = { workspace = true }
 
+# Permissions audit: LaunchServices lookup of bundle ids.
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = { workspace = true }
+
 [dev-dependencies]
 tempfile = { workspace = true }
 filetime = "0.2"

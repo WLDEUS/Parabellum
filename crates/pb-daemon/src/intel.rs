@@ -24,7 +24,7 @@ use pb_core::model::*;
 use pb_intel::behavior::identity::ProcInfo;
 use pb_intel::behavior::{AnomalyRecord, Baseline, BehaviorEvent, ObsKind};
 use pb_intel::domain::{normalize, suffix};
-use pb_intel::{DomainScorer, Scored, VerdictSource};
+use pb_intel::{DomainScorer, DomainVerdict, Scored, VerdictSource};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
@@ -238,6 +238,19 @@ fn block_target(host: &str) -> String {
     }
 }
 
+/// What the ML blocklist gets for a flagged host: the host itself — any page can make the browser resolve
+/// `paypal-login-verify.<legit>.com`, which must not get `<legit>.com` blocked — or its registrable domain
+/// only when that domain, scored on its own, reaches the block threshold.
+fn ml_block_target(scorer: &DomainScorer, v: &DomainVerdict) -> String {
+    if v.shared_platform || v.registrable.is_empty() || v.registrable == v.host {
+        return v.host.clone();
+    }
+    match scorer.score(&v.registrable) {
+        Scored::Verdict(r) if r.block && r.source == VerdictSource::Model => v.registrable.clone(),
+        _ => v.host.clone(),
+    }
+}
+
 /// Outcome of [`process_name`] (for the caller's follow-up work).
 #[derive(Debug, Default, PartialEq)]
 struct NameOutcome {
@@ -295,7 +308,7 @@ fn process_name(g: &mut Inner, raw: &str, cfg: &Config, now: i64) -> NameOutcome
     }
     g.domains.flagged_total += 1;
     g.domains_dirty = true;
-    let target = block_target(&verdict.host);
+    let target = ml_block_target(&g.scorer, &verdict);
     let block = cfg.intelligence.block_ml_domains
         && verdict.block
         && verdict.source == VerdictSource::Model;
@@ -576,12 +589,16 @@ pub async fn allow_domain(ctx: &Arc<Ctx>, domain: &str) -> Result<(), IpcError> 
         .filter(|h| h.contains('.'))
         .ok_or_else(|| IpcError::new(ErrorCode::BadRequest, "nom de domaine invalide"))?;
     let target = block_target(&host);
-    let mut cfg = (*ctx.config()).clone();
-    if !cfg.intelligence.domain_allowlist.contains(&target) {
-        cfg.intelligence.domain_allowlist.push(target.clone());
-        cfg.intelligence.domain_allowlist.sort();
-        crate::router::set_config(ctx, cfg).await?;
-    }
+    // Edits the current config under the config lock (a snapshot taken here could revert changes
+    // made meanwhile, e.g. by travel mode).
+    let t = target.clone();
+    crate::router::update_config(ctx, move |c| {
+        if !c.intelligence.domain_allowlist.contains(&t) {
+            c.intelligence.domain_allowlist.push(t);
+            c.intelligence.domain_allowlist.sort();
+        }
+    })
+    .await?;
     let removed = {
         let mut g = ctx.intel.lock();
         let before = g.domains.ml_blocked.len();

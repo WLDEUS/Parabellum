@@ -218,6 +218,52 @@ fn mdfind(id: &str) -> Option<PathBuf> {
         .find(|p| p.is_absolute() && p.exists())
 }
 
+/// Apps LaunchServices has registered for a bundle id, wherever they are (an app that was launched once
+/// from a folder Spotlight does not index is still known here).
+#[cfg(target_os = "macos")]
+fn launch_services(id: &str) -> Vec<PathBuf> {
+    use core_foundation::array::{CFArrayGetCount, CFArrayGetValueAtIndex, CFArrayRef};
+    use core_foundation::base::{CFRelease, TCFType};
+    use core_foundation::string::{CFString, CFStringRef};
+    use core_foundation::url::{CFURLRef, CFURL};
+    use std::ffi::c_void;
+    #[link(name = "CoreServices", kind = "framework")]
+    extern "C" {
+        fn LSCopyApplicationURLsForBundleIdentifier(
+            bundle_id: CFStringRef,
+            out_error: *mut *const c_void,
+        ) -> CFArrayRef;
+    }
+    let cf_id = CFString::new(id);
+    // SAFETY: valid CFString; a null out-error is allowed; the array follows the create rule.
+    let array = unsafe {
+        LSCopyApplicationURLsForBundleIdentifier(cf_id.as_concrete_TypeRef(), std::ptr::null_mut())
+    };
+    if array.is_null() {
+        return vec![];
+    }
+    let mut out = Vec::new();
+    // SAFETY: `array` is a valid CFArray of CFURLs we own (released below); elements are borrowed.
+    unsafe {
+        let n = CFArrayGetCount(array).clamp(0, 32);
+        for i in 0..n {
+            let url = CFArrayGetValueAtIndex(array, i) as CFURLRef;
+            if !url.is_null() {
+                if let Some(p) = CFURL::wrap_under_get_rule(url).to_path() {
+                    out.push(p);
+                }
+            }
+        }
+        CFRelease(array as *const c_void);
+    }
+    out
+}
+
+#[cfg(not(target_os = "macos"))]
+fn launch_services(_id: &str) -> Vec<PathBuf> {
+    vec![]
+}
+
 fn valid_bundle_id(c: &str) -> bool {
     !c.is_empty()
         && c.len() <= 255
@@ -261,14 +307,18 @@ pub fn resolve(clients: &[String], home: &Path) -> Vec<AppIdentity> {
         } else if let Some((p, name)) = index.get(c) {
             id.name = Some(name.clone());
             p.clone()
-        } else if let Some(p) = mdfind(c) {
+        } else if let Some(p) = launch_services(c)
+            .into_iter()
+            .find(|p| p.exists())
+            .or_else(|| mdfind(c))
+        {
             id.name = bundle_info(&p)
                 .map(|(_, n)| n)
                 .or_else(|| p.file_stem().map(|s| s.to_string_lossy().into_owned()));
             p
         } else {
-            // Apple's own daemons are not in /Applications: unknown rather than "removed".
-            id.installed = (!c.starts_with("com.apple.")).then_some(false);
+            // Unresolved bundle id: unknown, never "removed" — an app hidden in a folder nobody indexes
+            // must not pass for a harmless leftover (the daemon scores it as unverifiable).
             return id;
         };
         id.installed = Some(true);
@@ -371,9 +421,12 @@ mod tests {
                 "/nonexistent/tool".into(),
                 "com.apple.some.daemon".into(),
                 "bad id;".into(),
+                "com.example.hidden".into(),
             ],
             d.path(),
         );
+        // Unresolved bundle ids are unknown, never "removed" (v2-new review #2).
+        assert_eq!(r[4].installed, None);
         assert_eq!(r[0].name.as_deref(), Some("Clicker"));
         assert_eq!(r[0].installed, Some(true));
         assert_eq!(r[1].installed, Some(false));

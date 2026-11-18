@@ -126,6 +126,13 @@ for candidate in "$BIN/parabellum" "$CLI_LINK"; do
     fi
 done
 if [[ -n "$cli" ]]; then
+    # Travel mode first: it put the firewall in stealth / block-all mode, the VPN on "always" with its kill
+    # switch, and DNS on; "travel off" (root = administrator) puts back what it changed.
+    if run_with_timeout 60 "$cli" travel off >/dev/null; then
+        note "parabellum travel off : OK"
+    else
+        warn "parabellum travel off a échoué : vérifiez le coupe-feu (Réglages Système > Réseau > Coupe-feu)"
+    fi
     if run_with_timeout 30 "$cli" dns off; then
         note "parabellum dns off : OK"
     else
@@ -144,6 +151,43 @@ fi
 /bin/launchctl bootout "system/$DAEMON_LABEL" 2>/dev/null || true
 # Helpers the daemon started from its components/ dir (dnscrypt-proxy…), if any survived.
 /usr/bin/pkill -f "^$ROOT/components/" 2>/dev/null || true
+
+# 2b. Travel mode, per-user part (applied by the app as the user, which is stopped now): AirDrop goes back
+#     to its value from before travel mode if it still has the one travel mode set. Bluetooth can only be
+#     switched by the app: say so when travel mode turned it off.
+restore_travel_local() {
+    [[ -n "$console_user" && -n "$console_uid" ]] || return 0
+    local b64 json before applied current bt_before bt_applied
+    b64="$(/bin/launchctl asuser "$console_uid" /usr/bin/sudo -u "$console_user" \
+        /usr/bin/defaults export "$BUNDLE_ID" - 2>/dev/null |
+        /usr/bin/plutil -extract travelLocalSnapshot raw -o - - 2>/dev/null || true)"
+    [[ -n "$b64" ]] || return 0
+    json="$(printf '%s' "$b64" | /usr/bin/base64 -D 2>/dev/null || true)"
+    [[ -n "$json" ]] || return 0
+    before="$(printf '%s' "$json" | /usr/bin/plutil -extract before.airdropMode raw -o - - 2>/dev/null || true)"
+    applied="$(printf '%s' "$json" | /usr/bin/plutil -extract applied.airdropMode raw -o - - 2>/dev/null || true)"
+    case "$before" in
+        Off | "Contacts Only" | Everyone) ;;
+        *) before="" ;;
+    esac
+    if [[ -n "$before" && "$before" != "$applied" ]]; then
+        current="$(/bin/launchctl asuser "$console_uid" /usr/bin/sudo -u "$console_user" \
+            /usr/bin/defaults read com.apple.sharingd DiscoverableMode 2>/dev/null || echo "Contacts Only")"
+        if [[ "$current" == "$applied" ]] &&
+            /bin/launchctl asuser "$console_uid" /usr/bin/sudo -u "$console_user" \
+                /usr/bin/defaults write com.apple.sharingd DiscoverableMode -string "$before"; then
+            /bin/launchctl asuser "$console_uid" /usr/bin/sudo -u "$console_user" \
+                /usr/bin/killall sharingd 2>/dev/null || true
+            note "AirDrop rétabli ($before)"
+        fi
+    fi
+    bt_before="$(printf '%s' "$json" | /usr/bin/plutil -extract before.bluetoothOn raw -o - - 2>/dev/null || true)"
+    bt_applied="$(printf '%s' "$json" | /usr/bin/plutil -extract applied.bluetoothOn raw -o - - 2>/dev/null || true)"
+    if [[ "$bt_before" == "true" && "$bt_applied" == "false" ]]; then
+        warn "le mode Voyage avait coupé le Bluetooth : rallumez-le dans le Centre de contrôle"
+    fi
+}
+restore_travel_local
 
 # 3. DNS fallback: any service still pointing to the local resolver gets its saved servers (or DHCP).
 if [[ -n "$restore_dns" ]]; then

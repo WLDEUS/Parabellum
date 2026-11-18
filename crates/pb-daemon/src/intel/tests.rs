@@ -117,9 +117,62 @@ fn blocking_needs_model_confidence_and_opt_in() {
     c.intelligence.block_ml_domains = true;
     let out = process_name(&mut g, "login.paypal.verify-now.com", &c, 2);
     assert!(out.blocked_now);
-    assert!(g.domains.ml_blocked.contains_key("verify-now.com"));
+    // Exact host only: `verify-now.com` alone does not reach the block threshold.
+    assert!(g
+        .domains
+        .ml_blocked
+        .contains_key("login.paypal.verify-now.com"));
+    assert!(!g.domains.ml_blocked.contains_key("verify-now.com"));
     assert!(out.alert.unwrap().blocked);
     assert!(g.rebuild_wanted);
+}
+
+/// One-split model: score ~1 when `feature` is set, ~0 otherwise (threshold 0.9, block 0.95).
+fn one_feature_scorer(feature: &str) -> DomainScorer {
+    let model = pb_intel::domain::model::DomainModelMeta {
+        features_version: pb_intel::domain::FEATURES_VERSION,
+        threshold: 0.9,
+        block_threshold: Some(0.95),
+        version: Some("t".into()),
+        brands_sha256: None,
+        metrics: serde_json::Value::Null,
+    };
+    let names = pb_intel::domain::feature_names();
+    let idx = names.iter().position(|n| *n == feature).unwrap();
+    let dump = serde_json::json!({
+        "num_class": 1, "num_tree_per_iteration": 1, "max_feature_idx": names.len() - 1,
+        "objective": "binary sigmoid:1", "feature_names": names,
+        "tree_info": [{"num_cat": 0, "tree_structure": {"split_feature": idx, "threshold": 0.5,
+            "decision_type": "<=", "default_left": true, "missing_type": "None",
+            "left_child": {"leaf_value": -5.0}, "right_child": {"leaf_value": 5.0}}}]
+    })
+    .to_string();
+    DomainScorer::from_parts(&dump, &model, None).unwrap()
+}
+
+/// v2-new review #3: a page querying `paypal-login-verify.<legit>.com` must not get `<legit>.com` blocked.
+#[test]
+fn ml_block_never_widens_to_an_innocent_registrable_domain() {
+    let mut g = Inner {
+        scorer: Arc::new(one_feature_scorer("brand_in_sub")),
+        ..Default::default()
+    };
+    let mut c = cfg();
+    c.intelligence.block_ml_domains = true;
+    let out = process_name(&mut g, "paypal.login-verify.boulangerie-martin.fr", &c, 3);
+    assert!(out.blocked_now);
+    assert_eq!(
+        g.domains.ml_blocked.keys().collect::<Vec<_>>(),
+        vec!["paypal.login-verify.boulangerie-martin.fr"]
+    );
+    // A registrable domain that reaches the block threshold on its own is blocked as a whole.
+    let sld = one_feature_scorer("brand_in_sld");
+    let v = match sld.score("login.paypal-secure.xyz") {
+        Scored::Verdict(v) => v,
+        other => panic!("{other:?}"),
+    };
+    assert!(v.block);
+    assert_eq!(ml_block_target(&sld, &v), "paypal-secure.xyz");
 }
 
 fn test_ctx(dir: &Path) -> Arc<Ctx> {

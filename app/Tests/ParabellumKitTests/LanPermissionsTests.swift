@@ -73,8 +73,9 @@ final class LanPermissionsTests: XCTestCase {
     }
 
     func testRequestsClassification() {
-        XCTAssertFalse(Request.lanStatus().isMutating)
+        XCTAssertTrue(Request.lanStatus().isMutating, "LAN history: installed app/CLI only")
         XCTAssertTrue(Request.lanScan().isMutating)
+        XCTAssertTrue(Request.report(period: .month).isMutating, "activity report: installed app/CLI only")
         XCTAssertTrue(Request.permissionsAudit().isMutating)
         XCTAssertFalse(Request.permissionsAudit().requiresAdmin)
         XCTAssertTrue(Request.lanSetDevice(networkId: "gw:x", mac: "m", trusted: true).requiresAdmin)

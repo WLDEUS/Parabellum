@@ -562,10 +562,30 @@ final class AppModel: ObservableObject {
         do {
             return try await send(auth)
         } catch DaemonClientError.daemon(let ipcError) where ipcError.code == .authRequired {
+            // A `parabellum://` link never gets an administrator prompt on retry (e.g. a scan of a
+            // protected folder): the user sees the error banner instead (v2-new review #1).
+            guard urlActionDepth == 0 else {
+                throw DaemonClientError.daemon(ipcError)
+            }
             authorizer.invalidate()
             let fresh = try await authorizer.authorization(prompt: request.adminPrompt)
             return try await send(fresh)
         }
+    }
+
+    // URL action security (v2-new review #1)
+    /// > 0 while a `parabellum://` link runs (see `URLActionPolicy`). Not published: no view reads it.
+    private var urlActionDepth = 0
+
+    /// Runs a `parabellum://` action: drops the cached administrator authorization first when the policy
+    /// asks for a fresh one, and disables the `auth_required` retry while `body` runs.
+    func runURLAction(policy: URLActionPolicy, _ body: () async -> Void) async {
+        if policy.freshAuthorization {
+            authorizer.invalidate()
+        }
+        urlActionDepth += 1
+        defer { urlActionDepth -= 1 }
+        await body()
     }
 
     func report(_ error: Error) {

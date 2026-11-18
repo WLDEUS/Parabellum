@@ -929,8 +929,9 @@ impl Default for PermissionsAuditConfig {
 pub struct TravelConfig {
     /// On a network that is not in `vpn.trusted_networks`, raise an alert offering travel mode.
     pub suggest_on_untrusted: bool,
-    /// Enable travel mode by itself on untrusted networks (and restore when back on a trusted one, if it
-    /// was enabled that way).
+    /// Enable travel mode by itself on untrusted networks (DNS blocking once Internet answers, kill switch
+    /// once the VPN connected). Back on a trusted network an alert offers to disable it; it is never
+    /// disabled automatically (a network id can be spoofed).
     pub auto_enable: bool,
     /// Also make the application firewall block every incoming connection (AirPlay receiver, sharing…).
     pub block_all_incoming: bool,

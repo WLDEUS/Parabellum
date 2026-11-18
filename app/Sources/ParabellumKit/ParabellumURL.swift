@@ -172,3 +172,59 @@ public enum ParabellumURL {
         ("Ouvrir les alertes", "parabellum://open/alerts"),
     ]
 }
+
+// MARK: - URL action security policy (v2-new review #1)
+
+/// How the app must run a `parabellum://` action. Any process (malware, a web page via the browser) can
+/// open a link, so a link never benefits from an administrator authorization obtained earlier for an
+/// in-app action: protection-lowering actions show an in-app confirmation naming the action, then ask for
+/// a fresh authorization; and an `auth_required` answer (e.g. a scan of a protected folder) is never
+/// retried with a prompt — the user gets a banner instead.
+public struct URLActionPolicy: Equatable, Sendable {
+    /// Show an in-app confirmation (naming the action) before doing anything.
+    public let requiresConfirmation: Bool
+    /// Drop the cached administrator authorization first, so the system prompt always appears.
+    public let freshAuthorization: Bool
+    /// Retry an `auth_required` answer with an administrator prompt. Always false for links.
+    public let retryOnAuthRequired: Bool
+    /// French title of the confirmation ("Couper le VPN ?").
+    public let confirmationTitle: String?
+}
+
+extension ParabellumURLAction {
+    /// The daemon request that lowers protection, if the action sends one (`nil` otherwise).
+    public var protectionLoweringRequest: Request? {
+        switch self {
+        case .vpnDisconnect: return .vpnDisconnect
+        case .travelOff: return .travelDisable
+        case .pause(let minutes): return .setProtection(pausedMinutes: minutes)
+        case .scan, .scanDownloads, .vpnConnect, .travelOn, .resume, .update, .open: return nil
+        }
+    }
+
+    public var policy: URLActionPolicy {
+        let lowering = protectionLoweringRequest?.requiresAdmin ?? false
+        return URLActionPolicy(
+            requiresConfirmation: lowering,
+            freshAuthorization: lowering,
+            retryOnAuthRequired: false,
+            confirmationTitle: lowering ? confirmationTitle : nil
+        )
+    }
+
+    private var confirmationTitle: String {
+        switch self {
+        case .vpnDisconnect: return "Un lien demande de couper le VPN."
+        case .travelOff: return "Un lien demande de désactiver le mode Voyage."
+        case .pause(let minutes): return "Un lien demande de mettre la protection en pause pendant \(Self.duration(minutes))."
+        default: return "Un lien demande de réduire la protection."
+        }
+    }
+
+    static func duration(_ minutes: Int) -> String {
+        if minutes < 60 { return "\(minutes) min" }
+        if minutes % (24 * 60) == 0 { return "\(minutes / (24 * 60)) j" }
+        if minutes % 60 == 0 { return "\(minutes / 60) h" }
+        return "\(minutes / 60) h \(minutes % 60) min"
+    }
+}
