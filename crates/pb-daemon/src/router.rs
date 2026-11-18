@@ -581,6 +581,8 @@ pub const PROTECTED_HOME_DIRS: &[&str] = &[
     "Library/Sharing",
     "Library/Trial",
     "Pictures/Photos Library.photoslibrary",
+    // Scan policy fixes (v2-new review #6): iPhone / iPad backups.
+    "Library/Application Support/MobileSync",
 ];
 
 /// Shared or removable locations any local user can already list.
@@ -592,8 +594,17 @@ pub const SHARED_SCAN_ROOTS: &[&str] =
 /// one, like the home itself or `~/Library`) and [`SHARED_SCAN_ROOTS`]. The rest (system folders,
 /// other users) needs administrator approval: job progress shows every file path.
 pub fn scan_root_allowed(path: &std::path::Path, home: Option<&std::path::Path>) -> bool {
+    scan_root_allowed_with(path, home, &|p| std::fs::symlink_metadata(p).is_ok())
+}
+
+/// [`scan_root_allowed`] with the file-existence probe used for volumes injected (tests).
+pub fn scan_root_allowed_with(
+    path: &std::path::Path,
+    home: Option<&std::path::Path>,
+    exists: &dyn Fn(&std::path::Path) -> bool,
+) -> bool {
     if SHARED_SCAN_ROOTS.iter().any(|r| path.starts_with(r)) {
-        return true;
+        return volume_scan_allowed(path, exists);
     }
     let Some(home) = home.filter(|h| h.is_absolute() && h.components().count() > 2) else {
         return false;
@@ -603,6 +614,80 @@ pub fn scan_root_allowed(path: &std::path::Path, home: Option<&std::path::Path>)
             let d = home.join(d);
             path.starts_with(&d) || d.starts_with(path)
         })
+}
+
+// Scan policy fixes (v2-new review #6)
+
+/// Path components naming Time Machine stores (local snapshots, backup bundles, mobile backups).
+const BACKUP_COMPONENTS: &[&str] = &[
+    "Backups.backupdb",
+    ".timemachine",
+    "com.apple.TimeMachine.localsnapshots",
+    ".MobileBackups",
+    ".MobileBackups.trash",
+];
+/// Present at the root of a Time Machine destination volume (HFS+ or APFS).
+const BACKUP_VOLUME_MARKERS: &[&str] = &[
+    "Backups.backupdb",
+    ".timemachine",
+    "backup_manifest.plist",
+    ".com.apple.TimeMachine.SnapshotHistory.plist",
+];
+
+/// `path` starts with `prefix`, components compared ASCII-case-insensitively (APFS default).
+fn ci_starts_with(path: &std::path::Path, prefix: &std::path::Path) -> bool {
+    let mut p = path.components();
+    prefix.components().all(|c| {
+        p.next().is_some_and(|x| {
+            x.as_os_str()
+                .to_string_lossy()
+                .eq_ignore_ascii_case(&c.as_os_str().to_string_lossy())
+        })
+    })
+}
+
+/// Under `/Volumes`: no Time Machine backup (snapshots of every user's files), and on a volume holding
+/// macOS homes (`<volume>/Users/<x>`), the same protected stores as in the peer's own home. Other
+/// paths: allowed.
+fn volume_scan_allowed(path: &std::path::Path, exists: &dyn Fn(&std::path::Path) -> bool) -> bool {
+    let Ok(rel) = path.strip_prefix("/Volumes") else {
+        return true;
+    };
+    if rel.iter().any(|c| {
+        let c = c.to_string_lossy();
+        BACKUP_COMPONENTS.iter().any(|m| c.eq_ignore_ascii_case(m))
+    }) {
+        return false;
+    }
+    // `/Volumes` itself would walk every volume, backups included.
+    let Some(vol) = rel.iter().next() else {
+        return false;
+    };
+    let name = vol.to_string_lossy();
+    let vol_root = std::path::Path::new("/Volumes").join(vol);
+    if name.starts_with("Backups of ")
+        || BACKUP_VOLUME_MARKERS
+            .iter()
+            .any(|m| exists(&vol_root.join(m)))
+    {
+        return false;
+    }
+    let users = vol_root.join("Users");
+    if ci_starts_with(&users, path) {
+        // The volume root (or its Users folder) holds the homes, hence their protected stores.
+        return !exists(&users);
+    }
+    if !ci_starts_with(path, &users) {
+        return true;
+    }
+    let Some(user) = path.iter().nth(users.iter().count()) else {
+        return false;
+    };
+    let home = users.join(user);
+    !PROTECTED_HOME_DIRS.iter().any(|d| {
+        let d = home.join(d);
+        ci_starts_with(path, &d) || ci_starts_with(&d, path)
+    })
 }
 
 async fn scan(
@@ -1128,6 +1213,54 @@ mod tests {
         for (p, want) in cases {
             assert_eq!(scan_root_allowed(Path::new(p), Some(home)), *want, "{p}");
         }
+        assert!(!scan_root_allowed(
+            Path::new("/Users/camille/Library/Application Support/MobileSync/Backup"),
+            Some(home)
+        ));
+    }
+
+    /// v2-new review #6: Time Machine volumes and other macOS homes on external volumes.
+    #[test]
+    fn scan_root_policy_volumes() {
+        use std::path::Path;
+        let home = Some(Path::new("/Users/camille"));
+        let present = [
+            "/Volumes/Sauvegarde/Backups.backupdb",
+            "/Volumes/Ancien Mac/Users",
+        ];
+        let exists = |p: &Path| present.iter().any(|x| Path::new(x) == p);
+        let ok = |p: &str| scan_root_allowed_with(Path::new(p), home, &exists);
+        assert!(ok("/Volumes/CLE USB"));
+        assert!(!ok("/Volumes/CLE USB/Users/x/Library/Messages"));
+        assert!(ok("/Volumes/CLE USB/Users/x/Documents"));
+        assert!(!ok("/Volumes"));
+        assert!(!ok("/Volumes/Sauvegarde"));
+        assert!(!ok("/Volumes/Sauvegarde/Backups.backupdb/Mac/Latest"));
+        assert!(!ok("/Volumes/Backups of MacBook Pro"));
+        assert!(!ok(
+            "/Volumes/com.apple.TimeMachine.localsnapshots/Backups.backupdb/x"
+        ));
+        assert!(!ok(
+            "/Volumes/.timemachine/ABCD/2026-11-18-101010.backup/Data"
+        ));
+        assert!(!ok("/Volumes/CLE USB/.MobileBackups"));
+        // macOS homes on a volume: protected stores stay protected, the rest is scannable.
+        assert!(!ok("/Volumes/Ancien Mac"));
+        assert!(!ok("/Volumes/Ancien Mac/Users"));
+        assert!(!ok("/Volumes/Ancien Mac/Users/dominique"));
+        assert!(!ok("/Volumes/Ancien Mac/Users/dominique/Library"));
+        assert!(!ok(
+            "/Volumes/Ancien Mac/Users/dominique/Library/Messages/chat.db"
+        ));
+        assert!(
+            !ok("/Volumes/Ancien Mac/users/Dominique/library/mail"),
+            "case-insensitive"
+        );
+        assert!(!ok(
+            "/Volumes/Ancien Mac/Users/dominique/Library/Application Support/MobileSync"
+        ));
+        assert!(ok("/Volumes/Ancien Mac/Users/dominique/Downloads"));
+        assert!(ok("/Volumes/Ancien Mac/Applications"));
         // Unknown home: shared locations only; a bogus home grants nothing.
         assert!(scan_root_allowed(Path::new("/Applications"), None));
         assert!(!scan_root_allowed(
