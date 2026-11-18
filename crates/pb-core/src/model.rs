@@ -300,7 +300,7 @@ pub struct Alert {
     pub network_id: Option<String>,
     // ----- Monthly report: navigation hint -----
     /// App section the alert leads to (sidebar id, optionally `?key=value&…`, e.g.
-    /// `report?period=month&offset=1`). Informational nudges set it instead of an action.
+    /// `report?period=month&month=2026-10`). Informational nudges set it instead of an action.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub open_section: Option<String>,
 }

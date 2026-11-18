@@ -881,11 +881,10 @@ impl Rng {
     }
 
     pub fn fill(&mut self, buf: &mut [u8]) {
-        let mut chunks = buf.chunks_exact_mut(8);
-        for c in &mut chunks {
-            c.copy_from_slice(&self.next_u64().to_le_bytes());
+        let (chunks, rest) = buf.as_chunks_mut::<8>();
+        for c in chunks {
+            *c = self.next_u64().to_le_bytes();
         }
-        let rest = chunks.into_remainder();
         if !rest.is_empty() {
             let b = self.next_u64().to_le_bytes();
             let n = rest.len();

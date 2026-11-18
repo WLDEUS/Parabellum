@@ -831,7 +831,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         a.sha256 = None;
         a.quarantine_id = None;
         a.actions = vec![AlertAction::Acknowledge];
-        a.open_section = Some("report?period=month&offset=1".into());
+        a.open_section = Some("report?period=month&month=2026-10".into());
         serde_json::to_value(a)?
     })?;
     w("clean_scan", serde_json::to_value(clean_scan())?)?;
