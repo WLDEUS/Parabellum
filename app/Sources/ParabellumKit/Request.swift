@@ -57,7 +57,10 @@ public enum Request: Sendable, Equatable {
     /// → `Config`
     case getConfig
     /// Replace the whole config. `preserving` is the raw JSON last received from `get_config`: keys this
-    /// build does not know are kept (deep merge) so a newer daemon never loses settings. → `Config`
+    /// build does not know are kept (deep merge) so a newer daemon never loses settings. It is also sent
+    /// as `base`: the daemon then applies only the fields this draft changed onto its current
+    /// configuration, so travel mode / trusted networks / allowed domains changed meanwhile are not
+    /// reverted by a stale snapshot. → `Config`
     case setConfig(Config, preserving: JSONValue? = nil)
     /// 0 = resume now. → `StatusInfo`
     case setProtection(pausedMinutes: Int)
@@ -436,6 +439,7 @@ public enum Request: Sendable, Equatable {
             let known = try JSONValue(encoding: config)
             if let preserving {
                 o["config"] = preserving.merging(known)
+                o["base"] = preserving
             } else {
                 o["config"] = known
             }

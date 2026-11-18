@@ -569,14 +569,11 @@ async fn fw_set(s: FwSetting, on: bool) -> Result<(), String> {
 
 /// Read-modify-save of the configuration fields travel mode owns, under `ctx.config_write` so a
 /// concurrent settings save never loses (or overwrites) these changes.
+/// Travel applies DNS itself, hence the variant without side effects.
 async fn update_config(ctx: &Arc<Ctx>, f: impl FnOnce(&mut Config)) -> Result<Config, String> {
-    let _write = ctx.config_write.lock().await;
-    let mut cfg = (*ctx.config()).clone();
-    f(&mut cfg);
-    cfg.validate().map_err(|e| e.to_string())?;
-    crate::setup::save_config(&ctx.paths, &cfg).map_err(|e| e.to_string())?;
-    ctx.publish_config(cfg.clone());
-    Ok(cfg)
+    crate::router::update_config_saved_only(ctx, f)
+        .await
+        .map_err(|e| e.message)
 }
 
 /// Production backend.

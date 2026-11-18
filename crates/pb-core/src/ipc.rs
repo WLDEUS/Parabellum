@@ -144,7 +144,17 @@ pub enum Request {
     /// -> [`Config`]
     GetConfig,
     /// Replace the whole config (validated). -> [`Config`]
-    SetConfig { config: Config },
+    ///
+    /// `base` (optional): the configuration the client edited (its last `get_config` / `set_config`
+    /// answer, redacted as received). With it the daemon applies only the fields `config` changed
+    /// relative to `base` onto its current configuration, so changes made meanwhile by the daemon (travel
+    /// mode, trusted networks, "allow this domain") are not reverted by a stale snapshot. Without it,
+    /// `config` replaces the whole configuration (CLI `config set`).
+    SetConfig {
+        config: Config,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base: Option<Config>,
+    },
     /// Pause real-time protection for `minutes` (0 = resume now). -> [`StatusInfo`]
     SetProtection { paused_minutes: u32 },
     /// `week_offset` 0 = current week, 1 = last week… -> [`WeeklyReport`]

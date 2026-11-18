@@ -1270,6 +1270,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Request::GetConfig,
         Request::SetConfig {
             config: Config::default(),
+            base: None,
         },
         Request::SetProtection { paused_minutes: 30 },
         Request::WeeklyReport { week_offset: 1 },

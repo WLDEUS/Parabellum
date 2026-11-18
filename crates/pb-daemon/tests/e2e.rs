@@ -170,6 +170,7 @@ async fn basic_commands_and_config() {
     let back: Config = c
         .call(Request::SetConfig {
             config: cfg2.clone(),
+            base: None,
         })
         .unwrap();
     let text = serde_json::to_string(&back).unwrap();
@@ -183,7 +184,12 @@ async fn basic_commands_and_config() {
         Some("app-pass")
     );
     // Sending the redacted answer back changes nothing.
-    let _: Config = c.call(Request::SetConfig { config: back }).unwrap();
+    let _: Config = c
+        .call(Request::SetConfig {
+            config: back,
+            base: None,
+        })
+        .unwrap();
     assert_eq!(*d.ctx().config(), cfg2);
     // Invalid file refused client-side.
     std::fs::write(&f, "[updates]\ndaily_hour = 99\n").unwrap();

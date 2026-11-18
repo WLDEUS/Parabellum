@@ -589,12 +589,16 @@ pub async fn allow_domain(ctx: &Arc<Ctx>, domain: &str) -> Result<(), IpcError> 
         .filter(|h| h.contains('.'))
         .ok_or_else(|| IpcError::new(ErrorCode::BadRequest, "nom de domaine invalide"))?;
     let target = block_target(&host);
-    let mut cfg = (*ctx.config()).clone();
-    if !cfg.intelligence.domain_allowlist.contains(&target) {
-        cfg.intelligence.domain_allowlist.push(target.clone());
-        cfg.intelligence.domain_allowlist.sort();
-        crate::router::set_config(ctx, cfg).await?;
-    }
+    // Edits the current config under the config lock (a snapshot taken here could revert changes
+    // made meanwhile, e.g. by travel mode).
+    let t = target.clone();
+    crate::router::update_config(ctx, move |c| {
+        if !c.intelligence.domain_allowlist.contains(&t) {
+            c.intelligence.domain_allowlist.push(t);
+            c.intelligence.domain_allowlist.sort();
+        }
+    })
+    .await?;
     let removed = {
         let mut g = ctx.intel.lock();
         let before = g.domains.ml_blocked.len();

@@ -91,6 +91,7 @@ fn admin_probe(cmd: &Command) -> Option<Request> {
             action: ConfigCmd::Set { .. },
         } => Request::SetConfig {
             config: Config::default(),
+            base: None,
         },
         Command::Pause { minutes } => Request::SetProtection {
             paused_minutes: *minutes,
@@ -383,7 +384,7 @@ fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
             }
             ConfigCmd::Set { file } => {
                 let config = read_config(file)?;
-                let saved: Config = c.call(Request::SetConfig { config })?;
+                let saved: Config = c.call(Request::SetConfig { config, base: None })?;
                 if cli.json {
                     emit(cli, io, &saved, |_| String::new())?;
                 } else {
