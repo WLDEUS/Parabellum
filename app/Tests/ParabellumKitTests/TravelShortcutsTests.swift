@@ -176,4 +176,41 @@ final class TravelShortcutsTests: XCTestCase {
             XCTAssertNotNil(action(example.url), example.title)
         }
     }
+
+    // MARK: URL action policy (v2-new review #1)
+
+    func testURLPolicyLoweringActionsNeedConfirmationAndFreshAuth() {
+        for url in ["parabellum://vpn/disconnect", "parabellum://travel/off", "parabellum://pause?minutes=10080"] {
+            guard let a = action(url) else { continue }
+            let p = a.policy
+            XCTAssertTrue(p.requiresConfirmation, url)
+            XCTAssertTrue(p.freshAuthorization, url)
+            XCTAssertFalse(p.retryOnAuthRequired, url)
+            XCTAssertNotNil(p.confirmationTitle, url)
+        }
+        XCTAssertEqual(
+            ParabellumURLAction.pause(minutes: 10080).policy.confirmationTitle,
+            "Un lien demande de mettre la protection en pause pendant 7 j."
+        )
+    }
+
+    func testURLPolicyScanNeverRetriesAuth() {
+        let p = ParabellumURLAction.scan(paths: ["/Library/Keychains"]).policy
+        XCTAssertFalse(p.requiresConfirmation)
+        XCTAssertFalse(p.retryOnAuthRequired)
+        XCTAssertNil(p.confirmationTitle)
+    }
+
+    func testURLPolicyMatchesRequestClassification() {
+        let all: [ParabellumURLAction] = [
+            .scan(paths: ["/tmp/x"]), .scanDownloads, .vpnConnect, .vpnDisconnect, .travelOn, .travelOff,
+            .pause(minutes: 1), .resume, .update(target: .all), .open(section: nil),
+        ]
+        for a in all {
+            XCTAssertFalse(a.policy.retryOnAuthRequired, "\(a)")
+            XCTAssertEqual(a.policy.requiresConfirmation, a.protectionLoweringRequest?.requiresAdmin ?? false, "\(a)")
+        }
+        XCTAssertFalse(ParabellumURLAction.resume.policy.requiresConfirmation)
+        XCTAssertFalse(ParabellumURLAction.travelOn.policy.requiresConfirmation)
+    }
 }
