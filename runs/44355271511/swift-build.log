@@ -1,0 +1,37 @@
+[0/1] Planning build
+Building for production...
+[0/5] Write sources
+[2/5] Write swift-version--79AA4F9932D1E87A.txt
+[4/6] Compiling ParabellumKit CleaningModels.swift
+[5/7] Compiling Parabellum AdminAuthorizer.swift
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel+Freshness.swift:28:70: warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 21 | extension AppModel {
+ 22 |     /// Data younger than this is not reloaded when a screen appears (the refresh button always reloads).
+ 23 |     static let freshFor: TimeInterval = 30
+    |                `- note: static property declared here
+ 24 | 
+ 25 |     // MARK: - Freshness API (also for the feature stores)
+ 26 | 
+ 27 |     /// True when `key` was never loaded, was invalidated, or is older than `maxAge`.
+ 28 |     func needsRefresh(_ key: String, maxAge: TimeInterval = AppModel.freshFor) -> Bool {
+    |                                                                      `- warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 29 |         freshness.needsRefresh(key, maxAge: maxAge)
+ 30 |     }
+
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel+Freshness.swift:53:68: warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 21 | extension AppModel {
+ 22 |     /// Data younger than this is not reloaded when a screen appears (the refresh button always reloads).
+ 23 |     static let freshFor: TimeInterval = 30
+    |                `- note: static property declared here
+ 24 | 
+ 25 |     // MARK: - Freshness API (also for the feature stores)
+    :
+ 51 |     /// Runs `load` (which returns true on success) unless `key` is fresh or already loading; marks the key
+ 52 |     /// fresh on success.
+ 53 |     func revalidate(_ key: String, maxAge: TimeInterval = AppModel.freshFor, force: Bool = false, _ load: () async -> Bool) async {
+    |                                                                    `- warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 54 |         guard force || (freshness.needsRefresh(key, maxAge: maxAge) && !isBusy(key)) else { return }
+ 55 |         if await load() {
+[5/7] Write Objects.LinkFileList
+[6/7] Linking Parabellum
+Build complete! (50.71s)

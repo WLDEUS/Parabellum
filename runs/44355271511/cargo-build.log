@@ -1,0 +1,67 @@
+warning: unused workspace dependency `bytes`
+  --> Cargo.toml:76:1
+   |
+76 | bytes = "1"
+   | ^^^^^
+   |
+   = note: `cargo::unused_workspace_dependencies` is set to `warn` by default
+help: consider removing the workspace dependency `bytes`
+warning: unused workspace dependency `humantime`
+  --> Cargo.toml:73:1
+   |
+73 | humantime = "2"
+   | ^^^^^^^^^
+   |
+help: consider removing the workspace dependency `humantime`
+warning: unused workspace dependency `humantime-serde`
+  --> Cargo.toml:74:1
+   |
+74 | humantime-serde = "1"
+   | ^^^^^^^^^^^^^^^
+   |
+help: consider removing the workspace dependency `humantime-serde`
+warning: unused workspace dependency `md-5`
+  --> Cargo.toml:49:1
+   |
+49 | md-5 = "0.10"
+   | ^^^^
+   |
+help: consider removing the workspace dependency `md-5`
+warning: unused field `authors` in `workspace.package`
+  --> Cargo.toml:22:1
+   |
+22 | authors = ["Deus"]
+   | ^^^^^^^
+   |
+   = note: `cargo::unused_workspace_package_fields` is set to `warn` by default
+help: consider removing the field `workspace.package.authors`
+warning: unused field `repository` in `workspace.package`
+  --> Cargo.toml:23:1
+   |
+23 | repository = "https://github.com/WLDEUS/Parabellum"
+   | ^^^^^^^^^^
+   |
+help: consider removing the field `workspace.package.repository`
+warning: workspace (manifest) generated 6 warnings
+    Updating crates.io index
+   Compiling pb-core v0.1.0 (/Users/runner/work/Parabellum/Parabellum/crates/pb-core)
+   Compiling pb-ml v0.1.0 (/Users/runner/work/Parabellum/Parabellum/crates/pb-ml)
+   Compiling pb-updater v0.1.0 (/Users/runner/work/Parabellum/Parabellum/crates/pb-updater)
+   Compiling pb-intel v0.1.0 (/Users/runner/work/Parabellum/Parabellum/crates/pb-intel)
+   Compiling pb-privacy v0.1.0 (/Users/runner/work/Parabellum/Parabellum/crates/pb-privacy)
+   Compiling pb-monitor v0.1.0 (/Users/runner/work/Parabellum/Parabellum/crates/pb-monitor)
+   Compiling pb-vpn v0.1.0 (/Users/runner/work/Parabellum/Parabellum/crates/pb-vpn)
+   Compiling pb-dns v0.1.0 (/Users/runner/work/Parabellum/Parabellum/crates/pb-dns)
+   Compiling pb-engine v0.1.0 (/Users/runner/work/Parabellum/Parabellum/crates/pb-engine)
+   Compiling pb-cli v0.1.0 (/Users/runner/work/Parabellum/Parabellum/crates/pb-cli)
+   Compiling pb-daemon v0.1.0 (/Users/runner/work/Parabellum/Parabellum/crates/pb-daemon)
+warning: unused dependency `anyhow`
+  --> crates/pb-cli/Cargo.toml:25:1
+   |
+25 | anyhow = { workspace = true }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `cargo::unused_dependencies` is set to `warn` by default
+help: consider removing the dependency on `anyhow`
+warning: `pb-cli` (manifest) generated 1 warning
+    Finished `release` profile [optimized] target(s) in 2m 55s

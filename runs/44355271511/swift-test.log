@@ -1,0 +1,400 @@
+ 24 | 
+ 25 |     // MARK: - Freshness API (also for the feature stores)
+ 26 | 
+ 27 |     /// True when `key` was never loaded, was invalidated, or is older than `maxAge`.
+ 28 |     func needsRefresh(_ key: String, maxAge: TimeInterval = AppModel.freshFor) -> Bool {
+    |                                                                      `- warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 29 |         freshness.needsRefresh(key, maxAge: maxAge)
+ 30 |     }
+[80/93] Compiling Parabellum PrivacyView.swift
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel+Freshness.swift:28:70: warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 21 | extension AppModel {
+ 22 |     /// Data younger than this is not reloaded when a screen appears (the refresh button always reloads).
+ 23 |     static let freshFor: TimeInterval = 30
+    |                `- note: static property declared here
+ 24 | 
+ 25 |     // MARK: - Freshness API (also for the feature stores)
+ 26 | 
+ 27 |     /// True when `key` was never loaded, was invalidated, or is older than `maxAge`.
+ 28 |     func needsRefresh(_ key: String, maxAge: TimeInterval = AppModel.freshFor) -> Bool {
+    |                                                                      `- warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 29 |         freshness.needsRefresh(key, maxAge: maxAge)
+ 30 |     }
+[81/93] Compiling Parabellum QuarantineView.swift
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel+Freshness.swift:28:70: warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 21 | extension AppModel {
+ 22 |     /// Data younger than this is not reloaded when a screen appears (the refresh button always reloads).
+ 23 |     static let freshFor: TimeInterval = 30
+    |                `- note: static property declared here
+ 24 | 
+ 25 |     // MARK: - Freshness API (also for the feature stores)
+ 26 | 
+ 27 |     /// True when `key` was never loaded, was invalidated, or is older than `maxAge`.
+ 28 |     func needsRefresh(_ key: String, maxAge: TimeInterval = AppModel.freshFor) -> Bool {
+    |                                                                      `- warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 29 |         freshness.needsRefresh(key, maxAge: maxAge)
+ 30 |     }
+[82/93] Compiling Parabellum ReportCharts.swift
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel+Freshness.swift:28:70: warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 21 | extension AppModel {
+ 22 |     /// Data younger than this is not reloaded when a screen appears (the refresh button always reloads).
+ 23 |     static let freshFor: TimeInterval = 30
+    |                `- note: static property declared here
+ 24 | 
+ 25 |     // MARK: - Freshness API (also for the feature stores)
+ 26 | 
+ 27 |     /// True when `key` was never loaded, was invalidated, or is older than `maxAge`.
+ 28 |     func needsRefresh(_ key: String, maxAge: TimeInterval = AppModel.freshFor) -> Bool {
+    |                                                                      `- warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 29 |         freshness.needsRefresh(key, maxAge: maxAge)
+ 30 |     }
+[83/93] Compiling Parabellum ReportPDF.swift
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel+Freshness.swift:28:70: warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 21 | extension AppModel {
+ 22 |     /// Data younger than this is not reloaded when a screen appears (the refresh button always reloads).
+ 23 |     static let freshFor: TimeInterval = 30
+    |                `- note: static property declared here
+ 24 | 
+ 25 |     // MARK: - Freshness API (also for the feature stores)
+ 26 | 
+ 27 |     /// True when `key` was never loaded, was invalidated, or is older than `maxAge`.
+ 28 |     func needsRefresh(_ key: String, maxAge: TimeInterval = AppModel.freshFor) -> Bool {
+    |                                                                      `- warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 29 |         freshness.needsRefresh(key, maxAge: maxAge)
+ 30 |     }
+[84/93] Compiling Parabellum ReportView.swift
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel+Freshness.swift:28:70: warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 21 | extension AppModel {
+ 22 |     /// Data younger than this is not reloaded when a screen appears (the refresh button always reloads).
+ 23 |     static let freshFor: TimeInterval = 30
+    |                `- note: static property declared here
+ 24 | 
+ 25 |     // MARK: - Freshness API (also for the feature stores)
+ 26 | 
+ 27 |     /// True when `key` was never loaded, was invalidated, or is older than `maxAge`.
+ 28 |     func needsRefresh(_ key: String, maxAge: TimeInterval = AppModel.freshFor) -> Bool {
+    |                                                                      `- warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 29 |         freshness.needsRefresh(key, maxAge: maxAge)
+ 30 |     }
+[85/93] Compiling Parabellum ScanView.swift
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel+Freshness.swift:28:70: warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 21 | extension AppModel {
+ 22 |     /// Data younger than this is not reloaded when a screen appears (the refresh button always reloads).
+ 23 |     static let freshFor: TimeInterval = 30
+    |                `- note: static property declared here
+ 24 | 
+ 25 |     // MARK: - Freshness API (also for the feature stores)
+ 26 | 
+ 27 |     /// True when `key` was never loaded, was invalidated, or is older than `maxAge`.
+ 28 |     func needsRefresh(_ key: String, maxAge: TimeInterval = AppModel.freshFor) -> Bool {
+    |                                                                      `- warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 29 |         freshness.needsRefresh(key, maxAge: maxAge)
+ 30 |     }
+[86/93] Compiling Parabellum SettingsView.swift
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel+Freshness.swift:28:70: warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 21 | extension AppModel {
+ 22 |     /// Data younger than this is not reloaded when a screen appears (the refresh button always reloads).
+ 23 |     static let freshFor: TimeInterval = 30
+    |                `- note: static property declared here
+ 24 | 
+ 25 |     // MARK: - Freshness API (also for the feature stores)
+ 26 | 
+ 27 |     /// True when `key` was never loaded, was invalidated, or is older than `maxAge`.
+ 28 |     func needsRefresh(_ key: String, maxAge: TimeInterval = AppModel.freshFor) -> Bool {
+    |                                                                      `- warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 29 |         freshness.needsRefresh(key, maxAge: maxAge)
+ 30 |     }
+[87/93] Compiling Parabellum TravelViews.swift
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel+Freshness.swift:28:70: warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 21 | extension AppModel {
+ 22 |     /// Data younger than this is not reloaded when a screen appears (the refresh button always reloads).
+ 23 |     static let freshFor: TimeInterval = 30
+    |                `- note: static property declared here
+ 24 | 
+ 25 |     // MARK: - Freshness API (also for the feature stores)
+ 26 | 
+ 27 |     /// True when `key` was never loaded, was invalidated, or is older than `maxAge`.
+ 28 |     func needsRefresh(_ key: String, maxAge: TimeInterval = AppModel.freshFor) -> Bool {
+    |                                                                      `- warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 29 |         freshness.needsRefresh(key, maxAge: maxAge)
+ 30 |     }
+[88/93] Compiling Parabellum VaultView.swift
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel+Freshness.swift:28:70: warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 21 | extension AppModel {
+ 22 |     /// Data younger than this is not reloaded when a screen appears (the refresh button always reloads).
+ 23 |     static let freshFor: TimeInterval = 30
+    |                `- note: static property declared here
+ 24 | 
+ 25 |     // MARK: - Freshness API (also for the feature stores)
+ 26 | 
+ 27 |     /// True when `key` was never loaded, was invalidated, or is older than `maxAge`.
+ 28 |     func needsRefresh(_ key: String, maxAge: TimeInterval = AppModel.freshFor) -> Bool {
+    |                                                                      `- warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 29 |         freshness.needsRefresh(key, maxAge: maxAge)
+ 30 |     }
+[89/93] Compiling Parabellum VpnView.swift
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel+Freshness.swift:28:70: warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 21 | extension AppModel {
+ 22 |     /// Data younger than this is not reloaded when a screen appears (the refresh button always reloads).
+ 23 |     static let freshFor: TimeInterval = 30
+    |                `- note: static property declared here
+ 24 | 
+ 25 |     // MARK: - Freshness API (also for the feature stores)
+ 26 | 
+ 27 |     /// True when `key` was never loaded, was invalidated, or is older than `maxAge`.
+ 28 |     func needsRefresh(_ key: String, maxAge: TimeInterval = AppModel.freshFor) -> Bool {
+    |                                                                      `- warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 29 |         freshness.needsRefresh(key, maxAge: maxAge)
+ 30 |     }
+[90/93] Compiling Parabellum WidgetBridge.swift
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel+Freshness.swift:28:70: warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 21 | extension AppModel {
+ 22 |     /// Data younger than this is not reloaded when a screen appears (the refresh button always reloads).
+ 23 |     static let freshFor: TimeInterval = 30
+    |                `- note: static property declared here
+ 24 | 
+ 25 |     // MARK: - Freshness API (also for the feature stores)
+ 26 | 
+ 27 |     /// True when `key` was never loaded, was invalidated, or is older than `maxAge`.
+ 28 |     func needsRefresh(_ key: String, maxAge: TimeInterval = AppModel.freshFor) -> Bool {
+    |                                                                      `- warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 29 |         freshness.needsRefresh(key, maxAge: maxAge)
+ 30 |     }
+[90/93] Write Objects.LinkFileList
+[91/93] Linking Parabellum
+[92/93] Applying Parabellum
+Build complete! (18.93s)
+Test Suite 'All tests' started at 2026-11-18 17:13:17.146.
+Test Suite 'ParabellumPackageTests.xctest' started at 2026-11-18 17:13:17.147.
+Test Suite 'CleanReportTests' started at 2026-11-18 17:13:17.147.
+Test Case '-[ParabellumKitTests.CleanReportTests testActivityReportDecodes]' started.
+Test Case '-[ParabellumKitTests.CleanReportTests testActivityReportDecodes]' passed (0.005 seconds).
+Test Case '-[ParabellumKitTests.CleanReportTests testActivityReportToleratesMissingFields]' started.
+Test Case '-[ParabellumKitTests.CleanReportTests testActivityReportToleratesMissingFields]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.CleanReportTests testCleanApplyDecodes]' started.
+Test Case '-[ParabellumKitTests.CleanReportTests testCleanApplyDecodes]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.CleanReportTests testCleanPlanEncodesLikeSerde]' started.
+Test Case '-[ParabellumKitTests.CleanReportTests testCleanPlanEncodesLikeSerde]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.CleanReportTests testCleanScanDecodes]' started.
+Test Case '-[ParabellumKitTests.CleanReportTests testCleanScanDecodes]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.CleanReportTests testReportAlertCarriesSection]' started.
+/Users/runner/work/Parabellum/Parabellum/app/Tests/ParabellumKitTests/CleanReportTests.swift:41: error: -[ParabellumKitTests.CleanReportTests testReportAlertCarriesSection] : XCTAssertEqual failed: ("nil") is not equal to ("Optional("2026-10")")
+Test Case '-[ParabellumKitTests.CleanReportTests testReportAlertCarriesSection]' failed (0.190 seconds).
+Test Case '-[ParabellumKitTests.CleanReportTests testSectionLinkAndMonthOffset]' started.
+Test Case '-[ParabellumKitTests.CleanReportTests testSectionLinkAndMonthOffset]' passed (0.000 seconds).
+Test Suite 'CleanReportTests' failed at 2026-11-18 17:13:17.345.
+	 Executed 7 tests, with 1 failure (0 unexpected) in 0.197 (0.198) seconds
+Test Suite 'ClientTests' started at 2026-11-18 17:13:17.345.
+Test Case '-[ParabellumKitTests.ClientTests testAuthIsSentAndAuthRequiredIsReported]' started.
+Test Case '-[ParabellumKitTests.ClientTests testAuthIsSentAndAuthRequiredIsReported]' passed (0.003 seconds).
+Test Case '-[ParabellumKitTests.ClientTests testCallRoundTrip]' started.
+Test Case '-[ParabellumKitTests.ClientTests testCallRoundTrip]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ClientTests testConcurrentCallsAreCorrelatedById]' started.
+Test Case '-[ParabellumKitTests.ClientTests testConcurrentCallsAreCorrelatedById]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ClientTests testLineBufferEnforcesMaxLine]' started.
+Test Case '-[ParabellumKitTests.ClientTests testLineBufferEnforcesMaxLine]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ClientTests testLineBufferSplitsAcrossChunks]' started.
+Test Case '-[ParabellumKitTests.ClientTests testLineBufferSplitsAcrossChunks]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ClientTests testNotRunning]' started.
+Test Case '-[ParabellumKitTests.ClientTests testNotRunning]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ClientTests testSubscriptionDeliversConnectedThenEvents]' started.
+Test Case '-[ParabellumKitTests.ClientTests testSubscriptionDeliversConnectedThenEvents]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ClientTests testSubscriptionReportsDisconnected]' started.
+Test Case '-[ParabellumKitTests.ClientTests testSubscriptionReportsDisconnected]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ClientTests testTimeout]' started.
+Test Case '-[ParabellumKitTests.ClientTests testTimeout]' passed (0.403 seconds).
+Test Case '-[ParabellumKitTests.ClientTests testVoidCallAndDaemonError]' started.
+Test Case '-[ParabellumKitTests.ClientTests testVoidCallAndDaemonError]' passed (0.001 seconds).
+Test Suite 'ClientTests' passed at 2026-11-18 17:13:17.757.
+	 Executed 10 tests, with 0 failures (0 unexpected) in 0.411 (0.412) seconds
+Test Suite 'FreshnessTests' started at 2026-11-18 17:13:17.757.
+Test Case '-[ParabellumKitTests.FreshnessTests testFailureState]' started.
+Test Case '-[ParabellumKitTests.FreshnessTests testFailureState]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.FreshnessTests testFreshUntilMaxAge]' started.
+Test Case '-[ParabellumKitTests.FreshnessTests testFreshUntilMaxAge]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.FreshnessTests testInvalidationKeepsDataDisplayable]' started.
+Test Case '-[ParabellumKitTests.FreshnessTests testInvalidationKeepsDataDisplayable]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.FreshnessTests testOnlyTheLatestLoadMayApply]' started.
+Test Case '-[ParabellumKitTests.FreshnessTests testOnlyTheLatestLoadMayApply]' passed (0.000 seconds).
+Test Suite 'FreshnessTests' passed at 2026-11-18 17:13:17.757.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'IntelligenceTests' started at 2026-11-18 17:13:17.757.
+Test Case '-[ParabellumKitTests.IntelligenceTests testConfigSectionAndClassification]' started.
+Test Case '-[ParabellumKitTests.IntelligenceTests testConfigSectionAndClassification]' passed (0.004 seconds).
+Test Case '-[ParabellumKitTests.IntelligenceTests testDefaultStatusAndVerdicts]' started.
+Test Case '-[ParabellumKitTests.IntelligenceTests testDefaultStatusAndVerdicts]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.IntelligenceTests testIntelligenceStatus]' started.
+Test Case '-[ParabellumKitTests.IntelligenceTests testIntelligenceStatus]' passed (0.001 seconds).
+Test Suite 'IntelligenceTests' passed at 2026-11-18 17:13:17.763.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.005 (0.005) seconds
+Test Suite 'LanPermissionsTests' started at 2026-11-18 17:13:17.763.
+Test Case '-[ParabellumKitTests.LanPermissionsTests testConfigSectionsRoundTrip]' started.
+Test Case '-[ParabellumKitTests.LanPermissionsTests testConfigSectionsRoundTrip]' passed (0.002 seconds).
+Test Case '-[ParabellumKitTests.LanPermissionsTests testExtensionsAndResetDecode]' started.
+Test Case '-[ParabellumKitTests.LanPermissionsTests testExtensionsAndResetDecode]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.LanPermissionsTests testLanEventDecodes]' started.
+Test Case '-[ParabellumKitTests.LanPermissionsTests testLanEventDecodes]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.LanPermissionsTests testLanStatusDecodes]' started.
+Test Case '-[ParabellumKitTests.LanPermissionsTests testLanStatusDecodes]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.LanPermissionsTests testPermissionsReportDecodes]' started.
+Test Case '-[ParabellumKitTests.LanPermissionsTests testPermissionsReportDecodes]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.LanPermissionsTests testRequestsClassification]' started.
+Test Case '-[ParabellumKitTests.LanPermissionsTests testRequestsClassification]' passed (0.000 seconds).
+Test Suite 'LanPermissionsTests' passed at 2026-11-18 17:13:17.768.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.005 (0.005) seconds
+Test Suite 'MlModelInfoTests' started at 2026-11-18 17:13:17.768.
+Test Case '-[ParabellumKitTests.MlModelInfoTests testMinimalModelInfo]' started.
+Test Case '-[ParabellumKitTests.MlModelInfoTests testMinimalModelInfo]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.MlModelInfoTests testOlderDaemonWithoutModels]' started.
+Test Case '-[ParabellumKitTests.MlModelInfoTests testOlderDaemonWithoutModels]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.MlModelInfoTests testStatusFixtureCarriesModels]' started.
+Test Case '-[ParabellumKitTests.MlModelInfoTests testStatusFixtureCarriesModels]' passed (0.000 seconds).
+Test Suite 'MlModelInfoTests' passed at 2026-11-18 17:13:17.768.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'ModelDecodingTests' started at 2026-11-18 17:13:17.768.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testAlerts]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testAlerts]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testComponentsDnsAdblock]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testComponentsDnsAdblock]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testDefaultedCollections]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testDefaultedCollections]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testDevices]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testDevices]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testEnumRawValuesMatchRust]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testEnumRawValuesMatchRust]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testFormatting]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testFormatting]' passed (0.003 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testJobs]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testJobs]' passed (0.002 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testPersistence]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testPersistence]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testPosture]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testPosture]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testQuarantine]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testQuarantine]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testScanReport]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testScanReport]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testStatus]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testStatus]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testUnknownEnumValuesAreTolerated]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testUnknownEnumValuesAreTolerated]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testWeeklyReportAndPing]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testWeeklyReportAndPing]' passed (0.000 seconds).
+Test Suite 'ModelDecodingTests' passed at 2026-11-18 17:13:17.778.
+	 Executed 14 tests, with 0 failures (0 unexpected) in 0.009 (0.010) seconds
+Test Suite 'ProtectionTests' started at 2026-11-18 17:13:17.778.
+Test Case '-[ParabellumKitTests.ProtectionTests testBehaviorAlert]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testBehaviorAlert]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testCliOutputsDecode]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testCliOutputsDecode]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testComplaintBreachesAliases]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testComplaintBreachesAliases]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testGuardStatusAndSnapshots]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testGuardStatusAndSnapshots]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testIdentityAndBrokers]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testIdentityAndBrokers]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testMailDraftEml]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testMailDraftEml]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testNetworksAndServices]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testNetworksAndServices]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testNewRequestsClassification]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testNewRequestsClassification]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testOptionalRequestFieldsOmitted]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testOptionalRequestFieldsOmitted]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testProtectionConfigDefaults]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testProtectionConfigDefaults]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testProtectionValidationMirrorsRust]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testProtectionValidationMirrorsRust]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testPwnedPasswordsHashing]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testPwnedPasswordsHashing]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testRemovalRequestsAndSummary]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testRemovalRequestsAndSummary]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testSyntaxHelpers]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testSyntaxHelpers]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testVpnStatus]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testVpnStatus]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testVpnStatusDefaultOmitsOptionals]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testVpnStatusDefaultOmitsOptionals]' passed (0.000 seconds).
+Test Suite 'ProtectionTests' passed at 2026-11-18 17:13:17.786.
+	 Executed 16 tests, with 0 failures (0 unexpected) in 0.008 (0.008) seconds
+Test Suite 'ProtocolTests' started at 2026-11-18 17:13:17.786.
+Test Case '-[ParabellumKitTests.ProtocolTests testAuthIsEncodedNextToId]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testAuthIsEncodedNextToId]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testConfigFixtureDecodesToRustDefaults]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testConfigFixtureDecodesToRustDefaults]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testConfigRoundTripKeepsEveryField]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testConfigRoundTripKeepsEveryField]' passed (0.003 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testConfigValidationMirrorsRust]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testConfigValidationMirrorsRust]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testMutatingClassificationMatchesRust]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testMutatingClassificationMatchesRust]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testOptionalFieldsOmitted]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testOptionalFieldsOmitted]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testPartialConfigUsesDefaults]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testPartialConfigUsesDefaults]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testRequestLineIsSingleLine]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testRequestLineIsSingleLine]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testRequestsMatchRustEncoding]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testRequestsMatchRustEncoding]' passed (0.012 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testRequiresAdminEdgeCases]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testRequiresAdminEdgeCases]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testRequiresAdminMatchesRust]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testRequiresAdminMatchesRust]' passed (0.002 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testServerLines]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testServerLines]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testSetConfigPreservesUnknownKeys]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testSetConfigPreservesUnknownKeys]' passed (0.003 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testUnknownEventIsTolerated]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testUnknownEventIsTolerated]' passed (0.000 seconds).
+Test Suite 'ProtocolTests' passed at 2026-11-18 17:13:17.811.
+	 Executed 14 tests, with 0 failures (0 unexpected) in 0.024 (0.025) seconds
+Test Suite 'TravelShortcutsTests' started at 2026-11-18 17:13:17.811.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testLocalPlanEnableAndRestore]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testLocalPlanEnableAndRestore]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testStatusInfoTravelFlag]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testStatusInfoTravelFlag]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testTravelConfigDefaultsMatchRust]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testTravelConfigDefaultsMatchRust]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testTravelRequestsClassification]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testTravelRequestsClassification]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testTravelStatusDefaultFixture]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testTravelStatusDefaultFixture]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testTravelStatusFixture]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testTravelStatusFixture]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testURLActions]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testURLActions]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testURLExamplesAllParse]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testURLExamplesAllParse]' passed (0.002 seconds).
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testURLRejectsOddInput]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testURLRejectsOddInput]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testURLScanPaths]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testURLScanPaths]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testWidgetSnapshotWireFormatAndPath]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testWidgetSnapshotWireFormatAndPath]' passed (0.000 seconds).
+Test Suite 'TravelShortcutsTests' passed at 2026-11-18 17:13:17.817.
+	 Executed 11 tests, with 0 failures (0 unexpected) in 0.005 (0.006) seconds
+Test Suite 'VaultTests' started at 2026-11-18 17:13:17.817.
+Test Case '-[ParabellumKitTests.VaultTests testAbsentVaultOmitsOptionals]' started.
+Test Case '-[ParabellumKitTests.VaultTests testAbsentVaultOmitsOptionals]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.VaultTests testErrorEnvelopeIsThrown]' started.
+Test Case '-[ParabellumKitTests.VaultTests testErrorEnvelopeIsThrown]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.VaultTests testLocationArguments]' started.
+Test Case '-[ParabellumKitTests.VaultTests testLocationArguments]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.VaultTests testOpenVaultStatus]' started.
+Test Case '-[ParabellumKitTests.VaultTests testOpenVaultStatus]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.VaultTests testRecoveryKeyNormalization]' started.
+Test Case '-[ParabellumKitTests.VaultTests testRecoveryKeyNormalization]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.VaultTests testRecoveryKeyShape]' started.
+Test Case '-[ParabellumKitTests.VaultTests testRecoveryKeyShape]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.VaultTests testShredReports]' started.
+Test Case '-[ParabellumKitTests.VaultTests testShredReports]' passed (0.000 seconds).
+Test Suite 'VaultTests' passed at 2026-11-18 17:13:17.819.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'ParabellumPackageTests.xctest' failed at 2026-11-18 17:13:17.819.
+	 Executed 95 tests, with 1 failure (0 unexpected) in 0.669 (0.672) seconds
+Test Suite 'All tests' failed at 2026-11-18 17:13:17.819.
+	 Executed 95 tests, with 1 failure (0 unexpected) in 0.669 (0.673) seconds
+◇ Test run started.
+↳ Testing Library Version: 124.4
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests passed after 0.001 seconds.
