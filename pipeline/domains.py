@@ -115,6 +115,19 @@ def _parse_adblock(line: str) -> str | None:
     return normalize_domain(body)
 
 
+def complete_lines(text: str) -> str:
+    """Drop an unterminated last line of a downloaded list.
+
+    A body cut mid-line (connection closed without a ``Content-Length`` to check) could turn
+    ``foo.com`` into a valid but wrong ``foo.co``. A list that simply lacks its final newline loses
+    one entry, which the next night brings back.
+    """
+    if not text or text.endswith("\n"):
+        return text
+    cut = text.rfind("\n")
+    return text[: cut + 1] if cut >= 0 else ""
+
+
 def parse_list(text: str, fmt: str = "auto") -> set[str]:
     """Parse a blocklist in ``fmt`` (``domains``, ``hosts``, ``adblock``, ``urls`` or ``auto``)."""
     out: set[str] = set()

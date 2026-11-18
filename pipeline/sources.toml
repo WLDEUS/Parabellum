@@ -9,8 +9,20 @@
 
 [bundle]
 min_client_version = "0.1.0"
-# Refuse to publish (keep yesterday's release) if malware hashes or blocked domains drop by more.
+# Refuse to publish (keep yesterday's release) if malware hashes, blocked domains or YARA rules drop
+# by more.
 sanity_max_drop = 0.5
+# Absolute floors, enforced even without a previous bundle to compare with (first run, previous bundle
+# unreadable): far below a normal night (~1 M hashes, several 100 k domains, ~130 YARA rules), far
+# above what is left when the feeds fail (0 hashes, 0 domains, the 19 local rules).
+# `allow_shrink` (workflow input) overrides them like the drop guard.
+min_malware_hashes = 1000
+min_blocked_domains = 50000
+min_yara_rules = 50
+# FP gate: refuse to publish when fewer than this share of the clean-corpus entries declared in
+# data/clean_corpus.toml are available, or when far fewer files were scanned than last night (same
+# corpus spec): a rule matching a missing clean binary would otherwise ship.
+corpus_min_available = 0.9
 
 [hashes]
 # Rolling window for all-platform MalwareBazaar hashes, and a hard cap: 2 M x 32 bytes = 64 MB for
@@ -133,6 +145,18 @@ license = "GPL-3.0 (hagezi/dns-blocklists)"
 category = "malware"
 format = "domains"
 min_entries = 10000
+
+[[source]]
+# malware-filter "phishing-filter": phishing domains aggregated from OpenPhish, PhishTank and IPThreat,
+# rebuilt twice a day. Complements URLhaus (malware delivery) for credential-phishing sites.
+name = "phishing-filter"
+kind = "domains"
+fetcher = "domain_list"
+url = "https://malware-filter.gitlab.io/malware-filter/phishing-filter-domains.txt"
+license = "MIT (malware-filter/phishing-filter; upstream feeds: OpenPhish community, PhishTank)"
+category = "malware"
+format = "domains"
+min_entries = 1000
 
 # ------------------------------------------------------------------------------------------------
 # Ads -> dns/ads.txt
@@ -341,3 +365,29 @@ component = "sing-box"
 repo = "SagerNet/sing-box"
 min_version = "1.12.0"
 max_major = 2
+
+# ------------------------------------------------------------------------------------------------
+# Intelligence: phishing / malicious-domain model (ml-domains.yml, daily), downloaded from the
+# `ml-domain-latest` release into --ml-dir. Ships ml/domain_model.json + meta + the brand list it was
+# trained with + the popular-domain skip list (Tranco-derived: no licence stated by Tranco itself;
+# its inputs include Cloudflare Radar CC BY-NC 4.0 and CrUX CC BY-SA 4.0 — fine for personal use).
+[[source]]
+name = "ml-domain"
+kind = "ml"
+fetcher = "ml_domain_local"
+url = "https://github.com/WLDEUS/Parabellum/releases/tag/ml-domain-latest"
+license = "MIT (model); Tranco-derived popular list, see above"
+
+
+# ------------------------------------------------------------------------------------------------
+# Local network inventory (lan/oui.tsv): MAC vendor prefixes from the IEEE Registration Authority public
+# listings (MA-L required, MA-M / MA-S best effort). Public registry data, no licence restriction stated.
+
+[[source]]
+name = "ieee-oui"
+kind = "lan"
+fetcher = "oui_list"
+url = "https://standards-oui.ieee.org/oui/oui.csv"
+license = "IEEE Registration Authority public listing"
+registries = ["MA-L", "MA-M", "MA-S"]
+min_entries = 20000

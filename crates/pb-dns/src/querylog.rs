@@ -19,6 +19,47 @@ pub fn line_time(line: &str) -> Option<i64> {
         .and_then(|t| t.trim().parse().ok())
 }
 
+/// Query name of a dnscrypt-proxy `[query_log]` LTSV line (`plugin_query_log.go`, master 2026-11:
+/// `time:<t>\thost:<client>\tmessage:<qname>\ttype:<qtype>\treturn:<code>\tcached:<0|1>\t…`).
+/// Lowercased, trailing dot and quotes stripped; `None` for malformed lines.
+pub fn query_name(line: &str) -> Option<String> {
+    let q = line
+        .split('\t')
+        .find_map(|f| f.strip_prefix("message:"))?
+        .trim()
+        .trim_matches('"')
+        .trim_end_matches('.');
+    if q.is_empty() || q.len() > 253 || q.contains(char::is_whitespace) {
+        return None;
+    }
+    Some(q.to_ascii_lowercase())
+}
+
+/// Opens a log file of the proxy-writable runtime directory for reading as root without trusting it:
+/// no symlink (`O_NOFOLLOW`), no hang on a FIFO (`O_NONBLOCK`), then `fstat` on the opened descriptor —
+/// a regular file with a single link (a hard link to a root-only file is refused) owned by one of `owners`.
+pub fn open_untrusted_log(path: &Path, owners: &[u32]) -> Option<std::fs::File> {
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+    let f = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
+        .open(path)
+        .ok()?;
+    let meta = f.metadata().ok()?;
+    (meta.is_file() && meta.nlink() == 1 && owners.contains(&meta.uid())).then_some(f)
+}
+
+/// Owners accepted for the proxy's logs: us (root in the daemon, the test user in tests) and the
+/// unprivileged proxy user.
+pub fn log_owners() -> Vec<u32> {
+    // SAFETY: geteuid has no preconditions and cannot fail.
+    let mut v = vec![unsafe { libc::geteuid() }];
+    if let Some((uid, _)) = crate::manager::lookup_user(crate::manager::PROXY_USER) {
+        v.push(uid);
+    }
+    v
+}
+
 fn log_files(dir: &Path, base: &str) -> Vec<PathBuf> {
     let stem = base.trim_end_matches(".log");
     let Ok(rd) = std::fs::read_dir(dir) else {
@@ -39,13 +80,63 @@ fn log_files(dir: &Path, base: &str) -> Vec<PathBuf> {
 
 /// Number of blocked queries logged at or after `since` (unix secs). `None` when no log exists.
 pub fn count_blocked_since(dir: &Path, base: &str, since: i64) -> Option<u64> {
+    let mut total = 0u64;
+    let found = for_each_tail(dir, base, |text| {
+        total += text
+            .lines()
+            .filter(|l| line_time(l).is_some_and(|t| t >= since))
+            .count() as u64;
+    });
+    found.then_some(total)
+}
+
+/// Queried name of an LTSV line (lowercase, without the trailing dot).
+pub fn line_qname(line: &str) -> Option<String> {
+    let q = line
+        .split('\t')
+        .find_map(|f| f.strip_prefix("qname:"))?
+        .trim()
+        .trim_end_matches('.');
+    (!q.is_empty()).then(|| q.to_ascii_lowercase())
+}
+
+/// Most blocked names logged in `[from, to)`, most frequent first (ties by name). Covers only what
+/// dnscrypt-proxy still keeps on disk (rotated logs, last 16 MB of each file).
+pub fn top_blocked_between(
+    dir: &Path,
+    base: &str,
+    from: i64,
+    to: i64,
+    limit: usize,
+) -> Vec<(String, u64)> {
+    let mut counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    for_each_tail(dir, base, |text| {
+        for l in text.lines() {
+            if !line_time(l).is_some_and(|t| t >= from && t < to) {
+                continue;
+            }
+            if let Some(q) = line_qname(l) {
+                if counts.len() < 200_000 || counts.contains_key(&q) {
+                    *counts.entry(q).or_default() += 1;
+                }
+            }
+        }
+    });
+    let mut v: Vec<(String, u64)> = counts.into_iter().collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    v.truncate(limit);
+    v
+}
+
+/// Calls `f` with the (tail of the) text of each log file, newest first; `false` when there is none.
+fn for_each_tail(dir: &Path, base: &str, mut f: impl FnMut(&str)) -> bool {
     let files = log_files(dir, base);
     if files.is_empty() {
-        return None;
+        return false;
     }
-    let mut total = 0u64;
-    for f in files {
-        let Ok(mut file) = std::fs::File::open(&f) else {
+    let owners = log_owners();
+    for f_path in files {
+        let Some(mut file) = open_untrusted_log(&f_path, &owners) else {
             continue;
         };
         let len = file.metadata().map(|m| m.len()).unwrap_or(0);
@@ -58,20 +149,32 @@ pub fn count_blocked_since(dir: &Path, base: &str, since: i64) -> Option<u64> {
             continue;
         }
         let text = String::from_utf8_lossy(&buf);
-        let mut lines = text.lines();
-        if start > 0 {
-            lines.next(); // partial first line
-        }
-        total += lines
-            .filter(|l| line_time(l).is_some_and(|t| t >= since))
-            .count() as u64;
+        let text = if start > 0 {
+            // partial first line
+            text.split_once('\n').map(|(_, rest)| rest).unwrap_or("")
+        } else {
+            &text
+        };
+        f(text);
     }
-    Some(total)
+    true
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_query_log_lines() {
+        let l = "time:1762000000\thost:127.0.0.1\tmessage:WWW.Example.COM.\ttype:A\treturn:PASS\tcached:0\tduration:12\tserver:quad9\trelay:-";
+        assert_eq!(query_name(l).as_deref(), Some("www.example.com"));
+        assert_eq!(
+            query_name("time:1\thost:x\tmessage:\"a.b\"").as_deref(),
+            Some("a.b")
+        );
+        assert_eq!(query_name("garbage"), None);
+        assert_eq!(query_name("message:."), None);
+    }
 
     #[test]
     fn counts_recent_lines_across_rotations() {
@@ -97,5 +200,80 @@ mod tests {
             Some(3)
         );
         assert_eq!(line_time("garbage"), None);
+    }
+
+    #[test]
+    fn top_blocked_names() {
+        let d = tempfile::tempdir().unwrap();
+        assert!(top_blocked_between(d.path(), "blocked.log", 0, i64::MAX, 5).is_empty());
+        let line = |t: i64, q: &str| format!("time:{t}\thost:127.0.0.1\tqname:{q}\tmessage:x\n");
+        let text = [
+            line(100, "Ads.Example.com."),
+            line(101, "ads.example.com"),
+            line(102, "t.tracker.net"),
+            line(50, "old.example"),
+            line(300, "late.example"),
+            "garbage\n".to_string(),
+        ]
+        .concat();
+        std::fs::write(d.path().join("blocked.log"), text).unwrap();
+        let top = top_blocked_between(d.path(), "blocked.log", 100, 200, 5);
+        assert_eq!(
+            top,
+            vec![
+                ("ads.example.com".to_string(), 2),
+                ("t.tracker.net".to_string(), 1)
+            ]
+        );
+        assert_eq!(
+            top_blocked_between(d.path(), "blocked.log", 0, 1000, 1).len(),
+            1
+        );
+        assert_eq!(line_qname("time:1\tqname:\tmessage:x"), None);
+    }
+
+    /// v2-new review #5: the runtime directory belongs to the proxy user; links and FIFOs planted there
+    /// must neither leak root-only files nor hang the reader.
+    #[test]
+    fn refuses_links_and_fifos() {
+        let d = tempfile::tempdir().unwrap();
+        let log = d.path().join("blocked.log");
+        let secret = d.path().join("secret");
+        std::fs::write(
+            &secret,
+            "time:1761400000\thost:x\tqname:root-only.example\tmessage:x\n",
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(&secret, &log).unwrap();
+        assert!(top_blocked_between(d.path(), "blocked.log", 0, i64::MAX, 10).is_empty());
+        std::fs::remove_file(&log).unwrap();
+        std::fs::hard_link(&secret, &log).unwrap();
+        assert!(top_blocked_between(d.path(), "blocked.log", 0, i64::MAX, 10).is_empty());
+        assert!(
+            open_untrusted_log(&log, &log_owners()).is_none(),
+            "hard link"
+        );
+        std::fs::remove_file(&log).unwrap();
+        let c = std::ffi::CString::new(log.as_os_str().as_encoded_bytes()).unwrap();
+        // SAFETY: valid NUL-terminated path.
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
+        assert!(
+            open_untrusted_log(&log, &log_owners()).is_none(),
+            "FIFO, without blocking"
+        );
+        std::fs::remove_file(&log).unwrap();
+        std::fs::write(
+            &log,
+            "time:1761400000\thost:x\tqname:ads.example\tmessage:x\n",
+        )
+        .unwrap();
+        assert!(
+            open_untrusted_log(&log, &[u32::MAX - 1]).is_none(),
+            "foreign owner"
+        );
+        assert_eq!(
+            top_blocked_between(d.path(), "blocked.log", 0, i64::MAX, 10),
+            vec![("ads.example".to_string(), 1)]
+        );
     }
 }

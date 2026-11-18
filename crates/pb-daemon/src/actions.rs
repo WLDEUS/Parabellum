@@ -114,6 +114,7 @@ fn new_alert(
         process_path: None,
         process_started_at: None,
         network_id: None,
+        open_section: None,
         status: AlertStatus::Open,
         actions,
     }
@@ -731,6 +732,29 @@ pub async fn resolve_alert(
         AlertAction::TrustNetwork => {
             let id = alert.network_id.clone().ok_or_else(|| missing("réseau"))?;
             crate::vpn::set_network_trust(ctx, &id, true).await?;
+            alert.status = AlertStatus::Resolved;
+            alert.actions.clear();
+        }
+        // Intelligence
+        AlertAction::AllowDomain | AlertAction::MarkNormal => {
+            crate::intel::resolve_alert_action(ctx, &mut alert, action).await?;
+        }
+        // ----- Local network -----
+        AlertAction::TrustLanDevice => {
+            let net = alert.network_id.clone().ok_or_else(|| missing("réseau"))?;
+            let mac = alert
+                .device_id
+                .as_deref()
+                .and_then(|d| d.strip_prefix(crate::lan::ALERT_DEVICE_PREFIX))
+                .map(str::to_string)
+                .ok_or_else(|| missing("appareil"))?;
+            crate::lan::set_device(ctx, &net, &mac, None, Some(true)).await?;
+            alert.status = AlertStatus::Resolved;
+            alert.actions.clear();
+        }
+        // ----- Travel mode -----
+        AlertAction::EnableTravelMode => {
+            crate::travel::enable(ctx, false).await?;
             alert.status = AlertStatus::Resolved;
             alert.actions.clear();
         }

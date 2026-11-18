@@ -573,6 +573,8 @@ impl DeviceWatcher {
     }
 }
 
+// Off macOS `IoEvent` is uninhabited, so its `select!` arm is unreachable (newer rustc warns).
+#[cfg_attr(not(target_os = "macos"), allow(unreachable_code))]
 async fn run_loop(ctx: &mut MonitorContext, state: &mut Option<State>) -> Result<(), String> {
     let own_root = ctx.paths.root.clone();
     let tx = ctx.tx.clone();

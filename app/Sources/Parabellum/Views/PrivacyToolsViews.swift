@@ -155,7 +155,8 @@ private struct PasswordCheckCard: View {
                 .foregroundStyle(.green)
         } else {
             Text("\(entries.count) mot(s) de passe compromis à changer :").font(.headline)
-            ForEach(entries) { entry in
+            // By position: an export can hold the same site/login twice (identical `id`s break ForEach).
+            ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in
                 HStack {
                     Text(entry.name.isEmpty ? entry.url : entry.name)
                     Text(entry.username).foregroundStyle(.secondary)

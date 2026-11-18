@@ -19,6 +19,8 @@ pub mod events;
 pub mod ipc;
 pub mod model;
 pub mod paths;
+// speed: short-lived caches for slow request handlers.
+pub mod cache;
 
 /// Version of the Parabellum client (daemon, CLI, app share the same version).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

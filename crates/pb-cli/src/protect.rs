@@ -53,6 +53,7 @@ pub fn admin_probe(cmd: &Command) -> Option<Request> {
             VpnCmd::Mode { .. } | VpnCmd::Backend { .. } | VpnCmd::KillSwitch { .. } => {
                 Request::SetConfig {
                     config: Config::default(),
+                    base: None,
                 }
             }
             _ => return None,
@@ -77,6 +78,8 @@ pub fn admin_probe(cmd: &Command) -> Option<Request> {
             PrivacyCmd::Complaint { .. } => Request::PrivacyComplaint { request_id: s() },
             _ => return None,
         },
+        // ----- Travel mode -----
+        Command::Travel { state: DnsArg::Off } => Request::TravelDisable,
         _ => return None,
     })
 }
@@ -316,9 +319,14 @@ fn read_profile_source(src: &str) -> Result<String, CliError> {
 use std::io::Read as _;
 
 fn update_config(c: &mut Client, f: impl FnOnce(&mut Config)) -> Result<Config, CliError> {
-    let mut cfg: Config = c.call(Request::GetConfig)?;
+    let base: Config = c.call(Request::GetConfig)?;
+    let mut cfg = base.clone();
     f(&mut cfg);
-    Ok(c.call(Request::SetConfig { config: cfg })?)
+    // `base`: only the fields changed here are applied (no stale snapshot over concurrent changes).
+    Ok(c.call(Request::SetConfig {
+        config: cfg,
+        base: Some(base),
+    })?)
 }
 
 pub fn vpn(
@@ -923,7 +931,7 @@ fn resolve_request_id(c: &mut Client, id: &str) -> Result<String, CliError> {
 // ---------------------------------------------------------------------------------------------
 
 /// Read a line from the terminal without echo.
-fn read_password(prompt: &str) -> Result<String, CliError> {
+pub(crate) fn read_password(prompt: &str) -> Result<String, CliError> {
     use std::io::BufRead;
     let tty = std::fs::OpenOptions::new()
         .read(true)

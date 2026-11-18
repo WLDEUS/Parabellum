@@ -1,0 +1,9 @@
+{
+  "bundle_path": "/Users/camille/Library/Application Support/Parabellum/Vault/Coffre.sparsebundle",
+  "encrypted": false,
+  "exists": false,
+  "filevault": "on",
+  "mounted": false,
+  "recent": [],
+  "sync_warning": "Le coffre est dans un dossier qui peut être synchronisé (iCloud Drive, Dropbox…) : seules des données chiffrées partent, mais la synchronisation d'un coffre ouvert peut l'abîmer. Préférez un dossier local."
+}

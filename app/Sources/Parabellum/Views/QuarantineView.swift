@@ -7,7 +7,10 @@ struct QuarantineView: View {
 
     var body: some View {
         Group {
-            if model.quarantine.isEmpty {
+            if model.quarantine.isEmpty && model.isFirstLoad("quarantine") {
+                ProgressView("Chargement…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if model.quarantine.isEmpty {
                 ContentUnavailableView(
                     "Quarantaine vide",
                     systemImage: "archivebox",
@@ -33,12 +36,12 @@ struct QuarantineView: View {
                 }
                 .help("Mettre un fichier en quarantaine")
                 RefreshButton(isLoading: model.isBusy("quarantine")) {
-                    Task { await model.loadQuarantine() }
+                    Task { await model.refresh(section: .quarantine, force: true) }
                 }
             }
         }
-        .task {
-            await model.loadQuarantine()
+        .onAppear {
+            model.revalidateSection(.quarantine)
         }
         .confirmationDialog(
             "Supprimer définitivement ce fichier ?",

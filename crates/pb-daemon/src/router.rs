@@ -149,7 +149,7 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
             paths,
             recursive,
             use_clamav,
-        } => scan(ctx, paths, recursive, use_clamav).await,
+        } => scan(ctx, peer, paths, recursive, use_clamav).await,
         Request::CancelScan { job_id } => match ctx.jobs.cancel(&job_id) {
             CancelOutcome::Signalled => Ok(Value::Null),
             CancelOutcome::Dequeued(j) => {
@@ -232,17 +232,12 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
             json(&crate::devices::set_device_trust(ctx, &device_id, trust).await?)
         }
         Request::UpdateNow { target } => {
-            if ctx.update_running.load(std::sync::atomic::Ordering::SeqCst) {
-                return Err(IpcError::new(
-                    ErrorCode::Busy,
-                    "une mise à jour est déjà en cours",
-                ));
-            }
+            // Claimed before answering: a scheduled run racing this request yields `Busy` here
+            // instead of a started job that never reports.
+            scheduler::claim_update(ctx)?;
             let ctx2 = ctx.clone();
             tokio::spawn(async move {
-                if let Err(e) = scheduler::run_updates(&ctx2, target).await {
-                    tracing::warn!(error = %e.message, "update request failed");
-                }
+                scheduler::run_claimed_updates(&ctx2, target).await;
             });
             json(&JobStarted {
                 job_id: uuid::Uuid::new_v4().to_string(),
@@ -345,7 +340,8 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
                 redact(&cfg)
             })
         }
-        Request::SetConfig { config } => json(&set_config(ctx, config).await?),
+        // Answered redacted like GetConfig for non-admins: the client keeps it, and sends it back as is.
+        Request::SetConfig { config, base } => json(&redact(&set_config(ctx, config, base).await?)),
         Request::SetProtection { paused_minutes } => {
             json(&set_protection(ctx, paused_minutes).await?)
         }
@@ -487,6 +483,60 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
             )
         }
         Request::Subscribe => Ok(Value::Null),
+        // ----- Intelligence -----
+        Request::IntelStatus => json(&crate::intel::status(ctx)),
+        Request::IntelScoreDomain { domain } => json(&crate::intel::score_domain(ctx, &domain)?),
+        Request::IntelAllowDomain { domain } => {
+            crate::intel::allow_domain(ctx, &domain).await?;
+            json(&crate::intel::status(ctx))
+        }
+        Request::IntelMarkNormal { anomaly_id } => {
+            let id = anomaly_id.trim();
+            if id.is_empty() || id.len() > 64 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return Err(bad("identifiant d'anomalie invalide"));
+            }
+            let alert = crate::intel::mark_normal(ctx, id).await?;
+            crate::intel::resolve_linked_alert(ctx, alert).await;
+            json(&crate::intel::status(ctx))
+        }
+        Request::IntelResetBaseline => {
+            crate::intel::reset_baseline(ctx).await;
+            json(&crate::intel::status(ctx))
+        }
+
+        // ----- Local network (LAN inventory) -----
+        Request::LanStatus { network_id } => {
+            json(&crate::lan::status(ctx, network_id.as_deref()).await?)
+        }
+        Request::LanScan { active } => json(&crate::lan::scan_now(ctx, active).await?),
+        Request::LanSetDevice {
+            network_id,
+            mac,
+            name,
+            trusted,
+        } => json(&crate::lan::set_device(ctx, &network_id, &mac, name, trusted).await?),
+        Request::LanForgetDevice { network_id, mac } => {
+            crate::lan::forget_device(ctx, &network_id, &mac).await?;
+            Ok(Value::Null)
+        }
+        Request::LanPorts { mac } => json(&crate::lan::check_ports(ctx, &mac).await?),
+
+        // ----- Permissions audit -----
+        Request::PermissionsAudit { refresh } => {
+            json(&crate::permissions::get(ctx, refresh).await?)
+        }
+
+        // ----- Travel mode -----
+        Request::TravelStatus => json(&crate::travel::status(ctx)),
+        Request::TravelEnable => json(&crate::travel::enable(ctx, false).await?),
+        Request::TravelDisable => json(&crate::travel::disable(ctx).await?),
+        // ----- Activity report -----
+        Request::Report {
+            period,
+            offset,
+            from,
+            to,
+        } => json(&crate::report::build(ctx, period, offset, from, to).await?),
     }
 }
 
@@ -502,8 +552,147 @@ fn validate_component_name(name: &str) -> Result<(), IpcError> {
     Ok(())
 }
 
+/// Under a user's home, stores macOS protects even from that user's own processes (TCC) or that hold
+/// other apps' data: a non-administrator peer may not have the root daemon enumerate them.
+pub const PROTECTED_HOME_DIRS: &[&str] = &[
+    "Library/Messages",
+    "Library/Mail",
+    "Library/Safari",
+    "Library/Cookies",
+    "Library/Containers",
+    "Library/Group Containers",
+    "Library/Daemon Containers",
+    "Library/Application Support/com.apple.TCC",
+    "Library/Application Support/AddressBook",
+    "Library/Application Support/CallHistoryDB",
+    "Library/Application Support/CallHistoryTransactions",
+    "Library/Application Support/Knowledge",
+    "Library/Application Support/com.apple.sharedfilelist",
+    "Library/Calendars",
+    "Library/Reminders",
+    "Library/HomeKit",
+    "Library/IdentityServices",
+    "Library/Accounts",
+    "Library/Biome",
+    "Library/Suggestions",
+    "Library/PersonalizationPortrait",
+    "Library/Metadata/CoreSpotlight",
+    "Library/Mobile Documents",
+    "Library/Sharing",
+    "Library/Trial",
+    "Pictures/Photos Library.photoslibrary",
+    // Scan policy fixes (v2-new review #6): iPhone / iPad backups.
+    "Library/Application Support/MobileSync",
+];
+
+/// Shared or removable locations any local user can already list.
+pub const SHARED_SCAN_ROOTS: &[&str] =
+    &["/Applications", "/Volumes", "/Users/Shared", "/private/tmp"];
+
+/// May a non-administrator peer whose home is `home` start a manual scan of `path`? Both canonical
+/// (no symlink, no `..`). Allowed: the home (without [`PROTECTED_HOME_DIRS`], nor any folder holding
+/// one, like the home itself or `~/Library`) and [`SHARED_SCAN_ROOTS`]. The rest (system folders,
+/// other users) needs administrator approval: job progress shows every file path.
+pub fn scan_root_allowed(path: &std::path::Path, home: Option<&std::path::Path>) -> bool {
+    scan_root_allowed_with(path, home, &|p| std::fs::symlink_metadata(p).is_ok())
+}
+
+/// [`scan_root_allowed`] with the file-existence probe used for volumes injected (tests).
+pub fn scan_root_allowed_with(
+    path: &std::path::Path,
+    home: Option<&std::path::Path>,
+    exists: &dyn Fn(&std::path::Path) -> bool,
+) -> bool {
+    if SHARED_SCAN_ROOTS.iter().any(|r| path.starts_with(r)) {
+        return volume_scan_allowed(path, exists);
+    }
+    let Some(home) = home.filter(|h| h.is_absolute() && h.components().count() > 2) else {
+        return false;
+    };
+    path.starts_with(home)
+        && !PROTECTED_HOME_DIRS.iter().any(|d| {
+            let d = home.join(d);
+            path.starts_with(&d) || d.starts_with(path)
+        })
+}
+
+// Scan policy fixes (v2-new review #6)
+
+/// Path components naming Time Machine stores (local snapshots, backup bundles, mobile backups).
+const BACKUP_COMPONENTS: &[&str] = &[
+    "Backups.backupdb",
+    ".timemachine",
+    "com.apple.TimeMachine.localsnapshots",
+    ".MobileBackups",
+    ".MobileBackups.trash",
+];
+/// Present at the root of a Time Machine destination volume (HFS+ or APFS).
+const BACKUP_VOLUME_MARKERS: &[&str] = &[
+    "Backups.backupdb",
+    ".timemachine",
+    "backup_manifest.plist",
+    ".com.apple.TimeMachine.SnapshotHistory.plist",
+];
+
+/// `path` starts with `prefix`, components compared ASCII-case-insensitively (APFS default).
+fn ci_starts_with(path: &std::path::Path, prefix: &std::path::Path) -> bool {
+    let mut p = path.components();
+    prefix.components().all(|c| {
+        p.next().is_some_and(|x| {
+            x.as_os_str()
+                .to_string_lossy()
+                .eq_ignore_ascii_case(&c.as_os_str().to_string_lossy())
+        })
+    })
+}
+
+/// Under `/Volumes`: no Time Machine backup (snapshots of every user's files), and on a volume holding
+/// macOS homes (`<volume>/Users/<x>`), the same protected stores as in the peer's own home. Other
+/// paths: allowed.
+fn volume_scan_allowed(path: &std::path::Path, exists: &dyn Fn(&std::path::Path) -> bool) -> bool {
+    let Ok(rel) = path.strip_prefix("/Volumes") else {
+        return true;
+    };
+    if rel.iter().any(|c| {
+        let c = c.to_string_lossy();
+        BACKUP_COMPONENTS.iter().any(|m| c.eq_ignore_ascii_case(m))
+    }) {
+        return false;
+    }
+    // `/Volumes` itself would walk every volume, backups included.
+    let Some(vol) = rel.iter().next() else {
+        return false;
+    };
+    let name = vol.to_string_lossy();
+    let vol_root = std::path::Path::new("/Volumes").join(vol);
+    if name.starts_with("Backups of ")
+        || BACKUP_VOLUME_MARKERS
+            .iter()
+            .any(|m| exists(&vol_root.join(m)))
+    {
+        return false;
+    }
+    let users = vol_root.join("Users");
+    if ci_starts_with(&users, path) {
+        // The volume root (or its Users folder) holds the homes, hence their protected stores.
+        return !exists(&users);
+    }
+    if !ci_starts_with(path, &users) {
+        return true;
+    }
+    let Some(user) = path.iter().nth(users.iter().count()) else {
+        return false;
+    };
+    let home = users.join(user);
+    !PROTECTED_HOME_DIRS.iter().any(|d| {
+        let d = home.join(d);
+        ci_starts_with(path, &d) || ci_starts_with(&d, path)
+    })
+}
+
 async fn scan(
     ctx: &Arc<Ctx>,
+    peer: &Peer,
     paths: Vec<String>,
     recursive: bool,
     use_clamav: Option<bool>,
@@ -515,16 +704,36 @@ async fn scan(
         return Err(bad(format!("au plus {MAX_SCAN_PATHS} chemins par analyse")));
     }
     let mut roots = Vec::with_capacity(paths.len());
+    // Non-administrator peers: canonical roots inside the allowed locations (see scan_root_allowed).
+    let home = (!peer.admin)
+        .then(|| crate::system::user_by_uid(peer.uid))
+        .flatten()
+        .and_then(|(_, h)| std::fs::canonicalize(h).ok());
     for p in &paths {
         if p.contains('\0') || !p.starts_with('/') {
             return Err(bad(format!("chemin absolu requis : {p}")));
         }
-        let pb = PathBuf::from(p);
+        let mut pb = PathBuf::from(p);
         if std::fs::symlink_metadata(&pb).is_err() {
             return Err(IpcError::new(
                 ErrorCode::NotFound,
                 format!("introuvable : {p}"),
             ));
+        }
+        if !peer.admin {
+            let canon = std::fs::canonicalize(&pb)
+                .map_err(|_| IpcError::new(ErrorCode::NotFound, format!("introuvable : {p}")))?;
+            if !scan_root_allowed(&canon, home.as_deref()) {
+                tracing::warn!(uid = peer.uid, path = %canon.display(), "manual scan outside the user's locations: approval required");
+                return Err(IpcError::new(
+                    ErrorCode::AuthRequired,
+                    format!(
+                        "analyse de {p} : dossier système, protégé ou d'un autre utilisateur, autorisation administrateur requise"
+                    ),
+                ));
+            }
+            // Scan what was checked, not a symlink that could be swapped afterwards.
+            pb = canon;
         }
         roots.push(pb);
     }
@@ -546,6 +755,7 @@ async fn scan(
 
 /// Toggle DNS blocking: apply first, then persist the choice.
 pub async fn set_dns(ctx: &Arc<Ctx>, enabled: bool) -> Result<DnsStatus, IpcError> {
+    let write = ctx.config_write.lock().await;
     let mut cfg = (*ctx.config()).clone();
     cfg.dns.enabled = enabled;
     let mut status = if enabled {
@@ -556,6 +766,7 @@ pub async fn set_dns(ctx: &Arc<Ctx>, enabled: bool) -> Result<DnsStatus, IpcErro
     crate::setup::save_config(&ctx.paths, &cfg)
         .map_err(|e| IpcError::new(ErrorCode::Internal, e.to_string()))?;
     ctx.publish_config(cfg.clone());
+    drop(write);
     if enabled {
         // The supervisor starts its proxy and switches the system DNS: report what it achieved.
         for _ in 0..16 {
@@ -570,10 +781,99 @@ pub async fn set_dns(ctx: &Arc<Ctx>, enabled: bool) -> Result<DnsStatus, IpcErro
     Ok(status)
 }
 
-/// Validate, save and apply a new configuration.
-pub async fn set_config(ctx: &Arc<Ctx>, mut new: Config) -> Result<Config, IpcError> {
+/// Validate, save and apply a new configuration. With `base` (the configuration the client edited),
+/// only the fields `new` changed relative to `base` are applied onto the current configuration.
+pub async fn set_config(
+    ctx: &Arc<Ctx>,
+    mut new: Config,
+    base: Option<Config>,
+) -> Result<Config, IpcError> {
+    let _write = ctx.config_write.lock().await;
     let old = ctx.config();
     unredact(&mut new, &old);
+    if let Some(mut base) = base {
+        unredact(&mut base, &old);
+        new = merge_config_changes(&old, &base, &new)?;
+    }
+    commit_config(ctx, &old, new).await
+}
+
+// Config concurrency (v2-new review #4)
+
+/// Read-modify-write of the configuration under `ctx.config_write`: `f` edits the CURRENT configuration
+/// (never a snapshot taken before the lock), then validate, save, publish and apply what changed.
+pub async fn update_config(
+    ctx: &Arc<Ctx>,
+    f: impl FnOnce(&mut Config),
+) -> Result<Config, IpcError> {
+    let _write = ctx.config_write.lock().await;
+    let old = ctx.config();
+    let mut new = (*old).clone();
+    f(&mut new);
+    if new == *old {
+        return Ok(new);
+    }
+    commit_config(ctx, &old, new).await
+}
+
+/// Like [`update_config`] without applying side effects (the caller already switched DNS itself).
+pub async fn update_config_saved_only(
+    ctx: &Arc<Ctx>,
+    f: impl FnOnce(&mut Config),
+) -> Result<Config, IpcError> {
+    let _write = ctx.config_write.lock().await;
+    let mut new = (*ctx.config()).clone();
+    f(&mut new);
+    new.validate().map_err(|e| bad(e.to_string()))?;
+    crate::setup::save_config(&ctx.paths, &new)
+        .map_err(|e| IpcError::new(ErrorCode::Internal, e.to_string()))?;
+    ctx.publish_config(new.clone());
+    Ok(new)
+}
+
+/// `current` with the changes from `base` to `new` applied (three-way merge on the JSON tree: objects
+/// field by field, anything else — arrays included — as a whole). A field changed both by the client
+/// and meanwhile by the daemon takes the client's value (the user's latest explicit choice).
+pub fn merge_config_changes(
+    current: &Config,
+    base: &Config,
+    new: &Config,
+) -> Result<Config, IpcError> {
+    let to = |c: &Config| {
+        serde_json::to_value(c).map_err(|e| IpcError::new(ErrorCode::Internal, e.to_string()))
+    };
+    let mut merged = to(current)?;
+    merge_json_changes(&mut merged, &to(base)?, &to(new)?);
+    serde_json::from_value(merged).map_err(|e| bad(e.to_string()))
+}
+
+fn merge_json_changes(current: &mut Value, base: &Value, new: &Value) {
+    if base == new {
+        return;
+    }
+    match (current, base, new) {
+        (Value::Object(cur), Value::Object(b), Value::Object(n)) => {
+            for (k, nv) in n {
+                match (b.get(k), cur.get_mut(k)) {
+                    (Some(bv), Some(cv)) => merge_json_changes(cv, bv, nv),
+                    (Some(bv), None) if bv == nv => {}
+                    _ => {
+                        cur.insert(k.clone(), nv.clone());
+                    }
+                }
+            }
+            for k in b.keys() {
+                if !n.contains_key(k) {
+                    cur.remove(k);
+                }
+            }
+        }
+        (cur, _, n) => *cur = n.clone(),
+    }
+}
+
+/// Validate, save, publish and apply `new` (caller holds `ctx.config_write`).
+async fn commit_config(ctx: &Arc<Ctx>, old: &Config, new: Config) -> Result<Config, IpcError> {
     new.validate().map_err(|e| bad(e.to_string()))?;
     crate::setup::save_config(&ctx.paths, &new)
         .map_err(|e| IpcError::new(ErrorCode::Internal, e.to_string()))?;
@@ -693,6 +993,284 @@ mod tests {
             edited.breach.emails,
             vec!["c.n@example.com", "new@example.org"]
         );
+    }
+
+    /// DNS stub whose `disable` takes a while (window for a concurrent config write).
+    struct SlowDns;
+
+    #[async_trait::async_trait]
+    impl crate::backends::Dns for SlowDns {
+        async fn recover_on_startup(&self) {}
+        async fn enable(&self, cfg: &Config) -> Result<DnsStatus, crate::backends::BackendError> {
+            crate::backends::NullDns.enable(cfg).await
+        }
+        async fn disable(&self) -> Result<DnsStatus, crate::backends::BackendError> {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            Ok(DnsStatus::default())
+        }
+        async fn restore_system_dns(&self) -> Result<(), crate::backends::BackendError> {
+            Ok(())
+        }
+        async fn status(&self, cfg: &Config) -> DnsStatus {
+            crate::backends::NullDns.status(cfg).await
+        }
+        async fn rebuild_lists(&self, cfg: &Config) -> Result<u64, crate::backends::BackendError> {
+            crate::backends::NullDns.rebuild_lists(cfg).await
+        }
+        fn start_supervisor(
+            &self,
+            _c: tokio::sync::watch::Receiver<Arc<Config>>,
+            _s: tokio::sync::watch::Receiver<bool>,
+        ) -> Option<tokio::task::JoinHandle<()>> {
+            None
+        }
+    }
+
+    /// A config write that started while another one was waiting on the DNS backend is not lost.
+    #[tokio::test]
+    async fn concurrent_config_writes_are_not_lost() {
+        use pb_vpn::VpnHooks;
+        let d = tempfile::tempdir().unwrap();
+        let paths = pb_core::paths::Paths::with_root(d.path());
+        crate::setup::prepare_dirs(&paths, false).unwrap();
+        let mut backends = crate::backends::Backends::unavailable();
+        backends.dns = Arc::new(SlowDns);
+        let mut initial = Config::default();
+        initial.dns.enabled = true;
+        let ctx = Arc::new(Ctx::new(
+            paths,
+            true,
+            crate::store::Store::open_in_memory().unwrap(),
+            backends,
+            initial,
+        ));
+        let a = tokio::spawn({
+            let ctx = ctx.clone();
+            async move { set_dns(&ctx, false).await }
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let net = "gw:aa:bb:cc:dd:ee:ff".to_string();
+        crate::vpn::DaemonVpnHooks::new(&ctx)
+            .save_trusted_networks(vec![net.clone()])
+            .await
+            .unwrap();
+        a.await.unwrap().unwrap();
+        for cfg in [
+            (*ctx.config()).clone(),
+            Config::load(&ctx.paths.config_file()).unwrap(),
+        ] {
+            assert!(!cfg.dns.enabled);
+            assert_eq!(cfg.vpn.trusted_networks, vec![net.clone()]);
+        }
+        // No temporary file left behind.
+        let dir = ctx.paths.config_file().parent().unwrap().to_path_buf();
+        assert!(!std::fs::read_dir(dir)
+            .unwrap()
+            .flatten()
+            .any(|e| e.file_name().to_string_lossy().contains(".tmp")));
+    }
+
+    /// v2-new review #4: a settings save edited from an older snapshot only applies its own changes.
+    #[test]
+    fn set_config_with_base_merges_only_changed_fields() {
+        let base = Config::default();
+        // Meanwhile the daemon (travel mode, trusted network) changed other fields.
+        let mut current = base.clone();
+        current.vpn.kill_switch = !base.vpn.kill_switch;
+        current.vpn.trusted_networks = vec!["gw:aa:bb:cc:dd:ee:ff".into()];
+        current.intelligence.domain_allowlist = vec!["boulangerie-martin.fr".into()];
+        // The app edited the scan section and one VPN field from its stale snapshot.
+        let mut new = base.clone();
+        new.scan.max_file_size_mb = base.scan.max_file_size_mb + 7;
+        new.dns.enabled = !base.dns.enabled;
+        let merged = merge_config_changes(&current, &base, &new).unwrap();
+        assert_eq!(merged.scan.max_file_size_mb, new.scan.max_file_size_mb);
+        assert_eq!(merged.dns.enabled, new.dns.enabled);
+        assert_eq!(merged.vpn.kill_switch, current.vpn.kill_switch);
+        assert_eq!(merged.vpn.trusted_networks, current.vpn.trusted_networks);
+        assert_eq!(
+            merged.intelligence.domain_allowlist,
+            current.intelligence.domain_allowlist
+        );
+        // Same field changed on both sides: the client's explicit choice wins.
+        let mut new2 = base.clone();
+        new2.vpn.trusted_networks = vec![];
+        new2.vpn.kill_switch = base.vpn.kill_switch;
+        let mut cur2 = current.clone();
+        cur2.vpn.trusted_networks = vec!["a".into()];
+        let mut base2 = base.clone();
+        base2.vpn.trusted_networks = vec!["b".into()];
+        let merged = merge_config_changes(&cur2, &base2, &new2).unwrap();
+        assert!(merged.vpn.trusted_networks.is_empty());
+        assert_eq!(
+            merged.vpn.kill_switch, cur2.vpn.kill_switch,
+            "unchanged by the client"
+        );
+        // Optional fields removed by the client are removed.
+        let mut b3 = base.clone();
+        b3.privacy.virustotal_api_key = Some("k".into());
+        let mut c3 = b3.clone();
+        c3.updates.daily_hour = 3;
+        let n3 = base.clone();
+        let merged = merge_config_changes(&c3, &b3, &n3).unwrap();
+        assert_eq!(merged.privacy.virustotal_api_key, None);
+        assert_eq!(merged.updates.daily_hour, 3);
+    }
+
+    #[tokio::test]
+    async fn update_config_edits_the_current_config_and_set_config_base_keeps_it() {
+        let d = tempfile::tempdir().unwrap();
+        let paths = pb_core::paths::Paths::with_root(d.path());
+        crate::setup::prepare_dirs(&paths, false).unwrap();
+        let ctx = Arc::new(Ctx::new(
+            paths,
+            true,
+            crate::store::Store::open_in_memory().unwrap(),
+            crate::backends::Backends::unavailable(),
+            Config::default(),
+        ));
+        let snapshot = (*ctx.config()).clone();
+        update_config(&ctx, |c| {
+            c.vpn.trusted_networks = vec!["gw:aa:bb:cc:dd:ee:01".into()]
+        })
+        .await
+        .unwrap();
+        update_config(&ctx, |c| {
+            c.intelligence.domain_allowlist = vec!["example.org".into()]
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            ctx.config().vpn.trusted_networks,
+            vec!["gw:aa:bb:cc:dd:ee:01".to_string()]
+        );
+        // The app saves a change made on its stale snapshot, sending that snapshot as `base`.
+        let mut draft = redact(&snapshot);
+        draft.updates.daily_hour = (snapshot.updates.daily_hour + 1) % 24;
+        let saved = set_config(&ctx, draft.clone(), Some(redact(&snapshot)))
+            .await
+            .unwrap();
+        assert_eq!(saved.updates.daily_hour, draft.updates.daily_hour);
+        for cfg in [
+            (*ctx.config()).clone(),
+            Config::load(&ctx.paths.config_file()).unwrap(),
+        ] {
+            assert_eq!(
+                cfg.vpn.trusted_networks,
+                vec!["gw:aa:bb:cc:dd:ee:01".to_string()]
+            );
+            assert_eq!(
+                cfg.intelligence.domain_allowlist,
+                vec!["example.org".to_string()]
+            );
+            assert_eq!(cfg.updates.daily_hour, draft.updates.daily_hour);
+        }
+        // Without base: whole replacement (CLI `config set`).
+        set_config(&ctx, snapshot.clone(), None).await.unwrap();
+        assert!(ctx.config().vpn.trusted_networks.is_empty());
+    }
+
+    #[test]
+    fn scan_root_policy() {
+        use std::path::Path;
+        let home = Path::new("/Users/camille");
+        let cases: &[(&str, bool)] = &[
+            ("/Users/camille/Downloads", true),
+            ("/Users/camille/Desktop/a.dmg", true),
+            ("/Users/camille/Documents/projet", true),
+            ("/Users/camille/Library/LaunchAgents", true),
+            ("/Users/camille/Library/Application Support/Zoom", true),
+            ("/Applications", true),
+            ("/Applications/Foo.app", true),
+            ("/Volumes/CLE USB", true),
+            ("/Users/Shared/x", true),
+            ("/private/tmp/x.pkg", true),
+            // Holding protected stores, or inside one.
+            ("/Users/camille", false),
+            ("/Users/camille/Library", false),
+            ("/Users/camille/Library/Application Support", false),
+            ("/Users/camille/Library/Messages/chat.db", false),
+            ("/Users/camille/Library/Mail/V10", false),
+            ("/Users/camille/Library/Containers/com.apple.mail", false),
+            (
+                "/Users/camille/Library/Application Support/com.apple.TCC",
+                false,
+            ),
+            (
+                "/Users/camille/Pictures/Photos Library.photoslibrary",
+                false,
+            ),
+            // Other users, system, prefix tricks.
+            ("/Users/dominique/Documents", false),
+            ("/Users/camille2/Documents", false),
+            ("/Users", false),
+            ("/", false),
+            ("/private/var/root", false),
+            ("/Library/Application Support/com.apple.TCC", false),
+            ("/System/Volumes/Data/Users/camille/Documents", false),
+            ("/ApplicationsX", false),
+        ];
+        for (p, want) in cases {
+            assert_eq!(scan_root_allowed(Path::new(p), Some(home)), *want, "{p}");
+        }
+        assert!(!scan_root_allowed(
+            Path::new("/Users/camille/Library/Application Support/MobileSync/Backup"),
+            Some(home)
+        ));
+    }
+
+    /// v2-new review #6: Time Machine volumes and other macOS homes on external volumes.
+    #[test]
+    fn scan_root_policy_volumes() {
+        use std::path::Path;
+        let home = Some(Path::new("/Users/camille"));
+        let present = [
+            "/Volumes/Sauvegarde/Backups.backupdb",
+            "/Volumes/Ancien Mac/Users",
+        ];
+        let exists = |p: &Path| present.iter().any(|x| Path::new(x) == p);
+        let ok = |p: &str| scan_root_allowed_with(Path::new(p), home, &exists);
+        assert!(ok("/Volumes/CLE USB"));
+        assert!(!ok("/Volumes/CLE USB/Users/x/Library/Messages"));
+        assert!(ok("/Volumes/CLE USB/Users/x/Documents"));
+        assert!(!ok("/Volumes"));
+        assert!(!ok("/Volumes/Sauvegarde"));
+        assert!(!ok("/Volumes/Sauvegarde/Backups.backupdb/Mac/Latest"));
+        assert!(!ok("/Volumes/Backups of MacBook Pro"));
+        assert!(!ok(
+            "/Volumes/com.apple.TimeMachine.localsnapshots/Backups.backupdb/x"
+        ));
+        assert!(!ok(
+            "/Volumes/.timemachine/ABCD/2026-11-18-101010.backup/Data"
+        ));
+        assert!(!ok("/Volumes/CLE USB/.MobileBackups"));
+        // macOS homes on a volume: protected stores stay protected, the rest is scannable.
+        assert!(!ok("/Volumes/Ancien Mac"));
+        assert!(!ok("/Volumes/Ancien Mac/Users"));
+        assert!(!ok("/Volumes/Ancien Mac/Users/dominique"));
+        assert!(!ok("/Volumes/Ancien Mac/Users/dominique/Library"));
+        assert!(!ok(
+            "/Volumes/Ancien Mac/Users/dominique/Library/Messages/chat.db"
+        ));
+        assert!(
+            !ok("/Volumes/Ancien Mac/users/Dominique/library/mail"),
+            "case-insensitive"
+        );
+        assert!(!ok(
+            "/Volumes/Ancien Mac/Users/dominique/Library/Application Support/MobileSync"
+        ));
+        assert!(ok("/Volumes/Ancien Mac/Users/dominique/Downloads"));
+        assert!(ok("/Volumes/Ancien Mac/Applications"));
+        // Unknown home: shared locations only; a bogus home grants nothing.
+        assert!(scan_root_allowed(Path::new("/Applications"), None));
+        assert!(!scan_root_allowed(
+            Path::new("/Users/camille/Downloads"),
+            None
+        ));
+        assert!(!scan_root_allowed(
+            Path::new("/etc/x"),
+            Some(Path::new("/"))
+        ));
     }
 
     #[test]

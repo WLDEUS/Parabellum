@@ -24,6 +24,8 @@ Antivirus personnel et open source pour **macOS 14+ sur Apple Silicon**. Un seul
 | Rançongiciels | Fichiers leurres, rafales de chiffrement/renommage : programme suspendu jusqu'à décision ; instantanés APFS horaires et restauration de fichiers | `eslogger`, `tmutil` |
 | Vie privée | Demandes d'effacement RGPD (art. 17) aux courtiers en données, délai d'un mois, relances, plainte CNIL ; fuites de données de tes adresses ; Pwned Passwords ; alias e-mail ; nettoyage des métadonnées | Listes Datenanfragen + Eraser, XposedOrNot / HIBP, addy.io / SimpleLogin |
 | Suivi | App de barre de menus, notifications, rapport hebdomadaire, CLI `parabellum` | SwiftUI, Rust |
+| Mode Voyage | Un clic pour les Wi-Fi publics : VPN permanent + kill switch, DNS bloquant, coupe-feu activé et furtif (option : tout entrant bloqué), AirDrop coupé (option : Bluetooth) ; un clic rétablit exactement l'état d'avant (les réglages changés entre-temps sont gardés). Proposé, ou activé automatiquement, sur un réseau non approuvé | `socketfilterfw`, pb-vpn, pb-dns |
+| Raccourcis | Liens `parabellum://` (app Raccourcis « Ouvrir l'URL », Raycast, scripts) et CLI ; widget de bureau facultatif | URL scheme, WidgetKit |
 | Maintenance | Composants tiers installés depuis leurs releases officielles, signature vérifiée, mis à jour automatiquement | `pb-updater` |
 
 ## Architecture
@@ -69,6 +71,8 @@ Détails, choix et contrats : [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Buil
 | `parabellum guard` / `guard snapshots` | État de la garde comportementale, instantanés APFS |
 | `parabellum privacy start` / `privacy requests` | Lance la campagne d'effacement RGPD, suit les demandes |
 | `parabellum privacy clean <fichiers>` | Copie sans métadonnées (GPS, EXIF, auteur) |
+| `parabellum travel on` / `sudo parabellum travel off` | Mode Voyage : active / rétablit les réglages d'avant |
+| `open "parabellum://scan/downloads"` | Liens d'automatisation : `scan?path=…`, `scan/downloads`, `vpn/connect\|disconnect`, `travel/on\|off`, `pause?minutes=15`, `resume`, `update`, `open/<section>` (liste prête à copier dans Réglages > Raccourcis ; ce qui réduit la protection demande le mot de passe) |
 
 ## Couverture du cahier des charges
 

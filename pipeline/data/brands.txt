@@ -1,0 +1,218 @@
+# Brands imitated by phishing domains: input of the domain model's typosquat / combosquat / homoglyph
+# features (crates/pb-intel, ml/domains). Versioned here; the trainer copies the exact file it used next
+# to the model (`ml/domain_brands.txt` in the threat-DB bundle) so training and inference always agree.
+#
+# Syntax: `<token>[=] <official registrable domain>…`
+#   token     lowercase ASCII letters/digits, compared with the labels of the queried name
+#   =         exact-label match only (short or generic words: no substring / typo matching)
+#   domains   registrable domains owned by the brand: never flagged by the brand features
+# Changing this file changes the model inputs: retrain (ml-domains.yml) after editing it.
+
+# --- French administration & public services
+impots= impots.gouv.fr gouv.fr
+ameli ameli.fr assurance-maladie.fr
+caf= caf.fr
+ants= ants.gouv.fr gouv.fr
+francetravail francetravail.fr pole-emploi.fr
+poleemploi pole-emploi.fr francetravail.fr
+franceconnect franceconnect.gouv.fr franceconnect.fr
+servicepublic service-public.fr
+antai antai.gouv.fr gouv.fr
+urssaf urssaf.fr
+laposte laposte.fr laposte.net lapostegroupe.com
+colissimo colissimo.fr laposte.fr
+chronopost chronopost.fr
+mondialrelay mondialrelay.fr mondialrelay.com
+legifrance legifrance.gouv.fr
+sncf sncf.com sncf-connect.com sncf.fr
+sncfconnect sncf-connect.com
+ouigo ouigo.com
+edf edf.fr
+engie engie.fr engie.com
+totalenergies totalenergies.fr totalenergies.com
+vitale ameli.fr
+# --- French banks & payment
+creditagricole credit-agricole.fr credit-agricole.com ca-paris.fr
+bnpparibas bnpparibas.com bnpparibas.fr bnpparibas.net mabanque.bnpparibas
+societegenerale societegenerale.fr societegenerale.com sg.fr
+labanquepostale labanquepostale.fr
+banquepostale labanquepostale.fr
+lcl= lcl.fr
+boursorama boursorama.com boursobank.com
+boursobank boursobank.com boursorama.com
+creditmutuel creditmutuel.fr creditmutuel.com
+cic= cic.fr
+caisseepargne caisse-epargne.fr
+banquepopulaire banquepopulaire.fr
+hellobank hellobank.fr
+fortuneo fortuneo.fr
+monabanq monabanq.com
+shine= shine.fr
+qonto qonto.com
+lydia lydia-app.com lydia.me
+sumeria sumeria.eu lydia-app.com
+cetelem cetelem.fr
+cofidis cofidis.fr
+paylib paylib.fr
+cartesbancaires cartes-bancaires.com
+axa= axa.fr axa.com
+macif macif.fr
+maif maif.fr
+matmut matmut.fr
+groupama groupama.fr
+allianz allianz.fr allianz.com
+mutuelle mutuelle.fr
+# --- French telecom, retail, services
+orange= orange.fr orange.com
+sosh= sosh.fr
+free= free.fr freebox.fr free-mobile.fr
+freebox freebox.fr free.fr
+freemobile free-mobile.fr free.fr
+sfr= sfr.fr sfr.com
+redbysfr red-by-sfr.fr sfr.fr
+bouygues bouyguestelecom.fr bouygues.com
+bouyguestelecom bouyguestelecom.fr
+doctolib doctolib.fr doctolib.com doctolib.de
+leboncoin leboncoin.fr
+vinted vinted.fr vinted.com vinted.net
+fnac= fnac.com fnac.fr
+darty darty.com
+cdiscount cdiscount.com
+carrefour carrefour.fr carrefour.com
+leclerc e.leclerc leclerc.fr
+auchan auchan.fr
+decathlon decathlon.fr decathlon.com
+boulanger boulanger.com
+ledgerlive ledger.com
+canalplus canalplus.com canal-plus.com
+deezer deezer.com
+blablacar blablacar.fr blablacar.com
+# --- Global tech
+apple apple.com icloud.com apple.fr me.com mac.com
+icloud icloud.com apple.com
+itunes itunes.com apple.com
+appleid apple.com
+google google.com google.fr gmail.com googleapis.com gstatic.com youtube.com googleusercontent.com
+gmail gmail.com google.com
+youtube youtube.com youtu.be google.com
+microsoft microsoft.com microsoftonline.com live.com office.com outlook.com azure.com
+office365 office.com microsoft.com office365.com
+outlook outlook.com office.com microsoft.com live.com
+onedrive onedrive.com live.com microsoft.com
+hotmail hotmail.com hotmail.fr live.com outlook.com
+windows microsoft.com windows.com
+xbox xbox.com microsoft.com
+skype skype.com microsoft.com
+teams= microsoft.com
+linkedin linkedin.com
+github github.com github.io githubusercontent.com
+gitlab gitlab.com
+dropbox dropbox.com dropboxusercontent.com
+wetransfer wetransfer.com
+docusign docusign.com docusign.net
+adobe adobe.com
+zoom= zoom.us zoom.com
+slack slack.com
+notion notion.so notion.com notion.site
+openai openai.com chatgpt.com
+chatgpt chatgpt.com openai.com
+anthropic anthropic.com claude.ai
+claude= claude.ai anthropic.com
+samsung samsung.com
+yahoo yahoo.com yahoo.fr
+protonmail proton.me protonmail.com
+proton= proton.me protonmail.com
+mozilla mozilla.org firefox.com
+firefox firefox.com mozilla.org
+cloudflare cloudflare.com
+godaddy godaddy.com
+ovhcloud ovhcloud.com ovh.com ovh.net
+ovh= ovh.com ovh.net ovhcloud.com ovh.fr
+# --- Shopping, payment, delivery
+paypal paypal.com paypal.fr paypal.me paypalobjects.com
+amazon amazon.com amazon.fr amazon.de amazon.co.uk amazonaws.com media-amazon.com
+primevideo primevideo.com amazon.com
+ebay= ebay.com ebay.fr
+aliexpress aliexpress.com aliexpress.us
+alibaba alibaba.com
+temu= temu.com
+shein= shein.com
+stripe stripe.com
+visa= visa.com visa.fr
+mastercard mastercard.com mastercard.fr
+americanexpress americanexpress.com
+amex= americanexpress.com
+klarna klarna.com
+revolut revolut.com
+wise= wise.com
+westernunion westernunion.com
+moneygram moneygram.com
+dhl= dhl.com dhl.fr dhl.de
+fedex fedex.com
+ups= ups.com
+dpd= dpd.fr dpd.com
+gls= gls-group.eu gls-france.com
+usps= usps.com
+royalmail royalmail.com
+booking booking.com
+airbnb airbnb.com airbnb.fr
+expedia expedia.com expedia.fr
+uber= uber.com
+deliveroo deliveroo.fr deliveroo.com
+ubereats ubereats.com uber.com
+ticketmaster ticketmaster.fr ticketmaster.com
+# --- Streaming, social, gaming
+netflix netflix.com nflxvideo.net nflximg.net
+disneyplus disneyplus.com disney.com
+spotify spotify.com
+facebook facebook.com fb.com facebook.net fbcdn.net
+instagram instagram.com cdninstagram.com
+whatsapp whatsapp.com whatsapp.net
+messenger messenger.com facebook.com
+meta= meta.com facebook.com
+tiktok tiktok.com tiktokcdn.com
+twitter twitter.com x.com twimg.com
+snapchat snapchat.com
+telegram telegram.org t.me
+discord discord.com discord.gg discordapp.com
+twitch twitch.tv
+reddit reddit.com
+pinterest pinterest.com pinterest.fr
+steamcommunity steamcommunity.com steampowered.com
+steampowered steampowered.com steamcommunity.com
+steam= steampowered.com steamcommunity.com
+epicgames epicgames.com
+playstation playstation.com sony.com
+nintendo nintendo.com nintendo.fr
+roblox roblox.com
+battlenet battle.net blizzard.com
+blizzard blizzard.com battle.net
+# --- Crypto & wallets (stealers' favourite lures)
+binance binance.com
+coinbase coinbase.com
+kraken kraken.com
+metamask metamask.io
+ledger ledger.com
+trezor trezor.io
+exodus exodus.com
+phantom phantom.app
+trustwallet trustwallet.com
+blockchain blockchain.com
+crypto= crypto.com
+bitpanda bitpanda.com
+kucoin kucoin.com
+bybit bybit.com
+okx= okx.com
+uniswap uniswap.org
+opensea opensea.io
+# --- International banks
+hsbc= hsbc.com hsbc.fr hsbc.co.uk
+barclays barclays.co.uk barclays.com
+santander santander.com santander.fr santander.co.uk
+ingdirect ing.fr ing.com
+chase= chase.com
+wellsfargo wellsfargo.com
+bankofamerica bankofamerica.com
+citibank citibank.com citi.com
+deutschebank db.com deutsche-bank.de
+n26= n26.com

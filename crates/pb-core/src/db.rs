@@ -20,6 +20,14 @@
 //! ml/macho_model.json                 LightGBM model dump (see pb-ml), optional
 //! ml/model_meta.json                  {"features_version":N,"threshold":f,"version":"YYYY.MM.DD","metrics":{...}}, optional
 //!                                     (`version` optional: defaults to a short SHA-256 of the model file)
+//!                                     + optional "calibration": {"method":"platt"|"isotonic",…} (see pb_ml::Calibration)
+//! ml/script_model.json                script classifier dump (pb_ml script features), optional
+//! ml/script_model_meta.json           same shape as model_meta.json, script feature layout version
+//! ml/domain_model.json                phishing / malicious-domain LightGBM dump (see pb-intel), optional
+//! ml/domain_model_meta.json           {"features_version":N,"threshold":f,"block_threshold":f,"version":"…",
+//!                                     "brands_sha256":"…","metrics":{...}}, optional
+//! ml/domain_brands.txt                brand list the domain model was trained with (pipeline/data/brands.txt)
+//! ml/domain_top.txt                   popular registrable domains never scored by the domain model
 //! osquery/hunting.json                osquery pack (`{"queries":{name:{query,interval,description}}}`), optional
 //! zbt/zero-breach-toolkit.py          Zero Breach Toolkit single-file scanner (Apache-2.0), optional. The pipeline
 //!                                     only ships it after `gpg --verify` of the release's `SHA256SUMS.txt.asc` with
@@ -31,6 +39,8 @@
 //!                                     "signer_fingerprint":"C24E…A53C"}
 //! privacy/brokers.json                [`BrokersFile`]: organisations to send GDPR erasure requests to (Datenanfragen
 //!                                     CC0 + Eraser MIT, both fetched at pinned commits), optional
+//! lan/oui.tsv                         IEEE MA-L / MA-M / MA-S vendor prefixes for the LAN inventory (`<hex prefix>\t<vendor>`,
+//!                                     sorted), optional
 //! components/pins.json                [`ComponentPins`]: third-party binaries without a vendor signature we can check
 //!                                     on the Mac (sing-box): the pipeline verifies the vendor's GitHub build
 //!                                     provenance attestation (Sigstore) and pins the archive SHA-256 here, so the
@@ -58,6 +68,8 @@ pub const ZBT_SIGNER_FINGERPRINT: &str = "C24EC92B12D6670A2516065F9B4D575499AFA5
 pub const PRIVACY_BROKERS: &str = "privacy/brokers.json";
 /// Pinned third-party components inside the bundle (see the layout above).
 pub const COMPONENT_PINS: &str = "components/pins.json";
+/// IEEE MAC vendor prefixes (`lan/oui.tsv`): `<6, 7 or 9 uppercase hex digits>\t<vendor>` per line, sorted.
+pub const LAN_OUI: &str = "lan/oui.tsv";
 
 /// `privacy/brokers.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

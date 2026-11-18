@@ -1,0 +1,25 @@
+[package]
+name = "pb-intel"
+description = "Predictive intelligence: lexical phishing-domain model and on-device behavioural anomaly baseline"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+pb-ml = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+flate2 = { workspace = true }
+clap = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+pb-ml = { workspace = true, features = ["test-util"] }
+
+[[bin]]
+name = "pb-domain-features"
+path = "src/bin/pb-domain-features.rs"

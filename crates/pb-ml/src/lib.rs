@@ -6,8 +6,11 @@
 //!   which consumes the JSON lines printed by the `pb-features` binary.
 //! * [`GbdtModel`] evaluates a LightGBM model exported with `Booster.dump_model()` (pure Rust, no
 //!   runtime, iterative traversal, LightGBM's exact missing-value semantics).
-//! * [`MlModel`] bundles the model with its calibrated threshold, as shipped in the threat-DB bundle
-//!   (`ml/macho_model.json` + `ml/model_meta.json`).
+//! * [`extract_script_features`] does the same for scripts (shell, AppleScript source / compiled,
+//!   JXA, JavaScript, Python, Perl, Ruby), versioned by [`SCRIPT_FEATURES_VERSION`].
+//! * [`MlModel`] bundles a model with its calibrated threshold and optional probability calibration,
+//!   as shipped in the threat-DB bundle (`ml/macho_model.json` + `ml/model_meta.json`,
+//!   `ml/script_model.json` + `ml/script_model_meta.json`).
 //!
 //! Policy reminder (enforced by `pb-engine`): an ML score alone can only make a file *suspicious*,
 //! never *malicious*, and never triggers an automatic quarantine.
@@ -21,16 +24,24 @@ mod features;
 mod gbdt;
 mod macho;
 mod model;
+mod script;
 
 pub use codesig::{code_signature_summary, CodeSignatureSummary};
 pub use features::{extract_features, feature_descriptions, feature_names, FEATURES_VERSION};
 pub use gbdt::GbdtModel;
 pub use macho::plausible_fat_header;
-pub use model::{MlModel, ModelMeta, MODEL_FILE, MODEL_META_FILE};
+pub use model::{
+    Calibration, MlModel, ModelKind, ModelMeta, Score, MODEL_FILE, MODEL_META_FILE,
+    SCRIPT_MODEL_FILE, SCRIPT_MODEL_META_FILE,
+};
+pub use script::{
+    detect_script_kind, extract_script_features, script_feature_descriptions, script_feature_names,
+    KindSource, ScriptKind, ScriptType, MAX_SCRIPT_BYTES, SCRIPT_FEATURES_VERSION,
+};
 
 #[cfg(any(test, feature = "test-util"))]
 #[doc(hidden)]
-pub use model::test_model_json;
+pub use model::{test_model_json, test_model_json_for};
 
 /// Errors returned by this crate.
 #[derive(Debug, thiserror::Error)]
@@ -38,6 +49,10 @@ pub enum MlError {
     /// The input does not start with a Mach-O or universal (fat) magic.
     #[error("not a Mach-O file")]
     NotMachO,
+    /// The input is not recognised as a script (no magic, shebang, known extension or script-like
+    /// text).
+    #[error("not a script")]
+    NotScript,
     /// The input looks like a Mach-O but could not be parsed.
     #[error("malformed Mach-O: {0}")]
     Malformed(String),

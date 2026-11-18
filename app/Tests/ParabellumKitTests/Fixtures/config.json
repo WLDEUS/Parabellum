@@ -66,6 +66,22 @@
     "suspend_ransomware": true,
     "trusted_team_ids": []
   },
+  "intelligence": {
+    "anomaly_threshold": 0.75,
+    "behavior_anomaly": true,
+    "block_ml_domains": false,
+    "domain_alerts": true,
+    "domain_allowlist": [],
+    "domain_model": true,
+    "learning_days": 7,
+    "max_anomaly_alerts_per_day": 10
+  },
+  "lan": {
+    "active_on_trusted": true,
+    "alert_new_devices": true,
+    "enabled": true,
+    "scan_interval_minutes": 15
+  },
   "ml": {
     "enabled": true,
     "only_untrusted": true,
@@ -78,6 +94,11 @@
   "notifications": {
     "enabled": true,
     "min_severity": "medium"
+  },
+  "permissions": {
+    "alert_high_risk": true,
+    "enabled": true,
+    "interval_hours": 24
   },
   "persistence": {
     "enabled": true,
@@ -119,6 +140,13 @@
     "spyware_scan_hour": 13,
     "spyware_scan_weekday": 3,
     "spyware_scan_weekly": true
+  },
+  "travel": {
+    "airdrop_off": true,
+    "auto_enable": false,
+    "block_all_incoming": false,
+    "bluetooth_off": false,
+    "suggest_on_untrusted": true
   },
   "updates": {
     "app_releases_api": "https://api.github.com/repos/WLDEUS/Parabellum/releases",

@@ -10,6 +10,7 @@
 #   Contents/Info.plist                  rendered from installer/app/Info.plist.in
 #   Contents/Resources/AppIcon.icns      drawn by installer/app/make-icon.swift (skipped on failure)
 #   Contents/Resources/*.bundle          SwiftPM resource bundles, if any
+#   Contents/PlugIns/ParabellumWidget.appex  desktop widget (optional, scripts/build-widget.sh)
 #
 # Signing: the "Parabellum Local Signing" certificate (make codesign-cert) when present, or
 # $PARABELLUM_SIGN_IDENTITY, otherwise ad hoc. See pb_resolve_sign_identity in lib/common.sh.
@@ -131,10 +132,26 @@ fi
 # Signature (stable certificate or ad hoc), hardened runtime: nested Mach-O first (deepest first),
 # then the bundle itself.
 pb_resolve_sign_identity
+
+# Desktop widget (WidgetKit extension), optional: built, sandboxed and signed with the same identity by
+# build-widget.sh; any failure ships the app without it. PARABELLUM_WIDGET=0 skips it.
+if [[ "${PARABELLUM_WIDGET:-1}" != "0" ]]; then
+    pb_info "Widget de bureau (facultatif)"
+    if PARABELLUM_SIGN_IDENTITY="$PB_SIGN_IDENTITY" "$PB_REPO_ROOT/scripts/build-widget.sh" "$app"; then
+        pb_ok "widget intégré"
+    else
+        pb_warn "widget non construit : l'app est livrée sans (facultatif)"
+        rm -rf "$app/Contents/PlugIns/ParabellumWidget.appex"
+        rmdir "$app/Contents/PlugIns" 2>/dev/null || true
+    fi
+fi
+
 main_exe="$app/Contents/MacOS/$PB_APP_PRODUCT"
 nested=()
 while IFS= read -r -d '' f; do
     [[ "$f" == "$main_exe" ]] && continue
+    # App extensions are signed as bundles (with their entitlements) by their own build script.
+    [[ "$f" == "$app/Contents/PlugIns/"* ]] && continue
     pb_is_macho "$f" && nested+=("$f")
 done < <(find "$app/Contents" -type f -print0)
 if ((${#nested[@]} > 0)); then

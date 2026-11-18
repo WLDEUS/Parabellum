@@ -578,3 +578,40 @@ async fn shutdown_removes_rules_before_stopping_sing_box() {
     assert!(p.terminated.load(Ordering::SeqCst));
     assert!(!svc.killswitch.is_applied());
 }
+
+// ----- speed: list_networks never waits behind a tick -----
+
+#[tokio::test]
+async fn networks_do_not_wait_behind_a_running_tick() {
+    let sys = macos_sys();
+    let hooks = Arc::new(Hooks::default());
+    let (_d, svc) = setup(sys.clone(), hooks.clone());
+    svc.set_cfg(cfg(|c| c.network.enabled = true));
+    // Before any list exists, a caller waits for the lock (nothing better to answer).
+    {
+        let held = svc.rt.lock().await;
+        let pending = tokio::time::timeout(Duration::from_millis(50), svc.networks()).await;
+        assert!(pending.is_err(), "no snapshot yet: waits for the runtime");
+        drop(held);
+    }
+    svc.tick().await;
+    let fresh = svc.networks().await;
+    assert_eq!(fresh.len(), 1);
+    assert_eq!(fresh[0].id, HOME_ID);
+    assert!(!fresh[0].trusted);
+
+    // A tick holding the runtime (probe, tunnel start, leak test…): the last list comes back at once,
+    // with trust flags from the current configuration.
+    let held = svc.rt.lock().await;
+    svc.set_cfg(cfg(|c| {
+        c.network.enabled = true;
+        c.vpn.trusted_networks = vec![HOME_ID.to_string()];
+    }));
+    let during = tokio::time::timeout(Duration::from_millis(200), svc.networks())
+        .await
+        .expect("answered from the snapshot");
+    assert_eq!(during.len(), 1);
+    assert!(during[0].trusted && during[0].current);
+    drop(held);
+    assert!(svc.networks().await[0].trusted);
+}

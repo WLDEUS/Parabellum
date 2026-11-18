@@ -27,6 +27,18 @@ thiserror = { workspace = true }
 chrono = { workspace = true }
 toml = { workspace = true }
 libc = { workspace = true }
+# Coffre (hdiutil -plist) and permissions audit (apps' Info.plist).
+plist = { workspace = true }
+# Nettoyage du Mac (plist above): tree walks, item ids, app archives.
+walkdir = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+zip = { workspace = true }
+
+# Permissions audit: LaunchServices lookup of bundle ids.
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+filetime = "0.2"

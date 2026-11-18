@@ -35,6 +35,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .hashes import is_sha256
 from .http import Fetcher, FetchError
 
 log = logging.getLogger(__name__)
@@ -516,25 +517,75 @@ def _resolve_bottle(http: Fetcher, formula: str, tags: list[str]) -> ArchiveSpec
     return None
 
 
+#: ``{formula: {name, url, sha256}}`` of the last successful bottle resolution, kept in the cache so a
+#: rate-limited formulae.brew.sh does not shrink the corpus (and prune the cached bottles) for a night.
+BOTTLE_INDEX = "bottles.json"
+
+
+def expected_entries(spec: CorpusSpec) -> int:
+    """Corpus entries the spec declares (pinned archives + Homebrew formulae)."""
+    return len(spec.archives) + len(spec.homebrew_formulae)
+
+
+def spec_fingerprint(spec: CorpusSpec) -> str:
+    """Identity of the declared entries (names + formulae): scanned-file counts compare only within one."""
+    names = sorted([f"archive:{a.name}" for a in spec.archives] + [f"brew:{f}" for f in spec.homebrew_formulae])
+    return hashlib.sha256("\n".join(names).encode()).hexdigest()[:16]
+
+
+def _load_bottle_index(cache: Path) -> dict[str, dict[str, str]]:
+    try:
+        doc = json.loads((cache / BOTTLE_INDEX).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(doc, dict):
+        return {}
+    return {
+        str(k): {f: str(v[f]) for f in ("name", "url", "sha256")}
+        for k, v in doc.items()
+        if isinstance(v, dict)
+        and all(isinstance(v.get(f), str) for f in ("name", "url", "sha256"))
+        and is_sha256(str(v["sha256"]).lower())
+    }
+
+
 def ensure_corpus(
     spec: CorpusSpec, cache: Path, http: Fetcher, limits: Limits | None = None, prune: bool = True
 ) -> list[CorpusItem]:
-    """Download (or reuse from cache) and extract every corpus entry. Failures are logged and skipped."""
+    """Download (or reuse from cache) and extract every corpus entry. Failures are logged and skipped.
+
+    A formula whose bottle cannot be resolved this run falls back to the last resolved bottle (cache
+    index); when there is none, nothing is pruned from the cache this run.
+    """
     limits = limits or Limits()
     seven_zip = find_7zip()
     dl_dir, x_dir = cache / "dl", cache / "x"
     dl_dir.mkdir(parents=True, exist_ok=True)
     x_dir.mkdir(parents=True, exist_ok=True)
     wanted: list[ArchiveSpec] = list(spec.archives)
+    bottles = _load_bottle_index(cache)
+    unresolved = False
     for formula in spec.homebrew_formulae:
         try:
             b = _resolve_bottle(http, formula, spec.bottle_tags)
             if b:
                 wanted.append(b)
+                bottles[formula] = {"name": b.name, "url": b.url, "sha256": b.sha256}
             else:
                 log.warning("no arm64 bottle for %s", formula)
         except (FetchError, ValueError, KeyError) as e:
-            log.warning("cannot resolve bottle %s: %s", formula, e)
+            last = bottles.get(formula)
+            if last:
+                log.warning("cannot resolve bottle %s (%s): reusing %s", formula, e, last["name"])
+                wanted.append(ArchiveSpec(last["name"], last["url"], last["sha256"].lower(), "tar"))
+            else:
+                log.warning("cannot resolve bottle %s: %s", formula, e)
+                unresolved = True
+    try:
+        index = {f: bottles[f] for f in spec.homebrew_formulae if f in bottles}
+        (cache / BOTTLE_INDEX).write_text(json.dumps(index, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    except OSError as e:
+        log.warning("cannot write %s: %s", BOTTLE_INDEX, e)
     items: list[CorpusItem] = []
     for a in wanted:
         archive = dl_dir / a.sha256
@@ -569,7 +620,7 @@ def ensure_corpus(
             subprocess.TimeoutExpired,
         ) as e:
             log.warning("corpus entry %s skipped: %s", a.name, e)
-    if prune:
+    if prune and not unresolved:
         keep = {i.sha256 for i in items} | {a.sha256 for a in wanted}
         for p in list(dl_dir.iterdir()) + list(x_dir.iterdir()):
             key = p.name.split(".")[0]

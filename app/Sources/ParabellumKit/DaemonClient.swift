@@ -291,6 +291,8 @@ final class PendingRequests: @unchecked Sendable {
     private let lock = NSLock()
     private var entries: [UInt64: Entry] = [:]
     private var closedError: Error?
+    /// Set by `retire`: runs once the last pending request is resolved.
+    private var onDrained: (@Sendable () -> Void)?
 
     func register(_ id: UInt64, _ continuation: CheckedContinuation<Data, Error>) {
         lock.lock()
@@ -317,10 +319,29 @@ final class PendingRequests: @unchecked Sendable {
     func resolve(_ id: UInt64, with result: Result<Data, Error>) {
         lock.lock()
         let entry = entries.removeValue(forKey: id)
+        var drained: (@Sendable () -> Void)?
+        if entries.isEmpty {
+            drained = onDrained
+            onDrained = nil
+        }
         lock.unlock()
+        drained?()
         guard let entry else { return }
         entry.timeout?.cancel()
         entry.continuation.resume(with: result)
+    }
+
+    /// The connection takes no new request: `drained` runs once every pending one is resolved (at once if
+    /// none is).
+    func retire(whenDrained drained: @escaping @Sendable () -> Void) {
+        lock.lock()
+        if entries.isEmpty {
+            lock.unlock()
+            drained()
+            return
+        }
+        onDrained = drained
+        lock.unlock()
     }
 
     func failAll(_ error: Error) {
@@ -436,6 +457,18 @@ public actor DaemonClient {
         }
     }
 
+    /// After a timeout the daemon is still working on the abandoned request and holds one of the
+    /// connection's in-flight slots (8): new requests go to a fresh connection, this one is closed once its
+    /// other requests are answered (or time out), so a few slow requests can never starve every later one.
+    private func retireConnection(_ slow: RequestConnection) {
+        if connection === slow {
+            connection = nil
+        }
+        slow.pending.retire { [slow] in
+            slow.close()
+        }
+    }
+
     private func allocateId() -> UInt64 {
         let id = nextId
         nextId = nextId == UInt64.max ? 1 : nextId + 1
@@ -460,6 +493,9 @@ public actor DaemonClient {
                 }
             } catch let error as DaemonClientError where error == .connectionLost {
                 dropConnection(conn)
+                throw error
+            } catch let error as DaemonClientError where error == .timeout {
+                retireConnection(conn)
                 throw error
             }
         }

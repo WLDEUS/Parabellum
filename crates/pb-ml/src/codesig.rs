@@ -51,6 +51,33 @@ pub struct CodeSignatureSummary {
     pub entitlements: Option<String>,
     /// DER entitlements blob present.
     pub der_entitlements: bool,
+    /// Raw CodeDirectory flags (`CS_*`).
+    pub flags: u32,
+    /// Hash type of the primary CodeDirectory (1 = SHA-1, 2 = SHA-256, …; 0 = none).
+    pub hash_type: u8,
+    /// Number of CodeDirectories (primary + alternates).
+    pub code_directories: u32,
+    /// The CMS blob carries a secure timestamp (`id-aa-timeStampToken` attribute).
+    pub cms_timestamp: bool,
+    /// The CMS certificates mention `Developer ID Application` (distribution outside the App Store).
+    pub cms_developer_id: bool,
+    /// The CMS certificates mention `Apple Development` / `Mac Developer` (development-only identity).
+    pub cms_apple_development: bool,
+    /// The CMS certificates mention `Apple Mac OS Application Signing` (Mac App Store).
+    pub cms_app_store: bool,
+    /// The CMS certificates mention `Software Signing` (Apple's own platform binaries).
+    pub cms_apple_software: bool,
+}
+
+/// DER encoding of the OID 1.2.840.113549.1.9.16.2.14 (`id-aa-timeStampToken`).
+const OID_TIMESTAMP_TOKEN: &[u8] = &[
+    0x06, 0x0b, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x09, 0x10, 0x02, 0x0e,
+];
+/// Max CMS bytes inspected for certificate hints.
+const MAX_CMS_SCAN: usize = 64 * 1024;
+
+fn contains(hay: &[u8], needle: &[u8]) -> bool {
+    !needle.is_empty() && hay.windows(needle.len()).any(|w| w == needle)
 }
 
 /// Parses the embedded signature of a Mach-O (for universal binaries: the arm64 slice, else the
@@ -117,6 +144,9 @@ fn parse_superblob(blob: &[u8]) -> CodeSignatureSummary {
         let off = off as usize;
         let magic = read_u32_be(blob, off);
         let blen = read_u32_be(blob, off + 4).unwrap_or(0) as usize;
+        if magic == Some(CSMAGIC_CODEDIRECTORY) {
+            s.code_directories += 1;
+        }
         match slot {
             CSSLOT_CODEDIRECTORY => best_cd = Some((slot, off)),
             0x1000..=0x1004 if best_cd.is_none() => best_cd = Some((slot, off)),
@@ -129,7 +159,19 @@ fn parse_superblob(blob: &[u8]) -> CodeSignatureSummary {
                 }
             }
             CSSLOT_DER_ENTITLEMENTS => s.der_entitlements = true,
-            CSSLOT_SIGNATURESLOT if magic == Some(CSMAGIC_BLOBWRAPPER) => s.has_cms = blen > 8,
+            CSSLOT_SIGNATURESLOT if magic == Some(CSMAGIC_BLOBWRAPPER) => {
+                s.has_cms = blen > 8;
+                let end = off.saturating_add(blen).min(blob.len());
+                if let Some(cms) = blob.get(off + 8..end) {
+                    let cms = &cms[..cms.len().min(MAX_CMS_SCAN)];
+                    s.cms_timestamp = contains(cms, OID_TIMESTAMP_TOKEN);
+                    s.cms_developer_id = contains(cms, b"Developer ID Application");
+                    s.cms_apple_development =
+                        contains(cms, b"Apple Development") || contains(cms, b"Mac Developer");
+                    s.cms_app_store = contains(cms, b"Apple Mac OS Application Signing");
+                    s.cms_apple_software = contains(cms, b"Software Signing");
+                }
+            }
             _ => {}
         }
     }
@@ -141,6 +183,8 @@ fn parse_superblob(blob: &[u8]) -> CodeSignatureSummary {
                 .unwrap_or(&[]);
             let version = read_u32_be(cd, 8).unwrap_or(0);
             let flags = read_u32_be(cd, 12).unwrap_or(0);
+            s.flags = flags;
+            s.hash_type = cd.get(37).copied().unwrap_or(0);
             s.adhoc = flags & CS_ADHOC != 0;
             s.runtime = flags & CS_RUNTIME != 0;
             s.linker_signed = flags & CS_LINKER_SIGNED != 0;

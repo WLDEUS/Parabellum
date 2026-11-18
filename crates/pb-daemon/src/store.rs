@@ -29,14 +29,41 @@ pub enum StoreError {
 /// Result alias for store operations.
 pub type Result<T> = std::result::Result<T, StoreError>;
 
+/// SQLite says the file is damaged or not a database at all.
+fn is_corruption(e: &StoreError) -> bool {
+    matches!(
+        e,
+        StoreError::Sqlite(rusqlite::Error::SqliteFailure(f, _))
+            if matches!(f.code, rusqlite::ErrorCode::DatabaseCorrupt | rusqlite::ErrorCode::NotADatabase)
+    )
+}
+
+/// Rename `<db>` (and its `-wal`) to `<db>.corrupt-<ts>`, drop its `-shm`. Returns the new path.
+fn quarantine_corrupt_db(path: &Path, ts: i64) -> std::io::Result<std::path::PathBuf> {
+    let with_suffix = |suffix: &str| {
+        let mut s = path.as_os_str().to_owned();
+        s.push(suffix);
+        std::path::PathBuf::from(s)
+    };
+    let aside = with_suffix(&format!(".corrupt-{ts}"));
+    std::fs::rename(path, &aside)?;
+    let _ = std::fs::rename(
+        with_suffix("-wal"),
+        with_suffix(&format!(".corrupt-{ts}-wal")),
+    );
+    let _ = std::fs::remove_file(with_suffix("-shm"));
+    Ok(aside)
+}
+
 /// Max findings returned by [`Store::get_job`] (a scan of a malware corpus could produce many).
 pub const MAX_FINDINGS_RETURNED: u32 = 5_000;
 /// Hard cap on `file_history` rows (oldest `last_seen` pruned first).
 pub const FILE_HISTORY_CAP: i64 = 200_000;
 
-const MIGRATIONS: &[(i64, &str)] = &[(
-    1,
-    r#"
+const MIGRATIONS: &[(i64, &str)] = &[
+    (
+        1,
+        r#"
 CREATE TABLE alerts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts INTEGER NOT NULL,
@@ -160,7 +187,20 @@ CREATE TABLE kv (
     value TEXT NOT NULL
 );
 "#,
-)];
+    ),
+    // ----- Activity report: named per-day counters (VPN uptime, leak tests…) -----
+    (
+        2,
+        r#"
+CREATE TABLE daily_counters (
+    date TEXT NOT NULL,
+    name TEXT NOT NULL,
+    value INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (date, name)
+);
+"#,
+    ),
+];
 
 /// Counters kept per local day in `daily_stats`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -261,8 +301,21 @@ fn from_json<T: DeserializeOwned>(s: &str) -> rusqlite::Result<T> {
 impl Store {
     /// Open (or create) the database file and apply migrations.
     pub fn open(path: &Path) -> Result<Self> {
-        let conn = Connection::open(path)?;
-        Self::init(conn)
+        match Connection::open(path)
+            .map_err(StoreError::from)
+            .and_then(Self::init)
+        {
+            Err(e) if is_corruption(&e) => {
+                // A corrupt database must not crash-loop the daemon: keep it aside and start empty.
+                let aside = quarantine_corrupt_db(path, pb_core::now_ts()).map_err(|io| {
+                    tracing::error!(error = %io, "cannot move the corrupt state database aside");
+                    e
+                })?;
+                tracing::error!(aside = %aside.display(), "state database corrupt: moved aside, starting with an empty one");
+                Self::init(Connection::open(path)?)
+            }
+            r => r,
+        }
     }
 
     /// In-memory database (tests).
@@ -1036,8 +1089,96 @@ impl Store {
         let cutoff = chrono::DateTime::from_timestamp(now - 400 * day, 0)
             .map(|d| d.format("%Y-%m-%d").to_string())
             .unwrap_or_default();
-        conn.execute("DELETE FROM daily_stats WHERE date < ?1", [cutoff])?;
+        conn.execute("DELETE FROM daily_stats WHERE date < ?1", [&cutoff])?;
+        // Activity report counters
+        conn.execute("DELETE FROM daily_counters WHERE date < ?1", [&cutoff])?;
         Ok(())
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Activity report
+    // -----------------------------------------------------------------------------------------
+
+    /// Add `n` to the named counter of day `date` (`YYYY-MM-DD`, local time).
+    pub fn bump_counter(&self, date: &str, name: &str, n: u64) -> Result<()> {
+        if n == 0 {
+            return Ok(());
+        }
+        self.lock().execute(
+            "INSERT INTO daily_counters(date, name, value) VALUES (?1, ?2, ?3)
+             ON CONFLICT(date, name) DO UPDATE SET value = value + excluded.value",
+            params![date, name, n.min(i64::MAX as u64) as i64],
+        )?;
+        Ok(())
+    }
+
+    /// Named counters of dates in `[from_date, to_date)`: `(date, name, value)` ordered by date.
+    pub fn counters_between(
+        &self,
+        from_date: &str,
+        to_date: &str,
+    ) -> Result<Vec<(String, String, u64)>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(
+            "SELECT date, name, value FROM daily_counters WHERE date >= ?1 AND date < ?2 ORDER BY date, name",
+        )?;
+        let rows = stmt.query_map(params![from_date, to_date], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get::<_, i64>(2)?.max(0) as u64))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// `daily_stats` rows of dates in `[from_date, to_date)`, ordered by date.
+    pub fn daily_rows(&self, from_date: &str, to_date: &str) -> Result<Vec<ReportDay>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(
+            "SELECT date, files_scanned, threats, quarantined, dns_blocked FROM daily_stats
+             WHERE date >= ?1 AND date < ?2 ORDER BY date",
+        )?;
+        let rows = stmt.query_map(params![from_date, to_date], |r| {
+            let g = |i: usize| -> rusqlite::Result<u64> { Ok(r.get::<_, i64>(i)?.max(0) as u64) };
+            Ok(ReportDay {
+                date: r.get(0)?,
+                files_scanned: g(1)?,
+                threats: g(2)?,
+                quarantined: g(3)?,
+                dns_blocked: g(4)?,
+                vpn_connected_secs: 0,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Scan jobs started in `[from, to)` per origin, most frequent first.
+    pub fn jobs_by_origin(&self, from: i64, to: i64) -> Result<Vec<NamedCount>> {
+        self.grouped_counts(
+            "SELECT origin, COUNT(*) AS c FROM scan_jobs WHERE started_at >= ?1 AND started_at < ?2
+             GROUP BY origin ORDER BY c DESC, origin ASC",
+            from,
+            to,
+        )
+    }
+
+    /// Alerts raised in `[from, to)` per kind, most frequent first.
+    pub fn alerts_by_kind(&self, from: i64, to: i64) -> Result<Vec<NamedCount>> {
+        self.grouped_counts(
+            "SELECT kind, COUNT(*) AS c FROM alerts WHERE ts >= ?1 AND ts < ?2
+             GROUP BY kind ORDER BY c DESC, kind ASC",
+            from,
+            to,
+        )
+    }
+
+    fn grouped_counts(&self, sql: &str, from: i64, to: i64) -> Result<Vec<NamedCount>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(sql)?;
+        let rows = stmt.query_map(params![from, to], |r| {
+            Ok(NamedCount {
+                name: r.get(0)?,
+                count: r.get::<_, i64>(1)?.max(0) as u64,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
     /// Flush the WAL into the main database file (shutdown).
@@ -1045,6 +1186,19 @@ impl Store {
         let conn = self.lock();
         let _ = conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()));
         Ok(())
+    }
+
+    // ----- Intelligence -----
+
+    /// The `detection` key stored with an alert (intelligence alerts keep their subject there).
+    pub fn alert_detection(&self, id: i64) -> Result<Option<String>> {
+        let conn = self.lock();
+        let v: Option<Option<String>> = conn
+            .query_row("SELECT detection FROM alerts WHERE id = ?1", [id], |r| {
+                r.get(0)
+            })
+            .optional()?;
+        Ok(v.flatten())
     }
 }
 
@@ -1061,6 +1215,32 @@ pub enum AlertKey<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn corrupt_database_is_moved_aside() {
+        let d = tempfile::tempdir().unwrap();
+        let db = d.path().join("state.db");
+        let junk = vec![b'x'; 8192];
+        std::fs::write(&db, &junk).unwrap();
+        let store = Store::open(&db).unwrap();
+        store.kv_set("k", "v").unwrap();
+        assert_eq!(store.kv_get("k").unwrap().as_deref(), Some("v"));
+        let aside: Vec<_> = std::fs::read_dir(d.path())
+            .unwrap()
+            .flatten()
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with("state.db.corrupt-")
+            })
+            .collect();
+        assert_eq!(aside.len(), 1);
+        assert_eq!(std::fs::read(aside[0].path()).unwrap(), junk);
+        drop(store);
+        // A healthy database is reopened as is.
+        let store = Store::open(&db).unwrap();
+        assert_eq!(store.kv_get("k").unwrap().as_deref(), Some("v"));
+    }
 
     fn alert(path: &str, sha: &str, ts: i64) -> Alert {
         Alert {
@@ -1079,6 +1259,7 @@ mod tests {
             process_path: None,
             process_started_at: None,
             network_id: None,
+            open_section: None,
             status: AlertStatus::Open,
             actions: vec![AlertAction::Acknowledge],
         }
@@ -1105,11 +1286,11 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let p = d.path().join("s.sqlite");
         let s = Store::open(&p).unwrap();
-        assert_eq!(s.schema_version().unwrap(), 1);
+        assert_eq!(s.schema_version().unwrap(), MIGRATIONS.last().unwrap().0);
         s.kv_set("a", "1").unwrap();
         drop(s);
         let s = Store::open(&p).unwrap();
-        assert_eq!(s.schema_version().unwrap(), 1);
+        assert_eq!(s.schema_version().unwrap(), MIGRATIONS.last().unwrap().0);
         assert_eq!(s.kv_get("a").unwrap().as_deref(), Some("1"));
         assert_eq!(s.kv_get_i64("a").unwrap(), Some(1));
         s.kv_delete("a").unwrap();

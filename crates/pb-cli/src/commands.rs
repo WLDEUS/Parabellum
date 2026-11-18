@@ -91,6 +91,7 @@ fn admin_probe(cmd: &Command) -> Option<Request> {
             action: ConfigCmd::Set { .. },
         } => Request::SetConfig {
             config: Config::default(),
+            base: None,
         },
         Command::Pause { minutes } => Request::SetProtection {
             paused_minutes: *minutes,
@@ -110,6 +111,7 @@ pub fn needs_admin(cmd: &Command) -> bool {
     admin_probe(cmd)
         .map(|r| r.requires_admin())
         .unwrap_or(false)
+        || crate::audit::needs_admin(cmd)
 }
 
 /// Run a parsed command line; returns the process exit code.
@@ -170,11 +172,25 @@ fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
     if crate::protect::is_local(&cli.command) {
         return crate::protect::local(cli, io);
     }
+    // Coffre & effacement sûr: local, never through the daemon.
+    if let Command::Vault(args) = &cli.command {
+        return crate::vault::command::run(cli, io, args);
+    }
+    if crate::audit::is_local(&cli.command) {
+        return crate::audit::local(cli, io);
+    }
+    // Nettoyage du Mac: local, never through the daemon.
+    if let Command::Clean(args) = &cli.command {
+        return crate::clean::command::run(cli, io, args);
+    }
     let mut c = connect(cli)?;
     match &cli.command {
         Command::Vpn { action } => return crate::protect::vpn(cli, io, &mut c, action),
         Command::Guard { action } => return crate::protect::guard(cli, io, &mut c, action),
+        Command::Intel { action } => return crate::intel::intel(cli, io, &mut c, action),
         Command::Privacy { action } => return crate::protect::privacy(cli, io, &mut c, action),
+        // ----- Travel mode -----
+        Command::Travel { state } => return crate::travel::run(cli, io, &mut c, *state),
         Command::Ping => {
             let p: PingResponse = c.call(Request::Ping)?;
             emit(cli, io, &p, |p| {
@@ -368,7 +384,7 @@ fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
             }
             ConfigCmd::Set { file } => {
                 let config = read_config(file)?;
-                let saved: Config = c.call(Request::SetConfig { config })?;
+                let saved: Config = c.call(Request::SetConfig { config, base: None })?;
                 if cli.json {
                     emit(cli, io, &saved, |_| String::new())?;
                 } else {
@@ -391,9 +407,28 @@ fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
             let s: StatusInfo = c.call(Request::SetProtection { paused_minutes: 0 })?;
             emit(cli, io, &s, format::status)?;
         }
-        Command::Report { week } => {
-            let r: WeeklyReport = c.call(Request::WeeklyReport { week_offset: *week })?;
-            emit(cli, io, &r, format::report)?;
+        Command::Report {
+            week,
+            month,
+            from,
+            to,
+        } => {
+            if month.is_none() && from.is_none() {
+                let r: WeeklyReport = c.call(Request::WeeklyReport { week_offset: *week })?;
+                emit(cli, io, &r, format::report)?;
+            } else {
+                let r: ActivityReport = c.call(Request::Report {
+                    period: if month.is_some() {
+                        ReportPeriod::Month
+                    } else {
+                        ReportPeriod::Custom
+                    },
+                    offset: month.unwrap_or(0),
+                    from: from.clone(),
+                    to: to.clone(),
+                })?;
+                emit(cli, io, &r, format::activity_report)?;
+            }
         }
         Command::RetroHunt { days } => {
             let j: JobStarted = c.call(Request::RetroHunt { days: *days })?;
@@ -435,6 +470,15 @@ fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
                 io.out.flush()?;
             }
         }
+        // Coffre & effacement sûr (handled above, before connecting).
+        Command::Vault(args) => return crate::vault::command::run(cli, io, args),
+        // ----- Local network & permissions audit -----
+        Command::Lan { action } => return crate::audit::lan(cli, io, &mut c, action),
+        Command::Permissions { action } => {
+            return crate::audit::permissions(cli, io, &mut c, action)
+        }
+        // Nettoyage du Mac (handled above, before connecting).
+        Command::Clean(args) => return crate::clean::command::run(cli, io, args),
     }
     Ok(EXIT_OK)
 }

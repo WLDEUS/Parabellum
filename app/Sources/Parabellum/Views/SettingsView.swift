@@ -11,7 +11,7 @@ struct SettingsView: View {
 
     private var isDirty: Bool {
         guard let config = model.config else { return false }
-        return draft != config
+        return draft != Self.normalized(config)
     }
 
     var body: some View {
@@ -37,35 +37,69 @@ struct SettingsView: View {
                     }
                     privacySection
                     notificationsSection
+                    // Intelligence
+                    intelligenceSection
+                    // Local network & permissions audit
+                    Group {
+                        lanSection
+                        permissionsAuditSection
+                    }
+                    // Travel mode & shortcuts
+                    Group {
+                        TravelSettingsSection(travel: $draft.travel)
+                        ShortcutsSettingsSection()
+                    }
                 }
                 .formStyle(.grouped)
                 Divider()
                 bottomBar
-            } else {
+            } else if model.isFirstLoad("config") {
                 ProgressView("Chargement des réglages…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ContentUnavailableView {
+                    Label("Réglages indisponibles", systemImage: "gearshape")
+                } description: {
+                    Text("Le service Parabellum n'a pas renvoyé la configuration.")
+                } actions: {
+                    Button("Réessayer") {
+                        Task { await model.refresh(section: .settings, force: true) }
+                    }
+                    .disabled(model.isBusy("config"))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .navigationTitle("Réglages")
-        .task {
-            await model.loadConfig()
-            resetDraft()
-            await model.loadExternalVpnServices()
+        .onAppear {
+            // The cached configuration shows at once; a stale one is reloaded in the background.
+            if !loaded {
+                resetDraft()
+            }
+            model.revalidateSection(.settings)
         }
-        .onChange(of: model.config) { _, _ in
-            if !isDirty || !loaded {
+        .onChange(of: model.config) { oldValue, _ in
+            // Follow a configuration reloaded in the background unless the user is editing (draft no longer
+            // equal to what was shown).
+            let untouched = oldValue.map { draft == Self.normalized($0) } ?? true
+            if !loaded || untouched {
                 resetDraft()
             }
         }
     }
 
-    private func resetDraft() {
-        guard let config = model.config else { return }
+    /// The draft shown for `config` (an unknown minimum severity is shown as the default).
+    private static func normalized(_ config: Config) -> Config {
         var copy = config
         if copy.notifications.minSeverity == .unknown {
             copy.notifications.minSeverity = .medium
         }
-        draft = copy
+        return copy
+    }
+
+    private func resetDraft() {
+        guard let config = model.config else { return }
+        draft = Self.normalized(config)
         loaded = true
     }
 
@@ -87,7 +121,9 @@ struct SettingsView: View {
                 saving = true
                 let toSave = draft
                 Task {
-                    _ = await model.saveConfig(toSave)
+                    if await model.saveConfig(toSave) {
+                        resetDraft()
+                    }
                     saving = false
                 }
             } label: {
@@ -351,6 +387,58 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: Intelligence
+
+    private var anomalySensitivity: Binding<Double> {
+        Binding(
+            get: { draft.intelligence.anomalyThreshold },
+            set: { draft.intelligence.anomalyThreshold = ($0 * 100).rounded() / 100 }
+        )
+    }
+
+    private var intelligenceSection: some View {
+        Section {
+            Toggle("Analyser les domaines jamais vus (hameçonnage, typosquatting)", isOn: $draft.intelligence.domainModel)
+            Toggle("M'alerter quand un domaine semble malveillant", isOn: $draft.intelligence.domainAlerts)
+                .disabled(!draft.intelligence.domainModel)
+            Toggle("Bloquer les domaines jugés malveillants avec une haute confiance", isOn: $draft.intelligence.blockMlDomains)
+                .disabled(!draft.intelligence.domainModel)
+            StringListEditor(
+                title: "Domaines autorisés (jamais signalés par le modèle)",
+                placeholder: "exemple.fr",
+                items: $draft.intelligence.domainAllowlist
+            )
+            Toggle("Apprendre le fonctionnement normal de ce Mac et signaler les nouveautés", isOn: $draft.intelligence.behaviorAnomaly)
+            Stepper(value: $draft.intelligence.learningDays, in: 1...60) {
+                LabeledContent("Période d'apprentissage", value: "\(draft.intelligence.learningDays) j")
+            }
+            .disabled(!draft.intelligence.behaviorAnomaly)
+            LabeledContent("Seuil d'alerte") {
+                HStack {
+                    Slider(value: anomalySensitivity, in: 0.5...0.95, step: 0.05) {
+                        EmptyView()
+                    } minimumValueLabel: {
+                        Text("Sensible").font(.caption)
+                    } maximumValueLabel: {
+                        Text("Discret").font(.caption)
+                    }
+                    Text(String(format: "%.2f", draft.intelligence.anomalyThreshold))
+                        .monospacedDigit()
+                        .frame(width: 36, alignment: .trailing)
+                }
+            }
+            .disabled(!draft.intelligence.behaviorAnomaly)
+            Stepper(value: $draft.intelligence.maxAnomalyAlertsPerDay, in: 1...100) {
+                LabeledContent("Alertes d'anomalie par jour, au plus", value: "\(draft.intelligence.maxAnomalyAlertsPerDay)")
+            }
+            .disabled(!draft.intelligence.behaviorAnomaly)
+        } header: {
+            Text("Intelligence")
+        } footer: {
+            Text("Les domaines passent par le DNS de Parabellum (blocage DNS activé) et sont évalués en mémoire, jamais enregistrés. La référence comportementale reste sur ce Mac. Le blocage ne s'applique qu'aux verdicts du modèle entraîné, jamais aux règles de secours.")
+        }
+    }
+
     private var networkGuardSection: some View {
         Section {
             Toggle("Surveiller le réseau (usurpation de la box, faux point d'accès)", isOn: $draft.networkGuard.enabled)
@@ -604,5 +692,43 @@ struct SettingsView: View {
                 binding.wrappedValue = trimmed.isEmpty ? nil : trimmed
             }
         )
+    }
+}
+
+// MARK: - Local network & permissions audit
+
+extension SettingsView {
+    var lanSection: some View {
+        Section {
+            Toggle("Inventorier les appareils du réseau local", isOn: $draft.lan.enabled)
+            Stepper(value: $draft.lan.scanIntervalMinutes, in: 5...1440, step: 5) {
+                LabeledContent("Analyse automatique toutes les", value: "\(draft.lan.scanIntervalMinutes) min")
+            }
+            .disabled(!draft.lan.enabled)
+            Toggle("Analyse active sur les réseaux de confiance", isOn: $draft.lan.activeOnTrusted)
+                .disabled(!draft.lan.enabled)
+            Toggle("Alerter quand un appareil inconnu rejoint un réseau de confiance", isOn: $draft.lan.alertNewDevices)
+                .disabled(!draft.lan.enabled)
+        } header: {
+            Text("Réseau local")
+        } footer: {
+            Text("Sur les réseaux non fiables (Wi-Fi public…), seuls les caches système sont lus : aucun paquet n'est envoyé. L'analyse active envoie un petit paquet à chaque adresse du réseau (64 par seconde au plus) et interroge Bonjour. Elle est suspendue sur batterie faible.")
+        }
+    }
+
+    var permissionsAuditSection: some View {
+        Section {
+            Toggle("Auditer régulièrement les permissions des apps", isOn: $draft.permissionsAudit.enabled)
+            Stepper(value: $draft.permissionsAudit.intervalHours, in: 1...168) {
+                LabeledContent("Audit toutes les", value: "\(draft.permissionsAudit.intervalHours) h")
+            }
+            .disabled(!draft.permissionsAudit.enabled)
+            Toggle("Alerter quand une app à risque obtient un accès sensible", isOn: $draft.permissionsAudit.alertHighRisk)
+                .disabled(!draft.permissionsAudit.enabled)
+        } header: {
+            Text("Permissions")
+        } footer: {
+            Text("Accessibilité, enregistrement de l'écran, accès complet au disque, surveillance du clavier… accordés à une app non signée ou signée « ad hoc » déclenchent une alerte.")
+        }
     }
 }

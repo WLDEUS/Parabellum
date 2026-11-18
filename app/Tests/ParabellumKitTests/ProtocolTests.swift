@@ -70,6 +70,33 @@ final class ProtocolTests: XCTestCase {
             .aliasCreate(label: "boutique"),
             .resolveAlert(alertId: 31, action: .killProcess),
             .resolveAlert(alertId: 31, action: .resumeProcess),
+            // Intelligence
+            .intelStatus,
+            .intelScoreDomain(domain: "paypa1-login.xyz"),
+            .intelAllowDomain(domain: "example.org"),
+            .intelMarkNormal(anomalyId: "00ff00ff00ff00ff"),
+            .intelResetBaseline,
+            .resolveAlert(alertId: 41, action: .allowDomain),
+            .resolveAlert(alertId: 42, action: .markNormal),
+            // Local network & permissions audit
+            .lanStatus(),
+            .lanStatus(networkId: "gw:00:24:d4:a1:b2:c3"),
+            .lanScan(),
+            .lanScan(active: true),
+            .lanSetDevice(networkId: "gw:00:24:d4:a1:b2:c3", mac: "3a:5f:12:9c:7e:01", name: "iPhone de Camille", trusted: true),
+            .lanSetDevice(networkId: "gw:00:24:d4:a1:b2:c3", mac: "3a:5f:12:9c:7e:01", name: ""),
+            .lanForgetDevice(networkId: "gw:00:24:d4:a1:b2:c3", mac: "3a:5f:12:9c:7e:01"),
+            .lanPorts(mac: "3a:5f:12:9c:7e:01"),
+            .permissionsAudit(refresh: true),
+            .resolveAlert(alertId: 32, action: .trustLanDevice),
+            // Travel mode
+            .travelStatus,
+            .travelEnable,
+            .travelDisable,
+            .resolveAlert(alertId: 40, action: .enableTravelMode),
+            // Activity report
+            .report(period: .month, offset: 1),
+            .report(period: .custom, offset: 0, from: "2026-10-01", to: "2026-10-15"),
         ]
     }
 
@@ -235,6 +262,9 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(sent["dns"]?["enabled"], .bool(true))
         XCTAssertEqual(sent["updates"]?["github_token"], .string("ghp_test"))
         XCTAssertEqual(sent["realtime"]?["kill_malicious_processes"], .bool(true))
+        // v2-new review #4: the edited-from config travels as `base` (three-way merge in the daemon).
+        XCTAssertEqual(encoded["base"], raw)
+        XCTAssertNil(try JSONValue(data: Request.setConfig(config).encode(id: 5))["base"])
     }
 
     func testConfigValidationMirrorsRust() {

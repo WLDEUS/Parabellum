@@ -5,7 +5,7 @@ Each source is fetched independently. When a fetch fails, its data is carried ov
   state — from the previous bundle's category file;
 * YARA sources from the previous bundle (``yara/<source>__*.yar``);
 * hash sources need no carry-over: the rolling index lives in the state;
-* the ML model from the previous bundle's ``ml/``;
+* the ML models (Mach-O, scripts) from the previous bundle's ``ml/``;
 * Zero Breach Toolkit from the previous bundle's ``zbt/`` (see :mod:`pipeline.zbt`);
 * the broker list and the component pins from the previous bundle's ``privacy/brokers.json`` and
   ``components/pins.json`` (see :mod:`pipeline.privacy`, :mod:`pipeline.pins`).
@@ -14,6 +14,7 @@ The source is then reported with ``fresh: false`` and its last successful ``fetc
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -22,7 +23,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import pins, privacy, zbt
+from . import oui, pins, privacy, zbt
 from .abusech import (
     MB_API,
     MalwareBazaar,
@@ -33,7 +34,7 @@ from .abusech import (
     parse_urlhaus_csv,
 )
 from .bundle import SourceInfo
-from .domains import parse_list
+from .domains import complete_lines, parse_list
 from .hashes import MalwareEntry
 from .http import Fetcher, FetchError, redact
 from .yara_rules import RuleFile, bundle_name, iter_tarball_members, load_local_rules
@@ -66,6 +67,12 @@ class SourceSpec:
 class Settings:
     min_client_version: str = "0.1.0"
     sanity_max_drop: float = 0.5
+    #: Absolute floors of the sanity guard (0 = none), see ``bundle.sanity_problems``.
+    min_malware_hashes: int = 0
+    min_blocked_domains: int = 0
+    min_yara_rules: int = 0
+    #: FP gate: share of declared clean-corpus entries (and of last run's scanned files) required.
+    corpus_min_available: float = 0.9
     hash_window_days: int = 365
     max_malware_hashes: int = 2_000_000
     max_macos_named: int = 200_000
@@ -85,6 +92,10 @@ def load_settings(path: Path) -> Settings:
     st = Settings(
         min_client_version=str(b.get("min_client_version", "0.1.0")),
         sanity_max_drop=float(b.get("sanity_max_drop", 0.5)),
+        min_malware_hashes=int(b.get("min_malware_hashes", 0)),
+        min_blocked_domains=int(b.get("min_blocked_domains", 0)),
+        min_yara_rules=int(b.get("min_yara_rules", 0)),
+        corpus_min_available=float(b.get("corpus_min_available", 0.9)),
         hash_window_days=int(h.get("window_days", 365)),
         max_malware_hashes=int(h.get("max_hashes", 2_000_000)),
         max_macos_named=int(h.get("max_macos_named", 200_000)),
@@ -192,7 +203,7 @@ def f_threatfox_export(spec: SourceSpec, ctx: Context) -> Fetched:
 
 def f_domain_list(spec: SourceSpec, ctx: Context) -> Fetched:
     data = ctx.http.get_bytes(spec.url, max_bytes=256 * 1024 * 1024)
-    doms = parse_list(data.decode("utf-8", errors="replace"), str(spec.opt("format", "auto")))
+    doms = parse_list(complete_lines(data.decode("utf-8", errors="replace")), str(spec.opt("format", "auto")))
     min_entries = int(spec.opt("min_entries", 10))  # type: ignore[call-overload]
     if len(doms) < min_entries:
         raise FetchError(f"only {len(doms)} domains parsed (< {min_entries})")
@@ -246,21 +257,58 @@ def f_local_file(spec: SourceSpec, ctx: Context) -> Fetched:
     return Fetched(files={dest: data}, count=count)
 
 
+#: ML model pairs (model, meta) shipped under ``ml/`` — Mach-O and script classifiers, each optional.
+ML_MODEL_PAIRS = (("macho_model.json", "model_meta.json"), ("script_model.json", "script_model_meta.json"))
+
+
 def f_ml_local(spec: SourceSpec, ctx: Context) -> Fetched:
-    """Latest promoted model (``ml-latest`` release, downloaded by the workflow into ``--ml-dir``)."""
+    """Latest promoted models (``ml-latest`` release, downloaded by the workflow into ``--ml-dir``).
+
+    Each (model, meta) pair is shipped only when both files exist and look valid; at least one pair
+    is required. ``count`` = total trees."""
     if ctx.ml_dir is None:
         raise FetchError("no --ml-dir given")
-    model = ctx.ml_dir / "macho_model.json"
-    meta = ctx.ml_dir / "model_meta.json"
-    if not (model.is_file() and meta.is_file()):
+    files: dict[str, bytes] = {}
+    trees = 0
+    for model_name, meta_name in ML_MODEL_PAIRS:
+        model = ctx.ml_dir / model_name
+        meta = ctx.ml_dir / meta_name
+        if not (model.is_file() and meta.is_file()):
+            continue
+        meta_doc = json.loads(meta.read_text(encoding="utf-8"))
+        model_doc = json.loads(model.read_text(encoding="utf-8"))
+        if "tree_info" not in model_doc or "threshold" not in meta_doc or "features_version" not in meta_doc:
+            raise FetchError(f"ml-latest {model_name} or {meta_name} malformed")
+        files[f"ml/{model_name}"] = model.read_bytes()
+        files[f"ml/{meta_name}"] = meta.read_bytes()
+        trees += len(model_doc.get("tree_info", []))
+    if not files:
         raise FetchError("ml-latest has no model yet")
-    meta_doc = json.loads(meta.read_text(encoding="utf-8"))
-    model_doc = json.loads(model.read_text(encoding="utf-8"))
-    if "tree_info" not in model_doc or "threshold" not in meta_doc or "features_version" not in meta_doc:
-        raise FetchError("ml-latest model or meta malformed")
+    return Fetched(files=files, count=trees)
+
+
+#: Domain model files (``ml-domain-latest`` release, see ml/domains/), all under ``ml/`` in the bundle.
+DOMAIN_MODEL_FILES = ("domain_model.json", "domain_model_meta.json", "domain_brands.txt", "domain_top.txt")
+
+
+def f_ml_domain_local(spec: SourceSpec, ctx: Context) -> Fetched:
+    """Latest promoted domain model (downloaded by the workflow into ``--ml-dir`` next to the Mach-O one)."""
+    if ctx.ml_dir is None:
+        raise FetchError("no --ml-dir given")
+    paths = {name: ctx.ml_dir / name for name in DOMAIN_MODEL_FILES}
+    if not all(p.is_file() for p in paths.values()):
+        raise FetchError("ml-domain-latest has no complete domain model yet")
+    meta = json.loads(paths["domain_model_meta.json"].read_text(encoding="utf-8"))
+    model = json.loads(paths["domain_model.json"].read_text(encoding="utf-8"))
+    if "tree_info" not in model or "threshold" not in meta or "features_version" not in meta:
+        raise FetchError("domain model or meta malformed")
+    want = str(meta.get("brands_sha256") or "")
+    have = hashlib.sha256(paths["domain_brands.txt"].read_bytes()).hexdigest()
+    if want and want != have:
+        raise FetchError("domain_brands.txt does not match the model's brands_sha256")
     return Fetched(
-        files={"ml/macho_model.json": model.read_bytes(), "ml/model_meta.json": meta.read_bytes()},
-        count=len(model_doc.get("tree_info", [])),
+        files={f"ml/{name}": p.read_bytes() for name, p in paths.items()},
+        count=len(model.get("tree_info", [])),
     )
 
 
@@ -310,6 +358,13 @@ def f_component_pin(spec: SourceSpec, ctx: Context) -> Fetched:
     return Fetched(files={pins.BUNDLE_PATH: data}, count=1)
 
 
+def f_oui_list(spec: SourceSpec, ctx: Context) -> Fetched:
+    """IEEE MAC vendor prefixes for the LAN inventory (see pipeline/oui.py)."""
+    regs = tuple(str(r) for r in spec.opt("registries", ["MA-L", "MA-M", "MA-S"]))  # type: ignore[union-attr]
+    data, n = oui.fetch(ctx.http, regs, int(spec.opt("min_entries", oui.MIN_ENTRIES)))  # type: ignore[call-overload]
+    return Fetched(files={oui.BUNDLE_PATH: data}, count=n)
+
+
 FETCHERS: dict[str, Callable[[SourceSpec, Context], Fetched]] = {
     "mb_export": f_mb_export,
     "mb_api_macos": f_mb_api_macos,
@@ -324,6 +379,8 @@ FETCHERS: dict[str, Callable[[SourceSpec, Context], Fetched]] = {
     "zbt_release": f_zbt_release,
     "privacy_brokers": f_privacy_brokers,
     "component_pin": f_component_pin,
+    "ml_domain_local": f_ml_domain_local,
+    "oui_list": f_oui_list,
 }
 
 
@@ -351,11 +408,17 @@ def carry_over(spec: SourceSpec, state_dir: Path | None, prev_dir: Path | None) 
             out.yara.append(RuleFile(p.name, spec.name, p.read_text(encoding="utf-8")))
         out.count = len(out.yara)
     elif spec.fetcher == "ml_local" and prev_dir is not None:
-        for name in ("macho_model.json", "model_meta.json"):
+        for pair in ML_MODEL_PAIRS:
+            got = {f"ml/{n}": (prev_dir / "ml" / n) for n in pair}
+            if all(p.is_file() for p in got.values()):
+                out.files.update({k: p.read_bytes() for k, p in got.items()})
+                out.count += 1
+    elif spec.fetcher == "ml_domain_local" and prev_dir is not None:
+        for name in DOMAIN_MODEL_FILES:
             p = prev_dir / "ml" / name
             if p.is_file():
                 out.files[f"ml/{name}"] = p.read_bytes()
-        out.count = 1 if len(out.files) == 2 else 0
+        out.count = 1 if len(out.files) == len(DOMAIN_MODEL_FILES) else 0
         if out.count == 0:
             out.files = {}
     elif spec.fetcher == "zbt_release" and prev_dir is not None:
@@ -368,6 +431,9 @@ def carry_over(spec: SourceSpec, state_dir: Path | None, prev_dir: Path | None) 
     elif spec.fetcher == "component_pin" and prev_dir is not None:
         out.files = pins.carry_over(prev_dir)
         out.count = len(out.files)
+    elif spec.fetcher == "oui_list" and prev_dir is not None:
+        out.files = oui.carry_over(prev_dir)
+        out.count = sum(oui.count(d) for d in out.files.values())
     return out
 
 

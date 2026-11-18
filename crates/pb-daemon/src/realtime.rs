@@ -169,6 +169,7 @@ pub async fn run_dispatcher(ctx: Arc<Ctx>, mut rx: mpsc::Receiver<MonitorEvent>)
                         continue;
                     }
                     crate::guard::on_file(&ctx, &path, from.as_deref(), source, process.as_ref());
+                    crate::intel::on_file(&ctx, &path, process.as_ref());
                     let p = PathBuf::from(path);
                     if !p.is_absolute() || ctx.is_excluded(&p, &cfg) {
                         continue;
@@ -181,6 +182,7 @@ pub async fn run_dispatcher(ctx: Arc<Ctx>, mut rx: mpsc::Receiver<MonitorEvent>)
                     let cfg = ctx.config();
                     if cfg.realtime.enabled {
                         crate::guard::on_exec(&ctx, &target, &args, parent.as_ref());
+                        crate::intel::on_exec(&ctx, &target, parent.as_ref());
                     }
                     if cfg.realtime.enabled && cfg.realtime.scan_on_exec && !target.is_platform_binary {
                         spawn_exec_scan(&ctx, &shared, target);

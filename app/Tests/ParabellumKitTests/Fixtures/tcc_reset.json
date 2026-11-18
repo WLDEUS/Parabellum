@@ -1,0 +1,6 @@
+{
+  "bundle_id": "us.zoom.xos",
+  "message": "Autorisation « Camera » retirée à us.zoom.xos.",
+  "ok": true,
+  "service": "Camera"
+}

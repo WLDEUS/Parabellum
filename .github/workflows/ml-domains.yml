@@ -1,0 +1,115 @@
+name: Daily domain model training
+
+# Intelligence: trains the phishing / malicious-domain model (crates/pb-intel lexical features,
+# ml/domains/) and promotes it to the `ml-domain-latest` release only if it passes the gate
+# (holdout FPR <= 0.05 % on popular domains, TPR >= the current model on recently listed domains).
+# Positives come from the signed pipeline state of `db-latest` (URLhaus, ThreatFox, phishing-filter,
+# HaGeZi TIF), negatives from Tranco. Runs before the nightly DB build (21:17 UTC), which ships the model.
+
+on:
+  schedule:
+    - cron: "43 19 * * *" # 19:43 UTC daily, published before the 21:17 UTC nightly DB build
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: threat-db # shared with nightly-db.yml / ml-train.yml: never publish model and bundle together
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  train:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # branch "stable" (2026-10)
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: pb-domain-features
+      - name: Build pb-domain-features
+        run: cargo build --release -p pb-intel --bin pb-domain-features
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pipeline/requirements.txt
+            ml/requirements.txt
+      - name: Install tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends minisign
+          python -m pip install -r ml/requirements.txt
+      - name: Download pipeline state, dataset and current model
+        id: inputs
+        run: |
+          # A missing release means "none yet"; any other gh error fails the job.
+          release_exists() {
+            local tag="$1" err
+            if err="$(gh release view "$tag" --json tagName 2>&1 >/dev/null)"; then
+              return 0
+            fi
+            if grep -qi "release not found" <<<"$err"; then
+              return 1
+            fi
+            echo "::error::gh release view $tag: $err"
+            exit 1
+          }
+          mkdir -p prev current state
+          if ! release_exists db-latest; then
+            echo "::notice::no db-latest release yet: nothing to train on"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          gh release download db-latest -D prev --clobber -p pipeline-state.tar.gz -p pipeline-state.tar.gz.minisig
+          if [[ ! -s keys/parabellum-db.pub ]]; then
+            echo "::error::keys/parabellum-db.pub is not committed: cannot verify the pipeline state"
+            exit 1
+          fi
+          minisign -Vq -p keys/parabellum-db.pub -m prev/pipeline-state.tar.gz
+          python -c 'import sys; from pathlib import Path; from pipeline.bundle import safe_extract; safe_extract(Path(sys.argv[1]), Path(sys.argv[2]))' \
+            prev/pipeline-state.tar.gz state
+          if release_exists ml-domain-dataset; then
+            gh release download ml-domain-dataset -D prev --clobber -p domains.csv.gz -p metrics.jsonl
+          fi
+          if release_exists ml-domain-latest; then
+            gh release download ml-domain-latest -D current --clobber \
+              -p domain_model.json -p domain_model_meta.json -p domain_brands.txt
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+      - name: Train
+        if: steps.inputs.outputs.ready == 'true'
+        run: |
+          args=(--pb-domain-features target/release/pb-domain-features --state-dir state --out out/ml-domain)
+          [[ -f prev/domains.csv.gz ]] && args+=(--dataset-in prev/domains.csv.gz)
+          [[ -f prev/metrics.jsonl ]] && args+=(--metrics-in prev/metrics.jsonl)
+          [[ -f current/domain_model.json ]] && args+=(--current-model current)
+          python -m ml.domains.train "${args[@]}"
+      - name: Publish
+        if: steps.inputs.outputs.ready == 'true'
+        run: bash ml/domains/publish.sh out/ml-domain
+      - name: Summary
+        if: always()
+        run: |
+          [[ -f out/ml-domain/decision.json ]] || exit 0
+          python - <<'PY'
+          import json, os
+          d = json.load(open("out/ml-domain/decision.json"))
+          msg = f"domains: trained={d.get('trained')} promoted={d.get('promoted')} pos={d.get('n_pos')} neg={d.get('n_neg')} time_split={d.get('time_split')} — {d.get('reason', '')}"
+          print(f"::notice title=ml-domains::{msg}")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("## Domain model\n```json\n" + json.dumps(d, indent=2) + "\n```\n")
+          PY

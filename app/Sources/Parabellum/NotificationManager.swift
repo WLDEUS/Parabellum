@@ -7,14 +7,16 @@ enum NotificationKeys {
     static let resolvePrefix = "pb.resolve."
     static let viewActionIdentifier = "pb.view"
     static let alertId = "alert_id"
+    /// Section link to open on tap (`SectionLink`).
+    static let section = "section"
 }
 
 /// `UNUserNotificationCenterDelegate` kept non-isolated: the system may call it on any queue. It only
 /// extracts plain values and forwards them to the main actor.
 final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
-    private let onResponse: @Sendable (String, Int64?) -> Void
+    private let onResponse: @Sendable (String, Int64?, String?) -> Void
 
-    init(onResponse: @escaping @Sendable (String, Int64?) -> Void) {
+    init(onResponse: @escaping @Sendable (String, Int64?, String?) -> Void) {
         self.onResponse = onResponse
     }
 
@@ -35,7 +37,8 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate, @u
         let actionIdentifier = response.actionIdentifier
         let userInfo = response.notification.request.content.userInfo
         let alertId = (userInfo[NotificationKeys.alertId] as? NSNumber)?.int64Value
-        onResponse(actionIdentifier, alertId)
+        let section = userInfo[NotificationKeys.section] as? String
+        onResponse(actionIdentifier, alertId, section)
         completionHandler()
     }
 }
@@ -47,6 +50,8 @@ final class NotificationManager {
     /// Actions that make sense straight from a notification (others need the app).
     private static let notificationActions: [AlertAction] = [
         .killProcess, .quarantine, .allow, .approvePersistence, .trustDevice, .blockDevice, .removePersistence,
+        // Travel mode
+        .enableTravelMode,
     ]
 
     private weak var model: AppModel?
@@ -66,9 +71,9 @@ final class NotificationManager {
     func activate(model: AppModel) {
         self.model = model
         guard let center else { return }
-        let delegate = NotificationDelegate { [weak self] actionIdentifier, alertId in
+        let delegate = NotificationDelegate { [weak self] actionIdentifier, alertId, section in
             Task { @MainActor in
-                self?.model?.handleNotificationResponse(actionIdentifier: actionIdentifier, alertId: alertId)
+                self?.model?.handleNotificationResponse(actionIdentifier: actionIdentifier, alertId: alertId, section: section)
             }
         }
         self.delegate = delegate
@@ -90,6 +95,19 @@ final class NotificationManager {
         }
     }
 
+    /// A plain message (an error no window could show). Best effort, like alerts.
+    func postMessage(title: String, body: String) async {
+        guard let center else { return }
+        let status = await authorizationStatus()
+        guard status == .authorized || status == .provisional else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.threadIdentifier = "pb.message"
+        let request = UNNotificationRequest(identifier: "pb.message.\(UUID().uuidString)", content: content, trigger: nil)
+        try? await center.add(request)
+    }
+
     func post(_ alert: SecurityAlert) async {
         guard let center else { return }
         let status = await authorizationStatus()
@@ -101,8 +119,12 @@ final class NotificationManager {
         content.body = alert.message
         content.sound = .default
         content.threadIdentifier = alert.kind.rawValue
-        content.categoryIdentifier = registerCategory(for: alert, in: center)
-        content.userInfo = [NotificationKeys.alertId: NSNumber(value: alert.id)]
+        content.categoryIdentifier = await registerCategory(for: alert, in: center)
+        var info: [String: Any] = [NotificationKeys.alertId: NSNumber(value: alert.id)]
+        if let section = alert.openSection {
+            info[NotificationKeys.section] = section
+        }
+        content.userInfo = info
 
         let request = UNNotificationRequest(identifier: "pb.alert.\(alert.id)", content: content, trigger: nil)
         do {
@@ -112,8 +134,25 @@ final class NotificationManager {
         }
     }
 
+    /// App-side reminder (no daemon alert behind it): tapping it opens `section`.
+    func postReminder(identifier: String, title: String, body: String, section: String) async {
+        guard let center else { return }
+        let status = await authorizationStatus()
+        guard status == .authorized || status == .provisional else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        content.threadIdentifier = "pb.reminder"
+        content.userInfo = [NotificationKeys.section: section]
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
+        try? await center.add(request)
+    }
+
     /// One category per combination of actions (categories are fixed sets of buttons).
-    private func registerCategory(for alert: SecurityAlert, in center: UNUserNotificationCenter) -> String {
+    /// Registration is asynchronous in macOS: wait until the category is visible before posting, or the first
+    /// notification of a new combination shows no buttons.
+    private func registerCategory(for alert: SecurityAlert, in center: UNUserNotificationCenter) async -> String {
         let actions = alert.knownActions.filter { Self.notificationActions.contains($0) }.prefix(3)
         let identifier = "pb.alert." + (actions.isEmpty ? "view" : actions.map { $0.rawValue }.joined(separator: "+"))
         if categories[identifier] == nil {
@@ -132,6 +171,13 @@ final class NotificationManager {
                 options: []
             )
             center.setNotificationCategories(Set(categories.values))
+            for _ in 0..<20 {
+                let registered = await center.notificationCategories()
+                if registered.contains(where: { $0.identifier == identifier }) {
+                    break
+                }
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
         }
         return identifier
     }

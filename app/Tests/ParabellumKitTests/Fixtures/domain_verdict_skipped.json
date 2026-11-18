@@ -1,0 +1,8 @@
+{
+  "allowed": false,
+  "domain": "printer.local",
+  "flagged": false,
+  "reasons": [],
+  "skipped": "nom local",
+  "would_block": false
+}

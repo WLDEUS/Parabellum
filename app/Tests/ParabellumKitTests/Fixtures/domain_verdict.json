@@ -1,0 +1,12 @@
+{
+  "allowed": false,
+  "domain": "paypa1-login.xyz",
+  "flagged": true,
+  "reasons": [
+    "Ressemble à « paypal » (1 faute(s) de frappe)"
+  ],
+  "registrable": "paypa1-login.xyz",
+  "score": 0.9700000286102295,
+  "source": "model",
+  "would_block": false
+}

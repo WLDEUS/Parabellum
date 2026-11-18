@@ -317,3 +317,43 @@ def test_sanity_guard_exit_code(tmp_path, monkeypatch):
         )
         == 0
     )
+
+
+def test_incomplete_clean_corpus_refuses_to_publish(tmp_path, monkeypatch):
+    # Regression (M2): the FP gate used to run on whatever corpus survived the downloads.
+    sources, corpus, http = setup(tmp_path, monkeypatch)
+    assert run(tmp_path, sources, corpus, http, "day1") == 0
+    gate_state = tmp_path / "state1"
+    import shutil
+
+    from pipeline.bundle import safe_extract
+
+    safe_extract(tmp_path / "day1" / STATE_FILE, gate_state)
+    assert json.loads((gate_state / "fp_gate.json").read_text())["corpus_entries"] == 1
+    shutil.rmtree(tmp_path / "cache")
+    del http.routes["https://corpus.test/tool"]
+    rc = run(tmp_path, sources, corpus, http, "day2", "--previous", str(tmp_path / "day1" / BUNDLE_FILE))
+    assert rc == 2 and not (tmp_path / "day2" / BUNDLE_FILE).exists()
+    probs = json.loads((tmp_path / "day2" / "report.json").read_text())["sanity_problems"]
+    assert any("clean corpus incomplete: 0/1" in p for p in probs)
+
+
+def test_minimums_and_published_version_floor(tmp_path, monkeypatch):
+    # Regression (M1): without a previous bundle only an empty bundle was refused, and the version
+    # restarted from the run number even if db-latest already had a greater one.
+    sources, corpus, http = setup(tmp_path, monkeypatch)
+    text = sources.read_text().replace("sanity_max_drop = 0.5", "sanity_max_drop = 0.5\nmin_blocked_domains = 3")
+    sources.write_text(text)
+    assert run(tmp_path, sources, corpus, http, "day1") == 2  # 2 domains < 3, no previous bundle
+    probs = json.loads((tmp_path / "day1" / "report.json").read_text())["sanity_problems"]
+    assert probs == ["blocked_domains = 2 is below the minimum 3"]
+    assert run(tmp_path, sources, corpus, http, "day1b", "--allow-shrink") == 0
+
+    published = tmp_path / "published.json"
+    published.write_text(json.dumps({"version": "2026.10.25.7", "stats": {"blocked_domains": 2}}))
+    sources.write_text(text.replace("min_blocked_domains = 3", "min_blocked_domains = 1"))
+    assert run(tmp_path, sources, corpus, http, "day2", "--published", str(published)) == 0
+    assert json.loads((tmp_path / "day2" / MANIFEST_FILE).read_text())["version"] == "2026.10.25.8"
+    # The published stats serve as the shrink baseline when the previous bundle is unusable.
+    published.write_text(json.dumps({"version": "2026.10.25.7", "stats": {"blocked_domains": 100}}))
+    assert run(tmp_path, sources, corpus, http, "day3", "--published", str(published)) == 2

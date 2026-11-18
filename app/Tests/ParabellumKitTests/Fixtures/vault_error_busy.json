@@ -1,0 +1,15 @@
+{
+  "error": {
+    "code": "busy",
+    "holders": [
+      {
+        "command": "Preview",
+        "paths": [
+          "/Volumes/Coffre/Impôts 2026.pdf"
+        ],
+        "pid": 812
+      }
+    ],
+    "message": "des fichiers du coffre sont encore ouverts par : Preview — fermez-les puis réessayez"
+  }
+}

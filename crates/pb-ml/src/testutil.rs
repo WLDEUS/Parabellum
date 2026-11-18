@@ -9,6 +9,7 @@ const LC_MAIN: u32 = 0x8000_0028;
 const LC_BUILD_VERSION: u32 = 0x32;
 const LC_CODE_SIGNATURE: u32 = 0x1d;
 const LC_RPATH: u32 = 0x8000_001c;
+const LC_LOAD_WEAK_DYLIB: u32 = 0x8000_0018;
 
 pub const CPU_ARM64: u32 = 0x0100_000c;
 pub const CPU_X86_64: u32 = 0x0100_0007;
@@ -40,6 +41,11 @@ pub struct MachOBuilder {
     rpaths: Vec<String>,
     imports: Vec<String>,
     codesig: Option<(bool, Option<String>, Option<String>)>,
+    cms_body: Option<Vec<u8>>,
+    cd_flags: Option<u32>,
+    identifier: Option<String>,
+    sections: Vec<(String, String, Vec<u8>, u32)>,
+    weak_dylibs: Vec<String>,
 }
 
 impl MachOBuilder {
@@ -56,7 +62,44 @@ impl MachOBuilder {
             rpaths: Vec::new(),
             imports: Vec::new(),
             codesig: None,
+            cms_body: None,
+            cd_flags: None,
+            identifier: None,
+            sections: Vec::new(),
+            weak_dylibs: Vec::new(),
         }
+    }
+
+    /// Replaces the CMS blob body (default: 64 bytes of `0x30` when not ad-hoc, empty when ad-hoc).
+    pub fn cms(mut self, body: &[u8]) -> Self {
+        self.cms_body = Some(body.to_vec());
+        self
+    }
+
+    /// Replaces the CodeDirectory flags (default: `CS_ADHOC` or `CS_RUNTIME`).
+    pub fn cd_flags(mut self, flags: u32) -> Self {
+        self.cd_flags = Some(flags);
+        self
+    }
+
+    /// Replaces the signing identifier (default `com.example.test`).
+    pub fn identifier(mut self, ident: &str) -> Self {
+        self.identifier = Some(ident.into());
+        self
+    }
+
+    /// Adds a section in an extra segment `segname` (one segment per call, initprot r-x when
+    /// `flags` has instruction attributes, else rw-).
+    pub fn extra_section(mut self, segname: &str, sectname: &str, data: &[u8], flags: u32) -> Self {
+        self.sections
+            .push((segname.into(), sectname.into(), data.to_vec(), flags));
+        self
+    }
+
+    /// Adds an `LC_LOAD_WEAK_DYLIB`.
+    pub fn weak_dylib(mut self, path: &str) -> Self {
+        self.weak_dylibs.push(path.into());
+        self
     }
     pub fn cputype(mut self, c: u32) -> Self {
         self.cputype = c;
@@ -95,7 +138,12 @@ impl MachOBuilder {
             return Vec::new();
         };
         // CodeDirectory (v 0x20400, 88-byte header) + identifier + team id
-        let ident = b"com.example.test\0";
+        let mut ident = self
+            .identifier
+            .clone()
+            .unwrap_or_else(|| "com.example.test".into())
+            .into_bytes();
+        ident.push(0);
         let mut cd = Vec::new();
         let ident_off = 88u32;
         let team_off = if team.is_some() {
@@ -103,7 +151,7 @@ impl MachOBuilder {
         } else {
             0
         };
-        let mut tail = ident.to_vec();
+        let mut tail = ident.clone();
         if let Some(t) = team {
             tail.extend_from_slice(t.as_bytes());
             tail.push(0);
@@ -113,7 +161,10 @@ impl MachOBuilder {
         be(&mut cd, 0xfade_0c02);
         be(&mut cd, cd_len);
         be(&mut cd, 0x20400);
-        be(&mut cd, if *adhoc { 0x2 } else { 0x1_0000 });
+        be(
+            &mut cd,
+            self.cd_flags.unwrap_or(if *adhoc { 0x2 } else { 0x1_0000 }),
+        );
         be(&mut cd, cd_len); // hashOffset
         be(&mut cd, ident_off);
         be(&mut cd, 0); // nSpecialSlots
@@ -136,7 +187,11 @@ impl MachOBuilder {
         }
         let mut cms = Vec::new();
         cms.extend_from_slice(&0xfade_0b01u32.to_be_bytes());
-        let cms_body: Vec<u8> = if *adhoc { Vec::new() } else { vec![0x30; 64] };
+        let cms_body: Vec<u8> = match &self.cms_body {
+            Some(b) => b.clone(),
+            None if *adhoc => Vec::new(),
+            None => vec![0x30; 64],
+        };
         cms.extend_from_slice(&(8 + cms_body.len() as u32).to_be_bytes());
         cms.extend_from_slice(&cms_body);
         blobs.push((0x10000, cms));
@@ -168,16 +223,29 @@ impl MachOBuilder {
             + 72 // __LINKEDIT
             + 24 // LC_SYMTAB
             + self.dylibs.iter().map(|d| dylib_cmd_len(d)).sum::<usize>()
+            + self.weak_dylibs.iter().map(|d| dylib_cmd_len(d)).sum::<usize>()
+            + self.sections.len() * (72 + 80)
             + self.rpaths.iter().map(|d| rpath_cmd_len(d)).sum::<usize>()
             + 24 // LC_MAIN
             + 24 // LC_BUILD_VERSION
             + if has_sig { 16 } else { 0 };
-        let ncmds = 6 + self.dylibs.len() + self.rpaths.len() + usize::from(has_sig);
+        let ncmds = 6
+            + self.dylibs.len()
+            + self.weak_dylibs.len()
+            + self.sections.len()
+            + self.rpaths.len()
+            + usize::from(has_sig);
 
         let text_off = align(32 + sizeofcmds, 16);
         let cstr_off = text_off + self.text.len();
         let text_end = align(cstr_off + self.cstrings.len(), 16);
-        let linkedit_off = text_end;
+        let mut extra_offs = Vec::new();
+        let mut cursor = text_end;
+        for (_, _, data, _) in &self.sections {
+            extra_offs.push(cursor);
+            cursor = align(cursor + data.len().max(1), 16);
+        }
+        let linkedit_off = cursor;
         // symtab: undefined externals
         let mut strtab = vec![0u8, b' ', 0u8];
         let mut nlist = Vec::new();
@@ -273,10 +341,32 @@ impl MachOBuilder {
             cstr_off as u32,
             0x2,
         );
+        for ((seg, sect, data, flags), off) in self.sections.iter().zip(&extra_offs) {
+            let prot = if flags & 0x8000_0400 != 0 { 5 } else { 3 };
+            segment(
+                &mut b,
+                seg,
+                base + *off as u64,
+                align(data.len().max(1), 16) as u64,
+                *off as u64,
+                align(data.len().max(1), 16) as u64,
+                prot,
+                1,
+            );
+            section(
+                &mut b,
+                sect,
+                seg,
+                base + *off as u64,
+                data.len() as u64,
+                *off as u32,
+                *flags,
+            );
+        }
         segment(
             &mut b,
             "__LINKEDIT",
-            base + text_end as u64,
+            base + linkedit_off as u64,
             align(file_end - linkedit_off, 0x4000) as u64,
             linkedit_off as u64,
             (file_end - linkedit_off) as u64,
@@ -294,6 +384,18 @@ impl MachOBuilder {
             let len = dylib_cmd_len(d);
             let start = b.len();
             put32(&mut b, LC_LOAD_DYLIB);
+            put32(&mut b, len as u32);
+            put32(&mut b, 24);
+            put32(&mut b, 2);
+            put32(&mut b, 0x0001_0000);
+            put32(&mut b, 0x0001_0000);
+            b.extend_from_slice(d.as_bytes());
+            b.resize(start + len, 0);
+        }
+        for d in &self.weak_dylibs {
+            let len = dylib_cmd_len(d);
+            let start = b.len();
+            put32(&mut b, LC_LOAD_WEAK_DYLIB);
             put32(&mut b, len as u32);
             put32(&mut b, 24);
             put32(&mut b, 2);
@@ -333,6 +435,10 @@ impl MachOBuilder {
         b.resize(text_off, 0);
         b.extend_from_slice(&self.text);
         b.extend_from_slice(&self.cstrings);
+        for ((_, _, data, _), off) in self.sections.iter().zip(&extra_offs) {
+            b.resize(*off, 0);
+            b.extend_from_slice(data);
+        }
         b.resize(linkedit_off, 0);
         b.extend_from_slice(&nlist);
         b.extend_from_slice(&strtab);

@@ -20,17 +20,23 @@ struct PersistenceView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        // Filtered and sorted once per render (the list can hold hundreds of items).
+        let items = self.items
+        let newCount = model.persistence.reduce(0) { $0 + ($1.status == .new ? 1 : 0) }
+        return VStack(spacing: 0) {
             HStack {
                 Toggle("Seulement les nouveaux éléments", isOn: $onlyNew)
                     .toggleStyle(.checkbox)
                 Spacer()
-                Text("\(model.persistence.filter { $0.status == .new }.count) nouveau(x) sur \(model.persistence.count)")
+                Text("\(newCount) nouveau(x) sur \(model.persistence.count)")
                     .foregroundStyle(.secondary)
             }
             .padding(10)
             Divider()
-            if items.isEmpty {
+            if items.isEmpty && model.isFirstLoad("persistence") {
+                ProgressView("Chargement…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if items.isEmpty {
                 ContentUnavailableView(
                     onlyNew ? "Aucun nouvel élément" : "Aucun élément de persistance",
                     systemImage: "checkmark.shield",
@@ -50,12 +56,12 @@ struct PersistenceView: View {
         .toolbar {
             ToolbarItem {
                 RefreshButton(isLoading: model.isBusy("persistence")) {
-                    Task { await model.loadPersistence() }
+                    Task { await model.refresh(section: .persistence, force: true) }
                 }
             }
         }
-        .task {
-            await model.loadPersistence()
+        .onAppear {
+            model.revalidateSection(.persistence)
         }
         .confirmationDialog(
             "Supprimer cet élément de persistance ?",

@@ -19,6 +19,7 @@ Contract: `crates/pb-core/src/db.rs` (manifest, constants, `BrokersFile`, `Compo
 | `osquery/hunting.json` | osquery hunting pack | yes |
 | `zbt/…` | Zero Breach Toolkit (GPG-verified in CI) + indicators | yes |
 | `privacy/brokers.json` | `BrokersFile` (format 1): organisations that receive GDPR erasure requests — see below | yes |
+| `lan/oui.tsv` | IEEE MA-L / MA-M / MA-S MAC vendor prefixes for the LAN inventory: `<6, 7 or 9 uppercase hex>\t<organization>` per line, sorted (fewer than 20 000 MA-L entries → previous file kept) | yes |
 | `components/pins.json` | `ComponentPins` (format 1): third-party archives the daemon may install, pinned by SHA-256 — see below | yes |
 
 ## `privacy/brokers.json`

@@ -1,0 +1,21 @@
+{
+  "allocated_bytes": 1288490189,
+  "bundle_path": "/Users/camille/Library/Application Support/Parabellum/Vault/Coffre.sparsebundle",
+  "capacity_bytes": 21474836480,
+  "device": "/dev/disk4",
+  "encrypted": true,
+  "exists": true,
+  "filevault": "off",
+  "mount_point": "/Volumes/Coffre",
+  "mounted": true,
+  "recent": [
+    {
+      "modified": 1793000000,
+      "name": "Impôts 2026.pdf",
+      "path": "/Volumes/Coffre/Impôts 2026.pdf",
+      "size": 482133
+    }
+  ],
+  "volume_free_bytes": 20186346291,
+  "volume_total_bytes": 21474836480
+}

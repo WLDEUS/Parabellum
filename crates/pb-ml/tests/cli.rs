@@ -66,3 +66,50 @@ fn rejects_bad_label() {
         .unwrap();
     assert!(!out.status.success());
 }
+
+#[test]
+fn script_kind_names_and_records() {
+    let out = Command::new(BIN)
+        .args(["--kind", "script", "--names"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let names: Vec<String> = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(names, pb_ml::script_feature_names());
+    for (kind, v) in [
+        ("script", pb_ml::SCRIPT_FEATURES_VERSION),
+        ("macho", pb_ml::FEATURES_VERSION),
+    ] {
+        let out = Command::new(BIN)
+            .args(["--kind", kind, "--features-version"])
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8(out.stdout).unwrap().trim(), v.to_string());
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::copy(fixtures().join("min_arm64.macho"), dir.path().join("a.sh")).unwrap();
+    // TEST STRING (benign): a two-line shell script.
+    std::fs::write(dir.path().join("b.sh"), b"#!/bin/sh\necho hi\n").unwrap();
+    std::fs::write(dir.path().join("c.png"), [0x89, b'P', b'N', b'G', 0, 1]).unwrap();
+    let out = Command::new(BIN)
+        .args(["--kind", "script", "--label", "0"])
+        .arg(dir.path())
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let text = String::from_utf8(out.stdout).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 1, "{text}");
+    let v: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
+    assert!(v["path"].as_str().unwrap().ends_with("b.sh"));
+    assert_eq!(v["features_version"], pb_ml::SCRIPT_FEATURES_VERSION);
+    let expected =
+        pb_ml::extract_script_features(b"#!/bin/sh\necho hi\n", Some(&dir.path().join("b.sh")))
+            .unwrap();
+    let got: Vec<f64> = serde_json::from_value(v["features"].clone()).unwrap();
+    assert_eq!(got.len(), expected.len());
+    for (g, e) in got.iter().zip(&expected) {
+        assert_eq!(*g as f32, *e);
+    }
+}

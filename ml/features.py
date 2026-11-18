@@ -1,8 +1,11 @@
 """Wrapper around the ``pb-features`` binary (crate ``pb-ml``).
 
-``pb-features --names``                    -> JSON array of feature names
-``pb-features [--label 0|1] <paths…>``     -> JSON lines
+``pb-features [--kind script] --names``                -> JSON array of feature names
+``pb-features [--kind script] --features-version``     -> layout version
+``pb-features [--kind script] [--label 0|1] <paths…>`` -> JSON lines
 ``{"sha256","path","label","features_version","features":[…]}``
+
+``kind`` is ``macho`` (default, Mach-O classifier) or ``script`` (script classifier).
 """
 
 from __future__ import annotations
@@ -21,6 +24,9 @@ CHUNK = 200
 TIMEOUT_S = 600
 
 
+KINDS = ("macho", "script")
+
+
 @dataclass
 class FeatureRow:
     sha256: str
@@ -28,10 +34,22 @@ class FeatureRow:
     features_version: int
     features: list[float]
     path: str = ""
+    #: MalwareBazaar ``first_seen`` (Unix seconds) for positives; 0 when unknown (negatives).
+    first_seen: int = 0
+    #: Malware family (positives) or clean-corpus package (negatives); "" when unknown.
+    family: str = ""
 
 
-def feature_names(pb_features: Path) -> list[str]:
-    out = subprocess.run([str(pb_features), "--names"], capture_output=True, text=True, timeout=60, check=True)
+def _kind_args(kind: str) -> list[str]:
+    if kind not in KINDS:
+        raise ValueError(f"unknown kind {kind!r}")
+    return [] if kind == "macho" else ["--kind", kind]
+
+
+def feature_names(pb_features: Path, kind: str = "macho") -> list[str]:
+    out = subprocess.run(
+        [str(pb_features), *_kind_args(kind), "--names"], capture_output=True, text=True, timeout=60, check=True
+    )
     names = json.loads(out.stdout)
     if not isinstance(names, list) or not all(isinstance(n, str) for n in names) or not names:
         raise ValueError("pb-features --names did not return a list of strings")
@@ -72,12 +90,27 @@ def parse_rows(text: str, default_label: int | None = None) -> list[FeatureRow]:
     return rows
 
 
-def extract(pb_features: Path, paths: Iterable[Path], label: int | None) -> list[FeatureRow]:
-    """Run ``pb-features`` over ``paths`` in chunks; non-Mach-O files are skipped by the binary."""
+def features_version(pb_features: Path, kind: str = "macho") -> int | None:
+    """Layout version compiled into ``pb-features`` (``None`` for binaries without the flag)."""
+    try:
+        out = subprocess.run(
+            [str(pb_features), *_kind_args(kind), "--features-version"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=True,
+        )
+        return int(out.stdout.strip())
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+def extract(pb_features: Path, paths: Iterable[Path], label: int | None, kind: str = "macho") -> list[FeatureRow]:
+    """Run ``pb-features`` over ``paths`` in chunks; files of another kind are skipped by the binary."""
     plist = [str(p) for p in paths]
     rows: list[FeatureRow] = []
     for i in range(0, len(plist), CHUNK):
-        cmd = [str(pb_features)]
+        cmd = [str(pb_features), *_kind_args(kind)]
         if label is not None:
             cmd += ["--label", str(label)]
         cmd += ["--", *plist[i : i + CHUNK]]

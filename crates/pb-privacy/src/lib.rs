@@ -346,6 +346,9 @@ pub struct PrivacyService {
     config: std::sync::Mutex<Arc<Config>>,
     /// Pause between two emails (30 s; shorter in tests).
     spacing: Duration,
+    /// Wakes the background loop now (campaign started, identity saved, settings changed) instead of at
+    /// its next 10-minute pass.
+    kick: tokio::sync::Notify,
 }
 
 impl PrivacyService {
@@ -380,6 +383,7 @@ impl PrivacyService {
             send_lock: tokio::sync::Mutex::new(()),
             config: std::sync::Mutex::new(Arc::new(Config::default())),
             spacing: Duration::from_secs(requests::SEND_SPACING_SECS as u64),
+            kick: tokio::sync::Notify::new(),
         }
     }
 
@@ -412,13 +416,25 @@ impl PrivacyService {
     /// `repeat_every_days`, checks breaches every `breach.check_interval_hours`.
     pub async fn run(
         self: Arc<Self>,
-        config: watch::Receiver<Arc<Config>>,
+        mut config: watch::Receiver<Arc<Config>>,
         mut shutdown: watch::Receiver<bool>,
     ) {
         let mut wait = Duration::from_secs(60);
         loop {
             tokio::select! {
                 _ = tokio::time::sleep(wait) => {}
+                _ = self.kick.notified() => {}
+                r = config.changed() => {
+                    if r.is_err() {
+                        return;
+                    }
+                    // Only privacy settings matter here; anything else waits for the regular pass.
+                    let cfg = config.borrow().clone();
+                    let prev = self.last_config();
+                    if cfg.data_removal == prev.data_removal && cfg.breach == prev.breach {
+                        continue;
+                    }
+                }
                 r = shutdown.changed() => {
                     if r.is_err() || *shutdown.borrow() {
                         return;
@@ -598,6 +614,15 @@ e-mail dans Parabellum (Vie privée)."
                 Ok(s) => s,
                 Err(e) => {
                     tracing::warn!(error = %e, "SMTP not configured");
+                    self.hooks.alert(PrivacyAlert {
+                        severity: Severity::Medium,
+                        title: "RGPD : compte SMTP incomplet".into(),
+                        message: format!(
+                            "Les demandes d'effacement attendent : {e}. Complétez Réglages › Effacement (serveur, \
+port, identifiant, mot de passe d'application, adresse d'expédition), ou passez en mode Brouillons."
+                        ),
+                        key: format!("privacy:smtp-config:{today}"),
+                    });
                     return;
                 }
             };
@@ -668,6 +693,7 @@ de passe d'application) dans les réglages ; nouvel essai demain."
         st.profile = p;
         store::save_json(&self.file(PROFILE_FILE), &st.profile)
             .map_err(|e| PrivacyError::Failed(format!("enregistrement impossible : {e}")))?;
+        self.kick.notify_one();
         Ok(mask_profile(&st.profile))
     }
 
@@ -759,6 +785,8 @@ de passe d'application) dans les réglages ; nouvel essai demain."
             store::save_json(&self.file(REQUESTS_FILE), &st.requests)
                 .map_err(|e| PrivacyError::Failed(format!("enregistrement impossible : {e}")))?;
         }
+        // First emails leave within seconds, not at the next 10-minute pass.
+        self.kick.notify_one();
         Ok(self.summary(cfg).await)
     }
 

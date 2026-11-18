@@ -1,0 +1,30 @@
+{
+  "errors": [
+    "Safari : pluginkit n'a pas répondu"
+  ],
+  "extensions": [
+    {
+      "browser": "chrome",
+      "enabled": true,
+      "extension_id": "cjpalhdlnbpafiamejdnhcphjbkeiagm",
+      "from_store": true,
+      "host_permissions": [
+        "<all_urls>"
+      ],
+      "id": "chrome:Personnel:cjpalhdlnbpafiamejdnhcphjbkeiagm",
+      "name": "uBlock Origin",
+      "permissions": [
+        "webRequest",
+        "tabs"
+      ],
+      "profile": "Personnel",
+      "reasons": [
+        "Peut lire et modifier toutes les pages web"
+      ],
+      "risk": "high",
+      "unpacked": false,
+      "version": "1.62.0"
+    }
+  ],
+  "generated_at": 1793001100
+}

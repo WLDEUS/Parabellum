@@ -473,13 +473,32 @@ async fn sync_alerts(ctx: &Arc<Ctx>, list: &[PostureCheck]) {
     }
 }
 
+/// speed: delay of the background run that fills the cache after startup, so the dashboard's first
+/// `posture` request answers at once instead of running every system tool.
+pub const WARM_UP_DELAY: Duration = Duration::from_secs(20);
+
+/// One run [`WARM_UP_DELAY`] after startup when `security.posture_checks` is on and nothing is cached yet
+/// (the same run the first `posture` request would trigger).
+pub async fn warm_up(ctx: Arc<Ctx>) {
+    let mut shutdown = ctx.shutdown_rx();
+    tokio::select! {
+        _ = tokio::time::sleep(WARM_UP_DELAY) => {}
+        _ = shutdown.changed() => return,
+    }
+    if ctx.is_shutting_down() || cached().is_some() || !ctx.config().security.posture_checks {
+        return;
+    }
+    let list = run_and_alert(&ctx).await;
+    tracing::debug!(checks = list.len(), "security posture cache warmed up");
+}
+
 /// Daily check (10 min after startup, then every 24 h), when `security.posture_checks` is on.
 pub async fn daily_loop(ctx: Arc<Ctx>) {
     let mut shutdown = ctx.shutdown_rx();
     let mut wait = STARTUP_DELAY;
     loop {
         tokio::select! {
-            _ = tokio::time::sleep(wait) => {}
+            _ = crate::system::sleep_until_wall(crate::system::wall_deadline(wait)) => {}
             _ = shutdown.changed() => if *shutdown.borrow() { return; },
         }
         if ctx.config().security.posture_checks {

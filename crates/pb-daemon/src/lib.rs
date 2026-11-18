@@ -38,5 +38,12 @@ pub mod spyware;
 pub mod status;
 pub mod store;
 pub mod system;
+// ----- Travel mode -----
+pub mod travel;
 pub mod virustotal;
 pub mod vpn;
+// Intelligence (domain model + behaviour baseline)
+pub mod intel;
+// ----- Local network & permissions audit -----
+pub mod lan;
+pub mod permissions;

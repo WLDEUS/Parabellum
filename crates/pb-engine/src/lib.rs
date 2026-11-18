@@ -4,7 +4,8 @@
 //! * the threat-DB **hash sets** (memory-mapped, binary search) and the local allowlist,
 //! * **YARA-X** (built-in rules + bundle rules, compiled once and cached),
 //! * **ClamAV** (`clamscan`, batched, on-demand only — no resident `clamd`),
-//! * the **ML** Mach-O classifier (`pb-ml`, suspicious-only),
+//! * the **ML** classifiers (`pb-ml`, suspicious-only): Mach-O and scripts (shell, AppleScript,
+//!   JXA, Python, JavaScript, Perl), each optional in the bundle,
 //! * **containers**: ZIP / tar / gzip in memory with zip-bomb limits; DMG (`hdiutil`, read-only
 //!   mount) and PKG (`pkgutil --expand-full`) on macOS,
 //! * Apple **code signing** (`codesign` / `spctl`, macOS),
@@ -164,6 +165,8 @@ pub struct EngineStats {
     /// Compiled YARA rules, built-in rules included.
     pub yara_rules: u64,
     pub ml_model_version: Option<String>,
+    /// Every ML classifier (loaded or not) with its metrics.
+    pub models: Vec<pb_core::model::ModelInfo>,
     pub clamav_available: bool,
     pub clamav_version: Option<String>,
     /// Non-fatal problems found while loading (rejected YARA files, corrupt hash file…).
@@ -230,6 +233,9 @@ pub struct Engine {
     ml: Option<pb_ml::MlModel>,
     ml_threshold: f32,
     ml_only_untrusted: bool,
+    ml_script: Option<pb_ml::MlModel>,
+    ml_script_threshold: f32,
+    model_infos: Vec<pb_core::model::ModelInfo>,
     clamav: Option<clamav::ClamAv>,
     internal_excludes: Vec<PathBuf>,
     warnings: Vec<String>,
@@ -525,16 +531,22 @@ impl Engine {
             warnings.push(format!("YARA file rejected: {s}"));
         }
 
-        let ml = match bundle.as_ref().map(|b| pb_ml::MlModel::load(b)) {
-            Some(Ok(m)) => m,
-            Some(Err(e)) => {
-                tracing::warn!(error = %e, "ML model not loaded");
-                warnings.push(format!("ML model not loaded: {e}"));
-                None
-            }
-            None => None,
-        };
+        let (ml, ml_info) = load_model(
+            bundle.as_deref(),
+            pb_ml::ModelKind::MachO,
+            cfg,
+            &mut warnings,
+        );
         let ml_threshold = ml
+            .as_ref()
+            .map_or(1.0, |m| m.threshold().max(cfg.ml.suspicious_threshold));
+        let (ml_script, script_info) = load_model(
+            bundle.as_deref(),
+            pb_ml::ModelKind::Script,
+            cfg,
+            &mut warnings,
+        );
+        let ml_script_threshold = ml_script
             .as_ref()
             .map_or(1.0, |m| m.threshold().max(cfg.ml.suspicious_threshold));
 
@@ -557,6 +569,9 @@ impl Engine {
             ml,
             ml_threshold,
             ml_only_untrusted: cfg.ml.only_untrusted,
+            ml_script,
+            ml_script_threshold,
+            model_infos: vec![ml_info, script_info],
             clamav,
             internal_excludes: vec![paths.root.clone()],
             warnings,
@@ -567,7 +582,7 @@ impl Engine {
         let s = engine.stats();
         tracing::info!(
             db = ?s.db_version, malware_hashes = s.malware_hashes, allow_hashes = s.allow_hashes, yara_rules = s.yara_rules,
-            ml = ?s.ml_model_version, clamav = ?s.clamav_version, "engine loaded"
+            ml = ?s.ml_model_version, ml_script = ?self_script_version(&engine), clamav = ?s.clamav_version, "engine loaded"
         );
         Ok(engine)
     }
@@ -580,6 +595,7 @@ impl Engine {
             allow_hashes: self.allow.len(),
             yara_rules: self.yara.count,
             ml_model_version: self.ml.as_ref().map(|m| m.version().to_owned()),
+            models: self.model_infos.clone(),
             clamav_available: self.clamav.is_some(),
             clamav_version: self.clamav.as_ref().and_then(|c| c.version.clone()),
             warnings: self.warnings.clone(),
@@ -1265,24 +1281,116 @@ impl Engine {
 
         if ml_wanted && !(self.ml_only_untrusted && a.trusted) {
             if let Some(model) = &self.ml {
-                if let Some(p) = model.score(data) {
-                    if p >= self.ml_threshold {
-                        a.own.push(Detection {
-                            engine: DetectionEngine::Ml,
-                            name: "ML.MachO.Suspicious".into(),
-                            severity: Severity::Medium,
-                            confidence: p,
-                            details: Some(format!(
-                                "score {p:.3} >= threshold {:.3} (model {})",
-                                self.ml_threshold,
-                                model.version()
-                            )),
-                        });
+                if let Some(s) = model.score_detailed(data) {
+                    if let Some(d) =
+                        ml_detection("ML.MachO.Suspicious", s, self.ml_threshold, model)
+                    {
+                        a.own.push(d);
+                    }
+                }
+            }
+        }
+
+        // Script classifier: same policy (suspicious only, never quarantined on its own). Scripts
+        // carry no code signature, so `only_untrusted` does not apply.
+        if kind == FileKind::Script && ctx.opts.use_ml && !info.truncated {
+            if let Some(model) = &self.ml_script {
+                let name = Path::new(&a.report.path);
+                if let Some(s) = model.score_script(data, Some(name)) {
+                    if let Some(d) =
+                        ml_detection("ML.Script.Suspicious", s, self.ml_script_threshold, model)
+                    {
+                        a.own.push(d);
                     }
                 }
             }
         }
     }
+}
+
+/// Detection for an ML score at or above `threshold` (raw probability); the confidence shown is
+/// the calibrated probability when the model ships a calibration.
+fn ml_detection(
+    name: &str,
+    s: pb_ml::Score,
+    threshold: f32,
+    model: &pb_ml::MlModel,
+) -> Option<Detection> {
+    if s.probability < threshold {
+        return None;
+    }
+    let calibrated = if model.calibration().is_some() {
+        format!(", calibrated {:.3}", s.calibrated)
+    } else {
+        String::new()
+    };
+    Some(Detection {
+        engine: DetectionEngine::Ml,
+        name: name.into(),
+        severity: Severity::Medium,
+        confidence: s.calibrated,
+        details: Some(format!(
+            "score {:.3} >= threshold {threshold:.3}{calibrated} (model {})",
+            s.probability,
+            model.version()
+        )),
+    })
+}
+
+fn self_script_version(e: &Engine) -> Option<&str> {
+    e.ml_script.as_ref().map(|m| m.version())
+}
+
+/// French label of a model kind.
+fn model_display_name(kind: pb_ml::ModelKind) -> &'static str {
+    match kind {
+        pb_ml::ModelKind::MachO => "Classifieur Mach-O",
+        pb_ml::ModelKind::Script => "Classifieur de scripts",
+    }
+}
+
+/// Loads one ML model from the bundle and describes it for the status (`DbStatus.models`).
+/// A missing model is not an error (bootstrap: the engine works exactly as without ML).
+fn load_model(
+    bundle: Option<&Path>,
+    kind: pb_ml::ModelKind,
+    cfg: &Config,
+    warnings: &mut Vec<String>,
+) -> (Option<pb_ml::MlModel>, pb_core::model::ModelInfo) {
+    let mut info = pb_core::model::ModelInfo {
+        name: kind.name().into(),
+        display_name: model_display_name(kind).into(),
+        features_version: kind.features_version(),
+        ..Default::default()
+    };
+    let model = match bundle.map(|b| pb_ml::MlModel::load_kind(b, kind)) {
+        Some(Ok(m)) => m,
+        Some(Err(e)) => {
+            tracing::warn!(error = %e, model = kind.name(), "ML model not loaded");
+            warnings.push(format!("ML model ({}) not loaded: {e}", kind.name()));
+            info.error = Some(match e {
+                pb_ml::MlError::FeatureMismatch(_) => "Modèle incompatible avec cette version de \
+                    Parabellum : en attente du prochain entraînement."
+                    .into(),
+                other => format!("Modèle illisible : {other}"),
+            });
+            None
+        }
+        None => None,
+    };
+    if let Some(m) = &model {
+        info.loaded = true;
+        info.version = Some(m.version().to_owned());
+        info.threshold = Some(m.threshold().max(cfg.ml.suspicious_threshold));
+        info.trees = u32::try_from(m.gbdt().num_trees()).ok();
+        info.calibration = m.calibration().map(|c| c.method().to_owned());
+        info.trained_at = m
+            .metrics()
+            .get("trained_at")
+            .and_then(serde_json::Value::as_i64);
+        info.metrics = serde_json::from_value(m.metrics().clone()).unwrap_or_default();
+    }
+    (model, info)
 }
 
 #[cfg(test)]

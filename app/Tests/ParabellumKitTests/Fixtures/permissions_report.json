@@ -1,0 +1,53 @@
+{
+  "configuration_profiles": [
+    "Profil Wi-Fi du bureau"
+  ],
+  "errors": [],
+  "generated_at": 1793001000,
+  "grants": [
+    {
+      "app_name": "Clicker",
+      "app_path": "/Applications/Clicker.app",
+      "auth": "allowed",
+      "client": "com.example.clicker",
+      "client_is_path": false,
+      "id": "0123456789abcdef",
+      "installed": true,
+      "last_modified": 1792000000,
+      "reasons": [
+        "App signée « ad hoc » (sans identité de développeur)"
+      ],
+      "risk": "high",
+      "service": "kTCCServiceAccessibility",
+      "service_label": "Accessibilité",
+      "settings_url": "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+      "signing": {
+        "adhoc": true,
+        "apple": false,
+        "identifier": "com.example.clicker",
+        "signed": true,
+        "valid": true
+      },
+      "system_wide": true
+    },
+    {
+      "app_name": "helper",
+      "auth": "allowed",
+      "client": "/usr/local/bin/helper",
+      "client_is_path": true,
+      "id": "fedcba9876543210",
+      "installed": false,
+      "reasons": [
+        "App introuvable sur ce Mac : autorisation orpheline à réinitialiser"
+      ],
+      "risk": "low",
+      "service": "kTCCServiceAppleEvents",
+      "service_label": "Automatisation",
+      "system_wide": false,
+      "target": "com.apple.finder",
+      "target_name": "Finder"
+    }
+  ],
+  "system_db_read": true,
+  "user_db_read": true
+}

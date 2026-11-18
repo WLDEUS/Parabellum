@@ -13,7 +13,7 @@ struct GuardView: View {
                     if !status.suspended.isEmpty {
                         SuspendedCard(processes: status.suspended)
                     }
-                } else if model.isBusy("guard") {
+                } else if model.isFirstLoad("guard") {
                     ProgressView("Chargement…").padding(40)
                 } else {
                     ContentUnavailableView("État indisponible", systemImage: "eye.trianglebadge.exclamationmark")
@@ -26,12 +26,12 @@ struct GuardView: View {
         .toolbar {
             ToolbarItem {
                 RefreshButton(isLoading: model.isBusy("guard") || model.isBusy("snapshots")) {
-                    Task { await model.loadGuard() }
+                    Task { await model.refresh(section: .behavior, force: true) }
                 }
             }
         }
-        .task {
-            await model.loadGuard()
+        .onAppear {
+            model.revalidateSection(.behavior)
         }
     }
 }

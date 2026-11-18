@@ -158,10 +158,12 @@ pub enum CancelOutcome {
 #[derive(Default)]
 struct Inner {
     queue: VecDeque<Arc<Job>>,
-    running: Option<Arc<Job>>,
+    /// At most two: any job, plus a manual scan allowed alongside a long background job (spyware scan,
+    /// retro-hunt, Downloads batch) so "Analyser" never waits behind it.
+    running: Vec<Arc<Job>>,
 }
 
-/// Queue + running slot.
+/// Queue + running slots.
 #[derive(Default)]
 pub struct JobManager {
     inner: Mutex<Inner>,
@@ -227,7 +229,7 @@ impl JobManager {
 
     pub fn cancel(&self, id: &str) -> CancelOutcome {
         let mut g = self.lock();
-        if let Some(r) = g.running.as_ref().filter(|j| j.id == id) {
+        if let Some(r) = g.running.iter().find(|j| j.id == id) {
             r.cancel();
             return CancelOutcome::Signalled;
         }
@@ -245,20 +247,26 @@ impl JobManager {
     /// Pop the next runnable job (skipping deferrable ones when `defer`), marking it running.
     fn take_next(&self, defer: bool) -> Option<Arc<Job>> {
         let mut g = self.lock();
-        if g.running.is_some() {
-            return None;
-        }
-        let pos = g
-            .queue
-            .iter()
-            .position(|j| !(defer && is_deferrable(j.origin())))?;
+        let runnable = |j: &Arc<Job>| !(defer && is_deferrable(j.origin()));
+        let manual = |j: &Arc<Job>| j.origin() == ScanOrigin::Manual;
+        let pos = match g.running.as_slice() {
+            // Free: manual scans first, then queue order.
+            [] => g
+                .queue
+                .iter()
+                .position(|j| runnable(j) && manual(j))
+                .or_else(|| g.queue.iter().position(runnable))?,
+            // A background job runs: only a manual scan may start next to it.
+            [busy] if !manual(busy) => g.queue.iter().position(|j| runnable(j) && manual(j))?,
+            _ => return None,
+        };
         let job = g.queue.remove(pos)?;
-        g.running = Some(job.clone());
+        g.running.push(job.clone());
         Some(job)
     }
 
-    fn finish_running(&self) {
-        self.lock().running = None;
+    fn finish(&self, id: &str) {
+        self.lock().running.retain(|j| j.id != id);
     }
 }
 
@@ -296,8 +304,13 @@ pub async fn run_jobs(ctx: Arc<Ctx>) {
         }
         let defer = ctx.should_defer_heavy_work();
         if let Some(job) = ctx.jobs.take_next(defer) {
-            run_job(&ctx, job).await;
-            ctx.jobs.finish_running();
+            let ctx2 = ctx.clone();
+            tokio::spawn(async move {
+                let id = job.id.clone();
+                run_job(&ctx2, job).await;
+                ctx2.jobs.finish(&id);
+                ctx2.jobs.wake.notify_one();
+            });
             continue;
         }
         let waiting = ctx.jobs.queued_len() > 0;
@@ -496,7 +509,7 @@ mod tests {
         assert!(m.take_next(false).is_none(), "one heavy job at a time");
         assert!(matches!(m.cancel(&manual.id), CancelOutcome::Signalled));
         assert!(manual.is_cancelled());
-        m.finish_running();
+        m.finish(&manual.id);
         match m.cancel(&manual2.id) {
             CancelOutcome::Dequeued(j) => assert_eq!(j.state(), JobState::Cancelled),
             other => panic!("{other:?}"),
@@ -504,6 +517,26 @@ mod tests {
         assert!(matches!(m.cancel("nope"), CancelOutcome::NotFound));
         assert_eq!(m.take_next(false).unwrap().id, retro.id);
         assert_eq!(m.get(&retro.id).unwrap().id, retro.id);
+    }
+
+    #[test]
+    fn manual_scan_runs_next_to_a_background_job() {
+        let m = JobManager::new();
+        let retro = Job::new(spec(ScanOrigin::RetroHunt));
+        let retro2 = Job::new(spec(ScanOrigin::RetroHunt));
+        let manual = Job::new(spec(ScanOrigin::Manual));
+        m.enqueue(retro.clone()).unwrap();
+        m.enqueue(retro2.clone()).unwrap();
+        assert_eq!(m.take_next(false).unwrap().id, retro.id);
+        assert!(m.take_next(false).is_none(), "no second background job");
+        m.enqueue(manual.clone()).unwrap();
+        assert_eq!(m.take_next(false).unwrap().id, manual.id);
+        assert!(m.take_next(false).is_none());
+        assert_eq!(m.active().len(), 3);
+        m.finish(&retro.id);
+        assert!(m.take_next(false).is_none(), "manual still running");
+        m.finish(&manual.id);
+        assert_eq!(m.take_next(false).unwrap().id, retro2.id);
     }
 
     #[test]
