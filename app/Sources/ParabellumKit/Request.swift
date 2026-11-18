@@ -268,15 +268,11 @@ public enum Request: Sendable, Equatable {
         case .vpnStatus, .vpnListServices, .listNetworks, .guardStatus, .listSnapshots, .privacyListBrokers,
              .privacyListRequests, .privacySummary, .breachList, .aliasList:
             return false
-        case .intelStatus, .intelScoreDomain:
-            return false
-        case .lanStatus:
+        // intelStatus, lanStatus and report reveal browsing / LAN history: installed app/CLI only.
+        case .intelScoreDomain:
             return false
         // Travel mode
         case .travelStatus:
-            return false
-        // Activity report
-        case .report:
             return false
         case let .privacyGetProfile(reveal):
             return reveal

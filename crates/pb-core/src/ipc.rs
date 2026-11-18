@@ -396,7 +396,9 @@ impl Request {
         }
     }
 
-    /// Commands that change state (need the peer to be the installed app/CLI of the console user or root).
+    /// Commands that change state, or reveal personal data (browsing / LAN history: `IntelStatus`,
+    /// `LanStatus`, `Report`, `PermissionsAudit`): they need the peer to be the installed app/CLI of the
+    /// console user or root. Everything else is readable by any local process of an admin-group user.
     pub fn is_mutating(&self) -> bool {
         !matches!(
             self,
@@ -426,13 +428,9 @@ impl Request {
                 | Request::PrivacySummary
                 | Request::BreachList
                 | Request::AliasList
-                | Request::IntelStatus
                 | Request::IntelScoreDomain { .. }
-                | Request::LanStatus { .. }
                 // ----- Travel mode -----
                 | Request::TravelStatus
-                // Activity report
-                | Request::Report { .. }
         )
     }
 }
@@ -729,7 +727,19 @@ mod tests {
     fn intelligence_requests() {
         let r: RequestEnvelope = serde_json::from_str(r#"{"id":1,"cmd":"intel_status"}"#).unwrap();
         assert_eq!(r.request, Request::IntelStatus);
-        assert!(!r.request.is_mutating() && !r.request.requires_admin());
+        // Flagged domains = browsing history: installed app/CLI only (v2-new review #7).
+        assert!(r.request.is_mutating() && !r.request.requires_admin());
+        for req in [
+            Request::LanStatus { network_id: None },
+            Request::Report {
+                period: ReportPeriod::Month,
+                offset: 0,
+                from: None,
+                to: None,
+            },
+        ] {
+            assert!(req.is_mutating() && !req.requires_admin(), "{req:?}");
+        }
         let r: RequestEnvelope =
             serde_json::from_str(r#"{"id":2,"cmd":"intel_score_domain","domain":"a.b"}"#).unwrap();
         assert!(!r.request.is_mutating() && !r.request.requires_admin());
@@ -761,7 +771,10 @@ mod tests {
     fn lan_and_permissions_requests() {
         let r: RequestEnvelope = serde_json::from_str(r#"{"id":1,"cmd":"lan_status"}"#).unwrap();
         assert_eq!(r.request, Request::LanStatus { network_id: None });
-        assert!(!r.request.is_mutating() && !r.request.requires_admin());
+        assert!(
+            r.request.is_mutating() && !r.request.requires_admin(),
+            "installed app/CLI only"
+        );
         let r: RequestEnvelope = serde_json::from_str(r#"{"id":2,"cmd":"lan_scan"}"#).unwrap();
         assert_eq!(r.request, Request::LanScan { active: None });
         assert!(r.request.is_mutating() && !r.request.requires_admin());
@@ -833,7 +846,10 @@ mod tests {
                 to: None
             }
         );
-        assert!(!r.request.is_mutating() && !r.request.requires_admin());
+        assert!(
+            r.request.is_mutating() && !r.request.requires_admin(),
+            "installed app/CLI only"
+        );
         let r: RequestEnvelope = serde_json::from_str(r#"{"id":2,"cmd":"report"}"#).unwrap();
         assert!(matches!(
             r.request,
