@@ -12,6 +12,7 @@
 //!   user too (`parabellum permissions extensions`), not by the daemon.
 //! - Location grants live in `locationd`'s private store, not in TCC: not covered.
 
+pub mod csreq;
 pub mod safefile;
 pub mod tcc;
 
@@ -125,6 +126,7 @@ pub fn build_report(
                 client_is_path: r.client_is_path,
                 installed,
                 signing: signing.as_ref(),
+                csreq_apple: r.csreq_apple,
             });
             TccGrant {
                 id: tcc::grant_id(*system, &r.service, &r.client, r.target.as_deref()),
@@ -579,7 +581,8 @@ mod tests {
             .find(|g| g.client == "com.old.backup")
             .unwrap();
         assert_eq!(stale.installed, Some(false));
-        assert_eq!(stale.risk, Severity::Low);
+        // Unresolved bundle id with Full Disk Access: unverifiable, hence high (v2-new review #2).
+        assert_eq!(stale.risk, Severity::High);
         let mic = r
             .grants
             .iter()
@@ -591,7 +594,7 @@ mod tests {
         // Alerts: baseline first, then only new high-risk grants.
         let mut st = AuditState::default();
         assert!(new_alerts(&mut st, &r).is_empty());
-        assert!(st.baseline_done && st.known_high.len() == 1);
+        assert!(st.baseline_done && st.known_high.len() == 2);
         assert!(new_alerts(&mut st, &r).is_empty());
         let mut r2 = r.clone();
         let mut g = r2.grants[0].clone();
