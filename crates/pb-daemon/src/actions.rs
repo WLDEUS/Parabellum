@@ -581,11 +581,32 @@ pub async fn report_false_positive(
     Ok(())
 }
 
-/// Apply one of an alert's actions.
+/// Actions that still protect the user: while an alert offers one of them, it is a pending decision.
+const PROTECTIVE_ACTIONS: &[AlertAction] = &[
+    AlertAction::Quarantine,
+    AlertAction::KillProcess,
+    AlertAction::ResumeProcess,
+    AlertAction::RemovePersistence,
+    AlertAction::BlockDevice,
+    AlertAction::EnableTravelMode,
+];
+
+/// May a non-administrator peer `Dismiss` this alert? Any process of the console user can run the
+/// installed CLI: silently closing a high / critical alert that still waits for a protective decision
+/// (malware not quarantined, suspended ransomware, new persistence…) would hide the attack from the
+/// user, so that needs administrator approval. `Acknowledge` keeps the alert and its actions.
+pub fn dismiss_needs_admin(alert: &Alert) -> bool {
+    alert.status != AlertStatus::Resolved
+        && alert.severity >= Severity::High
+        && alert.actions.iter().any(|a| PROTECTIVE_ACTIONS.contains(a))
+}
+
+/// Apply one of an alert's actions. `admin`: the peer is root or administrator-approved.
 pub async fn resolve_alert(
     ctx: &Arc<Ctx>,
     alert_id: i64,
     action: AlertAction,
+    admin: bool,
 ) -> Result<Alert, IpcError> {
     let mut alert = ctx
         .store
@@ -597,6 +618,16 @@ pub async fn resolve_alert(
                 format!("alerte {alert_id} introuvable"),
             )
         })?;
+    if action == AlertAction::Dismiss && !admin && dismiss_needs_admin(&alert) {
+        tracing::warn!(
+            alert_id,
+            "dismiss of a pending high-severity alert refused without approval"
+        );
+        return Err(IpcError::new(
+            ErrorCode::AuthRequired,
+            crate::auth::AUTH_REQUIRED_MESSAGE,
+        ));
+    }
     if !matches!(action, AlertAction::Acknowledge | AlertAction::Dismiss)
         && !alert.actions.contains(&action)
     {
@@ -773,6 +804,35 @@ pub async fn resolve_alert(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dismissing_a_pending_serious_alert_needs_admin() {
+        let mut a = new_alert(
+            AlertKind::Malware,
+            Severity::High,
+            "t".into(),
+            "m".into(),
+            vec![
+                AlertAction::Quarantine,
+                AlertAction::Allow,
+                AlertAction::Acknowledge,
+            ],
+        );
+        assert!(dismiss_needs_admin(&a));
+        a.status = AlertStatus::Acknowledged;
+        assert!(dismiss_needs_admin(&a), "acknowledged but still pending");
+        a.status = AlertStatus::Resolved;
+        assert!(!dismiss_needs_admin(&a));
+        a.status = AlertStatus::Open;
+        a.severity = Severity::Medium;
+        assert!(!dismiss_needs_admin(&a), "medium alerts stay one click");
+        a.severity = Severity::Critical;
+        a.actions = vec![AlertAction::Restore, AlertAction::Acknowledge];
+        assert!(
+            !dismiss_needs_admin(&a),
+            "already quarantined: nothing pending"
+        );
+    }
 
     fn det(engine: DetectionEngine, sev: Severity, conf: f32, name: &str) -> Detection {
         Detection {

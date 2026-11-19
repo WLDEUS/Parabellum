@@ -715,9 +715,11 @@ pub fn eml(d: &MailDraft) -> String {
         wrapped.push_str(std::str::from_utf8(chunk).unwrap_or(""));
         wrapped.push_str("\r\n");
     }
+    // The recipient comes from the broker list: no CR / LF / control character may add a header.
+    let to: String = d.to.chars().filter(|c| !c.is_control()).collect();
     format!(
         "X-Unsent: 1\r\nTo: {}\r\nSubject: {subject}\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n{wrapped}",
-        d.to
+        to.trim()
     )
 }
 
@@ -741,16 +743,55 @@ fn safe_file_stem(s: &str) -> String {
 }
 
 /// Files written under sudo go back to the invoking user.
-fn chown_to_sudo_user(p: &Path) {
-    let uid = std::env::var("SUDO_UID")
-        .ok()
-        .and_then(|v| v.parse::<u32>().ok());
-    let gid = std::env::var("SUDO_GID")
-        .ok()
-        .and_then(|v| v.parse::<u32>().ok());
-    if let (Some(u), Some(g)) = (uid, gid) {
-        let _ = std::os::unix::fs::chown(p, Some(u), Some(g));
+/// Under `sudo`, permanently become the invoking user (`SUDO_UID` / `SUDO_GID`) before touching files in
+/// a folder that user controls. No-op when not root. Fails closed if the switch does not stick.
+fn drop_root_to_sudo_user() -> std::io::Result<()> {
+    // SAFETY: plain libc calls without pointers we keep.
+    if unsafe { libc::geteuid() } != 0 {
+        return Ok(());
     }
+    let id = |k: &str| std::env::var(k).ok().and_then(|v| v.parse::<u32>().ok());
+    let (Some(uid), Some(gid)) = (id("SUDO_UID"), id("SUDO_GID")) else {
+        // Real root session (no sudo): nothing to drop to, files stay root's.
+        return Ok(());
+    };
+    if uid == 0 {
+        return Ok(());
+    }
+    let groups = [gid as libc::gid_t];
+    // SAFETY: `groups` outlives the call; the ids are plain integers.
+    let ok = unsafe {
+        libc::setgroups(1, groups.as_ptr()) == 0
+            && libc::setgid(gid as libc::gid_t) == 0
+            && libc::setuid(uid as libc::uid_t) == 0
+    };
+    // SAFETY: no preconditions.
+    if !ok || unsafe { libc::geteuid() } != uid || unsafe { libc::setuid(0) } == 0 {
+        return Err(std::io::Error::other(
+            "impossible de quitter les droits root avant d'écrire les e-mails",
+        ));
+    }
+    Ok(())
+}
+
+/// Write `data` to `p` without following a symlink and refusing anything but a plain, single-link file.
+fn write_user_file(p: &Path, data: &[u8]) -> std::io::Result<()> {
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
+        .open(p)?;
+    let m = f.metadata()?;
+    if !m.is_file() || m.nlink() != 1 {
+        return Err(std::io::Error::other(format!(
+            "{} : fichier spécial ou lien refusé",
+            p.display()
+        )));
+    }
+    f.set_len(0)?;
+    f.write_all(data)
 }
 
 pub fn privacy(
@@ -840,23 +881,24 @@ pub fn privacy(
                         .collect()
                 }
             };
+            // Fetch every draft first (the daemon wants root or approval), then write the files with the
+            // invoking user's rights only: as root, a symlink or hard link planted in `out` by any process
+            // of the user would otherwise make root overwrite / chown an arbitrary system file.
+            let mut drafts: Vec<MailDraft> = Vec::new();
+            for rid in ids {
+                drafts.push(c.call(Request::PrivacyDraft {
+                    request_id: rid.clone(),
+                })?);
+            }
+            drop_root_to_sudo_user()?;
             std::fs::create_dir_all(out)?;
             let mut written: Vec<PathBuf> = Vec::new();
-            for rid in ids {
-                let d: MailDraft = c.call(Request::PrivacyDraft {
-                    request_id: rid.clone(),
-                })?;
+            for d in &drafts {
                 let p = out.join(format!(
                     "{}.eml",
                     safe_file_stem(&d.to.replace('@', "-at-"))
                 ));
-                let mut f = std::fs::OpenOptions::new()
-                    .write(true)
-                    .create(true)
-                    .truncate(true)
-                    .open(&p)?;
-                f.write_all(eml(&d).as_bytes())?;
-                chown_to_sudo_user(&p);
+                write_user_file(&p, eml(d).as_bytes())?;
                 written.push(p);
             }
             if cli.json {
@@ -1066,6 +1108,36 @@ pub fn local(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn draft_files_never_follow_links() {
+        let d = tempfile::tempdir().unwrap();
+        let victim = d.path().join("victim");
+        std::fs::write(&victim, b"keep").unwrap();
+        let link = d.path().join("a.eml");
+        std::os::unix::fs::symlink(&victim, &link).unwrap();
+        assert!(write_user_file(&link, b"x").is_err());
+        let hard = d.path().join("b.eml");
+        std::fs::hard_link(&victim, &hard).unwrap();
+        assert!(write_user_file(&hard, b"x").is_err());
+        assert_eq!(std::fs::read(&victim).unwrap(), b"keep");
+        let ok = d.path().join("c.eml");
+        write_user_file(&ok, b"longer content").unwrap();
+        write_user_file(&ok, b"new").unwrap();
+        assert_eq!(std::fs::read(&ok).unwrap(), b"new");
+    }
+
+    #[test]
+    fn eml_recipient_cannot_inject_headers() {
+        let d = MailDraft {
+            request_id: "r".into(),
+            to: "dpo@example.com\r\nBcc: spy@evil.test".into(),
+            subject: "s".into(),
+            body: "b".into(),
+        };
+        let e = eml(&d);
+        assert!(!e.contains("\r\nBcc:"));
+    }
 
     #[test]
     fn eml_is_valid_and_utf8() {

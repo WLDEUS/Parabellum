@@ -453,9 +453,12 @@ public struct MailDraft: Codable, Sendable, Hashable {
             wrapped.append(String(encoded[index..<end]))
             index = end
         }
+        // The recipient comes from the broker list: no CR / LF / control character may add a header.
+        let safeTo = String(String.UnicodeScalarView(to.unicodeScalars.filter { $0.properties.generalCategory != .control }))
+            .trimmingCharacters(in: .whitespaces)
         let headers = [
             "X-Unsent: 1",
-            "To: \(to)",
+            "To: \(safeTo)",
             "Subject: \(subjectWord)",
             "MIME-Version: 1.0",
             "Content-Type: text/plain; charset=UTF-8",

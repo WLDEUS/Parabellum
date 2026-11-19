@@ -189,6 +189,51 @@ pub(crate) fn stat_at(dir: RawFd, name: &CStr) -> io::Result<EntryStat> {
     Ok(entry_stat(unsafe { &st.assume_init() }))
 }
 
+/// Owner and modification time of an entry, without following symlinks: `(uid, gid, mtime)`.
+#[allow(clippy::unnecessary_cast, clippy::useless_conversion)]
+pub(crate) fn owner_at(dir: RawFd, name: &CStr) -> io::Result<(u32, u32, u64)> {
+    let mut st = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: `st` is a valid out-pointer; `name` NUL-terminated.
+    check(unsafe {
+        libc::fstatat(
+            dir,
+            name.as_ptr(),
+            st.as_mut_ptr(),
+            libc::AT_SYMLINK_NOFOLLOW,
+        )
+    })?;
+    // SAFETY: fstatat succeeded, so `st` is initialised.
+    let st = unsafe { st.assume_init() };
+    Ok((
+        st.st_uid as u32,
+        st.st_gid as u32,
+        st.st_mtime.max(0) as u64,
+    ))
+}
+
+/// `readlinkat(dir, name)`: target of a symbolic link (at most `PATH_MAX` bytes).
+pub(crate) fn readlinkat(dir: RawFd, name: &CStr) -> io::Result<CString> {
+    let mut buf = vec![0u8; libc::PATH_MAX as usize + 1];
+    // SAFETY: `buf` is writable for its length; `name` NUL-terminated.
+    let n = unsafe {
+        libc::readlinkat(
+            dir,
+            name.as_ptr(),
+            buf.as_mut_ptr().cast::<libc::c_char>(),
+            buf.len(),
+        )
+    };
+    if n < 0 {
+        return Err(last_err());
+    }
+    let n = n as usize;
+    if n >= buf.len() {
+        return Err(io::Error::other("symlink target too long"));
+    }
+    buf.truncate(n);
+    CString::new(buf).map_err(|_| io::Error::other("NUL byte in symlink target"))
+}
+
 /// `fstat(fd)`.
 pub(crate) fn stat_fd(fd: RawFd) -> io::Result<EntryStat> {
     let mut st = std::mem::MaybeUninit::<libc::stat>::uninit();

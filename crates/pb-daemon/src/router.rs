@@ -200,7 +200,7 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
             )
         }
         Request::ResolveAlert { alert_id, action } => {
-            json(&actions::resolve_alert(ctx, alert_id, action).await?)
+            json(&actions::resolve_alert(ctx, alert_id, action, peer.admin).await?)
         }
         Request::ListQuarantine => {
             let q = ctx.backends.quarantine.clone();
@@ -404,7 +404,15 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
         // ----- Behaviour guard & snapshots -----
         Request::GuardStatus => json(&crate::guard::status(ctx).await),
         Request::ListSnapshots => json(&crate::guard::snapshots::list(ctx).await?),
-        Request::CreateSnapshot => json(&crate::guard::snapshots::create(ctx).await?),
+        Request::CreateSnapshot => {
+            if !peer.admin && !manual_snapshot_allowed(std::time::Instant::now()) {
+                return Err(IpcError::new(
+                    ErrorCode::Busy,
+                    "un instantané vient d'être créé : réessayez dans une minute",
+                ));
+            }
+            json(&crate::guard::snapshots::create(ctx).await?)
+        }
         Request::RestoreFromSnapshot { snapshot, path } => {
             let dest = crate::guard::snapshots::restore(ctx, &snapshot, &path).await?;
             Ok(serde_json::json!({ "restored_to": dest }))
@@ -538,6 +546,21 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
             to,
         } => json(&crate::report::build(ctx, period, offset, from, to).await?),
     }
+}
+
+/// Minimum delay between two snapshots requested over IPC by a non-administrator peer. Any process of the
+/// console user can send `CreateSnapshot`: a flood (ransomware covering its tracks) would push the
+/// snapshots taken before the attack out of Parabellum's "ours" list (last 200) and let APFS thin them.
+const MANUAL_SNAPSHOT_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
+
+fn manual_snapshot_allowed(now: std::time::Instant) -> bool {
+    static LAST: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+    let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+    if last.is_some_and(|t| now.saturating_duration_since(t) < MANUAL_SNAPSHOT_INTERVAL) {
+        return false;
+    }
+    *last = Some(now);
+    true
 }
 
 fn validate_component_name(name: &str) -> Result<(), IpcError> {
@@ -934,6 +957,18 @@ pub fn schedule_resume_notice(ctx: Arc<Ctx>, until: i64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn manual_snapshots_are_rate_limited() {
+        let t0 = std::time::Instant::now() + std::time::Duration::from_secs(3600);
+        assert!(manual_snapshot_allowed(t0));
+        assert!(!manual_snapshot_allowed(
+            t0 + std::time::Duration::from_secs(5)
+        ));
+        assert!(manual_snapshot_allowed(
+            t0 + MANUAL_SNAPSHOT_INTERVAL + std::time::Duration::from_secs(1)
+        ));
+    }
 
     #[test]
     fn secrets_roundtrip() {
