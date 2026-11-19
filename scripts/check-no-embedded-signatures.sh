@@ -27,6 +27,10 @@ if ((skip_build == 0)); then
     # Drop any stale hashed rlibs so the scan only sees freshly built artifacts.
     rm -f "$rel"/deps/libpb_ml-*.rlib "$rel"/deps/libpb_engine-*.rlib \
         "$rel"/deps/libpb_monitor-*.rlib
+    # A restored build cache can leave cargo thinking these crates are fresh, so after deleting the
+    # rlib it would not re-emit it and the scan would find nothing. Touch the crate roots to force a
+    # real recompile that writes the rlibs back.
+    touch crates/pb-ml/src/lib.rs crates/pb-engine/src/lib.rs crates/pb-monitor/src/lib.rs
     cargo build --release -p pb-ml -p pb-engine -p pb-monitor --lib
     cargo build --release -p pb-ml --bin pb-features
 fi
