@@ -41,7 +41,7 @@ pub struct Heuristics {
     /// `security` sub-commands that dump the keychain.
     #[serde(default)]
     pub keychain_dump: Vec<String>,
-    /// Browser "safe storage" keychain item fragments.
+    /// Chromium-family browser keychain encryption-key item fragments.
     #[serde(default)]
     pub browser_safe_storage: Vec<String>,
     /// `dscl` local password-validation flags.
@@ -130,7 +130,7 @@ pub fn keychain_find_secret_patterns() -> &'static [String] {
 pub fn keychain_dump_patterns() -> &'static [String] {
     active().map(|h| h.keychain_dump.as_slice()).unwrap_or(&[])
 }
-/// Browser "safe storage" keychain item fragments.
+/// Chromium-family browser keychain encryption-key item fragments.
 pub fn browser_safe_storage_patterns() -> &'static [String] {
     active()
         .map(|h| h.browser_safe_storage.as_slice())
