@@ -58,7 +58,10 @@ fn is_ooxml(data: &[u8]) -> bool {
     let Ok(mut z) = zip::ZipArchive::new(std::io::Cursor::new(data)) else {
         return false;
     };
-    let names: Vec<String> = z.file_names().map(str::to_string).collect();
+    let names: Vec<String> = z
+        .file_names()
+        .filter_map(|n| n.ok().map(|n| n.into_owned()))
+        .collect();
     let _ = &mut z;
     names.iter().any(|n| n == "[Content_Types].xml")
         && names.iter().any(|n| n.starts_with("docProps/"))
@@ -450,7 +453,8 @@ pub fn clean_ooxml(data: &[u8]) -> Result<(Vec<u8>, Vec<String>), String> {
             .by_index_raw(i)
             .map_err(|e| e.to_string())?
             .name()
-            .to_string();
+            .map_err(|e| e.to_string())?
+            .into_owned();
         let is_core = name == "docProps/core.xml";
         let is_app = name == "docProps/app.xml";
         if is_core || is_app {
@@ -877,7 +881,7 @@ mod tests {
             .read_to_string(&mut d)
             .unwrap();
         assert_eq!(d, "<w:document>hello</w:document>");
-        let names: Vec<&str> = z.file_names().collect();
+        let names: Vec<String> = z.file_names().map(|n| n.unwrap().into_owned()).collect();
         assert_eq!(names.len(), 4);
         // A plain zip is not OOXML.
         let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));

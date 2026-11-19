@@ -168,7 +168,9 @@ final class PermissionsStore: ObservableObject {
     /// Opens the System Settings pane where this permission is revoked.
     func openSettings(_ grant: TccGrant) {
         let fallback = "x-apple.systempreferences:com.apple.preference.security?Privacy"
-        if let url = URL(string: grant.settingsUrl ?? fallback) {
+        let url = grant.settingsUrl.flatMap { AppModel.safeExternalURL($0, schemes: ["x-apple.systempreferences"]) }
+            ?? URL(string: fallback)
+        if let url {
             NSWorkspace.shared.open(url)
         }
     }

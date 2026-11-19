@@ -158,6 +158,18 @@ category = "malware"
 format = "domains"
 min_entries = 1000
 
+[[source]]
+# HaGeZi Fake (~11 k): fake shops, fake streaming, subscription traps and other scams (checked
+# 2026-11-19). Small, low-breakage complement to the phishing feeds.
+name = "hagezi-fake"
+kind = "domains"
+fetcher = "domain_list"
+url = "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/fake-onlydomains.txt"
+license = "GPL-3.0 (hagezi/dns-blocklists)"
+category = "malware"
+format = "domains"
+min_entries = 1000
+
 # ------------------------------------------------------------------------------------------------
 # Ads -> dns/ads.txt
 
@@ -172,6 +184,18 @@ license = "GPL-3.0 (hagezi/dns-blocklists)"
 category = "ads"
 format = "domains"
 min_entries = 10000
+
+[[source]]
+# HaGeZi Pop-Up Ads (~72 k, checked 2026-11-19): pop-up / pop-under networks, many of them used for
+# scareware ("your Mac is infected") and fake-update downloads.
+name = "hagezi-popupads"
+kind = "domains"
+fetcher = "domain_list"
+url = "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/popupads-onlydomains.txt"
+license = "GPL-3.0 (hagezi/dns-blocklists)"
+category = "ads"
+format = "domains"
+min_entries = 5000
 
 [[source]]
 # OISD small (~60 k, "Block. Don't break."); domainswild2 = domains, subdomains implied.

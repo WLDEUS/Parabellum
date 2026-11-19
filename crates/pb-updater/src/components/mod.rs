@@ -78,8 +78,15 @@ pub fn read_db_pin(paths: &Paths, name: &str) -> Option<pb_core::db::ComponentPi
     let spec = Spec::by_name(name)?;
     let safe_inner =
         !pin.binary.starts_with('/') && !pin.binary.split('/').any(|c| c == ".." || c.is_empty());
+    // The download must come from the vendor's own GitHub releases: a bundle built by a compromised
+    // pipeline could otherwise point the root-run binary at any host with a matching digest.
+    let vendor_prefix = format!("https://github.com/{}/releases/download/", spec.repo);
     let ok = spec.asset_version(&pin.asset).as_deref() == Some(pin.version.as_str())
-        && (pin.url.starts_with("https://")
+        && ((pin.url.starts_with(&vendor_prefix)
+            && pin.url.ends_with(&format!("/{}", pin.asset))
+            && !pin.url.contains("/../")
+            && !pin.url.contains('?')
+            && !pin.url.contains('#'))
             || (cfg!(test) && pin.url.starts_with("http://127.0.0.1:")))
         && pin.sha256.len() == 64
         && pin.sha256.bytes().all(|b| b.is_ascii_hexdigit())
@@ -160,7 +167,8 @@ impl ComponentManager {
             console_user_home,
             console_uid,
             github_api: github::GITHUB_API.to_string(),
-            public_key: crate::embedded_public_key().map(str::to_string),
+            // Only used for Parabellum's own `.pkg` (Verify::MinisignEmbedded).
+            public_key: crate::release_public_key().map(str::to_string),
             dnscrypt_key: DNSCRYPT_MINISIGN_KEY.to_string(),
             state_lock: std::sync::Mutex::new(()),
             install_lock: tokio::sync::Mutex::new(()),
@@ -1476,6 +1484,19 @@ mod tests {
         // A pin with an unsafe inner path or a non-https URL is ignored.
         write_pin(&e.paths, "http://evil/x", &"0".repeat(64));
         assert!(read_db_pin(&e.paths, "sing-box").is_none());
+        // HTTPS but not the vendor's GitHub releases (poisoned bundle): ignored.
+        write_pin(
+            &e.paths,
+            "https://evil.example/sing-box-1.14.4-darwin-arm64.tar.gz",
+            &"0".repeat(64),
+        );
+        assert!(read_db_pin(&e.paths, "sing-box").is_none());
+        write_pin(
+            &e.paths,
+            "https://github.com/SagerNet/sing-box/releases/download/v1.14.4/sing-box-1.14.4-darwin-arm64.tar.gz",
+            &"0".repeat(64),
+        );
+        assert!(read_db_pin(&e.paths, "sing-box").is_some());
     }
 
     #[test]

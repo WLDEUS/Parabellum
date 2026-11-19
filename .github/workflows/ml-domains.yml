@@ -11,8 +11,10 @@ on:
     - cron: "43 19 * * *" # 19:43 UTC daily, published before the 21:17 UTC nightly DB build
   workflow_dispatch:
 
+# Supply chain: `train` runs pipeline code on the domains seen by the feeds with a READ-ONLY token;
+# `publish` only uploads the result.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: threat-db # shared with nightly-db.yml / ml-train.yml: never publish model and bundle together
@@ -26,6 +28,10 @@ jobs:
   train:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    permissions:
+      contents: read
+    outputs:
+      ready: ${{ steps.inputs.outputs.ready }}
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
@@ -45,14 +51,12 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: |
-            pipeline/requirements.txt
-            ml/requirements.txt
+          cache-dependency-path: ml/requirements.lock
       - name: Install tools
         run: |
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends minisign
-          python -m pip install -r ml/requirements.txt
+          python -m pip install --require-hashes -r ml/requirements.lock
       - name: Download pipeline state, dataset and current model
         id: inputs
         run: |
@@ -98,9 +102,14 @@ jobs:
           [[ -f prev/metrics.jsonl ]] && args+=(--metrics-in prev/metrics.jsonl)
           [[ -f current/domain_model.json ]] && args+=(--current-model current)
           python -m ml.domains.train "${args[@]}"
-      - name: Publish
+          touch out/ml-domain/TRAIN_OK
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.inputs.outputs.ready == 'true'
-        run: bash ml/domains/publish.sh out/ml-domain
+        with:
+          name: ml-domain-out
+          path: out/ml-domain
+          retention-days: 1
+          if-no-files-found: error
       - name: Summary
         if: always()
         run: |
@@ -113,3 +122,32 @@ jobs:
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
               f.write("## Domain model\n```json\n" + json.dumps(d, indent=2) + "\n```\n")
           PY
+
+  publish:
+    needs: train
+    if: needs.train.outputs.ready == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write # gh release upload (ml-domain-dataset, ml-domain-latest)
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: ml/domains/publish.sh
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: ml-domain-out
+          path: out/ml-domain
+      - name: Publish
+        run: |
+          set -euo pipefail
+          if find out -mindepth 1 ! -type f ! -type d | grep -q .; then
+            echo "::error::unexpected non-regular file in the training output"; exit 1
+          fi
+          [[ -f out/ml-domain/TRAIN_OK ]] || { echo "::error::training did not finish"; exit 1; }
+          bash ml/domains/publish.sh out/ml-domain

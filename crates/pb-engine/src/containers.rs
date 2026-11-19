@@ -316,7 +316,12 @@ impl Engine {
             if !budget.take_entry() {
                 return Err("archive entry limit reached".into());
             }
-            let name = clean_member_name(f.name());
+            // A name that does not decode must not let the member skip the scan.
+            let raw_name = match f.name() {
+                Ok(n) => n.into_owned(),
+                Err(_) => String::from_utf8_lossy(f.name_raw()).into_owned(),
+            };
+            let name = clean_member_name(&raw_name);
             let (declared, compressed) = (f.size(), f.compressed_size());
             if is_bomb(declared, compressed) {
                 return Err(format!("zip bomb suspected: {name} declares {declared} bytes from {compressed} compressed (ratio > {BOMB_RATIO})"));
@@ -623,6 +628,8 @@ impl Engine {
             "-nobrowse",
             "-noautoopen",
             "-noverify",
+            // No fsck of an attacker-built filesystem by root (fsck_hfs / fsck_apfs parse it fully).
+            "-noautofsck",
             "-mountrandom",
         ])
         .arg(&mount_root)

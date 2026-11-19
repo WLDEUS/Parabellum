@@ -1155,11 +1155,9 @@ impl Engine {
             a.cache_key = Some(key);
         }
         let hash_only = size > ctx.opts.max_file_size;
-        let keep = if hash_only {
-            filetype::HEAD_LEN as u64
-        } else {
-            size.min(IN_MEMORY_LIMIT)
-        };
+        // Oversized files keep their first IN_MEMORY_LIMIT bytes too: padding a payload past
+        // max_file_size (a known AV-evasion trick) must not skip the YARA pass on its code.
+        let keep = size.min(IN_MEMORY_LIMIT);
         let (digest, data) = match read_and_hash(&mut file, size, keep) {
             Ok(x) => x,
             Err(e) => {
@@ -1264,10 +1262,19 @@ impl Engine {
             }
         }
         if info.hash_only {
+            // Rules still run on the first IN_MEMORY_LIMIT bytes (padding usually goes at the end);
+            // archives and the ML model are skipped.
             a.note(format!(
-                "larger than max_file_size ({} MiB): hash check only",
-                ctx.opts.max_file_size / MIB
+                "larger than max_file_size ({} MiB): hash check + YARA on the first {} MiB only",
+                ctx.opts.max_file_size / MIB,
+                IN_MEMORY_LIMIT / MIB
             ));
+            if !data.is_empty() {
+                match yara::scan(&mut ctx.yara, data) {
+                    Ok(d) => a.own.extend(d),
+                    Err(e) => a.note(format!("yara: {e}")),
+                }
+            }
             return;
         }
         match yara::scan(&mut ctx.yara, data) {

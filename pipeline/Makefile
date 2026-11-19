@@ -5,9 +5,10 @@ OUT ?= $(ROOT)/dist/db
 CACHE ?= $(ROOT)/.cache/corpus
 VENV ?= $(ROOT)/.venv-pipeline
 
-.PHONY: help venv test lint build-offline build corpus-local
+.PHONY: help venv lock test lint build-offline build corpus-local
 help:
-	@echo "make -C pipeline venv          create $(VENV) with the pinned dependencies"
+	@echo "make -C pipeline venv          create $(VENV) with the hash-locked dependencies"
+	@echo "make -C pipeline lock          regenerate the *.lock files (uv) after editing requirements*.txt"
 	@echo "make -C pipeline test lint     pytest + ruff for pipeline/ and ml/"
 	@echo "make -C pipeline build-offline bundle from local data + GitHub lists, no abuse.ch"
 	@echo "make -C pipeline build         full bundle (needs ABUSECH_AUTH_KEY), unsigned"
@@ -15,7 +16,15 @@ help:
 
 venv:
 	$(PY) -m venv $(VENV)
-	$(VENV)/bin/pip install -r $(ROOT)/pipeline/requirements-dev.txt -r $(ROOT)/ml/requirements.txt
+	$(VENV)/bin/pip install --require-hashes -r $(ROOT)/pipeline/requirements-ci.lock
+
+# Hash-locked installs (pip --require-hashes): a re-published or typo-squatted package cannot slip in.
+LOCK = uv pip compile --python-version 3.12 --python-platform x86_64-unknown-linux-gnu --generate-hashes --no-header -q
+LOCK_HEADER = printf '%s\n%s\n' "\# Hash-locked (pip install --require-hashes). Regenerate after editing the matching requirements*.txt:" "\#   make -C pipeline lock"
+lock:
+	cd $(ROOT)/pipeline && { $(LOCK_HEADER); $(LOCK) requirements.txt; } > requirements.lock
+	cd $(ROOT)/ml && { $(LOCK_HEADER); $(LOCK) requirements.txt; } > requirements.lock
+	cd $(ROOT) && { $(LOCK_HEADER); $(LOCK) pipeline/requirements-dev.txt ml/requirements.txt; } > pipeline/requirements-ci.lock
 
 test:
 	cd $(ROOT) && $(PY) -m pytest -q pipeline/tests ml/tests

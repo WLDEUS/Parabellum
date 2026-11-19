@@ -31,6 +31,12 @@ pub enum IndicatorKind {
     TerminalKilled,
     /// `openssl enc -aes…` run by a non-interactive process.
     FileEncryption,
+    /// `xattr -d com.apple.quarantine` / `xattr -c[r]`: Gatekeeper's download mark removed by a program
+    /// (stealer droppers do it before launching their payload). Corroborating only.
+    QuarantineStripped,
+    /// `osascript -e "set volume with output muted"`: AMOS / Banshee / Cuckoo mute the Mac before their
+    /// fake dialogs. Corroborating only.
+    SoundMuted,
 }
 
 impl IndicatorKind {
@@ -45,6 +51,8 @@ impl IndicatorKind {
             IndicatorKind::GatekeeperDisabled => "gatekeeper_disabled",
             IndicatorKind::TerminalKilled => "terminal_killed",
             IndicatorKind::FileEncryption => "file_encryption",
+            IndicatorKind::QuarantineStripped => "quarantine_stripped",
+            IndicatorKind::SoundMuted => "sound_muted",
         }
     }
 
@@ -58,7 +66,10 @@ impl IndicatorKind {
             | IndicatorKind::CredentialAccess
             | IndicatorKind::GatekeeperDisabled => Some(Severity::High),
             IndicatorKind::PasswordCheck | IndicatorKind::Exfiltration => Some(Severity::Medium),
-            IndicatorKind::TerminalKilled | IndicatorKind::FileEncryption => None,
+            IndicatorKind::TerminalKilled
+            | IndicatorKind::FileEncryption
+            | IndicatorKind::QuarantineStripped
+            | IndicatorKind::SoundMuted => None,
         }
     }
 
@@ -85,6 +96,10 @@ impl IndicatorKind {
             IndicatorKind::GatekeeperDisabled => "Gatekeeper désactivé par un programme",
             IndicatorKind::TerminalKilled => "Fermeture forcée du Terminal",
             IndicatorKind::FileEncryption => "Chiffrement de fichiers en ligne de commande",
+            IndicatorKind::QuarantineStripped => {
+                "Marque de téléchargement retirée (Gatekeeper contourné)"
+            }
+            IndicatorKind::SoundMuted => "Son du Mac coupé par un programme",
         }
     }
 
@@ -117,6 +132,14 @@ impl IndicatorKind {
             }
             IndicatorKind::TerminalKilled => "Le Terminal a été fermé de force.",
             IndicatorKind::FileEncryption => "Des fichiers sont chiffrés avec openssl.",
+            IndicatorKind::QuarantineStripped => {
+                "Un programme a retiré la marque « téléchargé d'Internet » d'un fichier : Gatekeeper ne le \
+                 vérifiera pas à l'ouverture."
+            }
+            IndicatorKind::SoundMuted => {
+                "Un programme a coupé le son du Mac, comme le font les voleurs de données avant d'afficher \
+                 leurs fausses fenêtres."
+            }
         }
     }
 }
@@ -171,6 +194,8 @@ pub fn exec_indicator(tool_path: &str, args: &[String]) -> Option<IndicatorKind>
         }
         "curl" if sensitive::is_upload(args) => Some(IndicatorKind::Exfiltration),
         "openssl" if a.contains("enc ") => Some(IndicatorKind::FileEncryption),
+        "xattr" if strips_quarantine(args, &a) => Some(IndicatorKind::QuarantineStripped),
+        "osascript" if a.contains("with output muted") => Some(IndicatorKind::SoundMuted),
         "sqlite3" | "cp" | "ditto" | "zip" | "tar" | "cat" | "base64" | "rsync" | "scp"
             if sensitive::args_touch_sensitive(&a) =>
         {
@@ -178,6 +203,18 @@ pub fn exec_indicator(tool_path: &str, args: &[String]) -> Option<IndicatorKind>
         }
         _ => None,
     }
+}
+
+/// `xattr -d com.apple.quarantine …` or `xattr -c` (all attributes, quarantine included), any flag order.
+fn strips_quarantine(args: &[String], joined: &str) -> bool {
+    let flags: Vec<&str> = args
+        .iter()
+        .skip(1)
+        .map(String::as_str)
+        .filter(|x| x.len() >= 2 && x.starts_with('-') && !x.starts_with("--"))
+        .collect();
+    let has = |c: char| flags.iter().any(|f| f[1..].contains(c));
+    has('c') || (has('d') && joined.contains("com.apple.quarantine"))
 }
 
 /// Rule for a created / renamed file.
@@ -424,6 +461,44 @@ mod tests {
             Some(IndicatorKind::TerminalKilled)
         );
         assert_eq!(exec_indicator("/bin/cp", &v(&["cp", "a", "b"])), None);
+        assert_eq!(
+            exec_indicator(
+                "/usr/bin/xattr",
+                &v(&["xattr", "-d", "com.apple.quarantine", "/tmp/x/Payload.app"])
+            ),
+            Some(IndicatorKind::QuarantineStripped)
+        );
+        assert_eq!(
+            exec_indicator(
+                "/usr/bin/xattr",
+                &v(&["xattr", "-rc", "/Applications/X.app"])
+            ),
+            Some(IndicatorKind::QuarantineStripped)
+        );
+        assert_eq!(
+            exec_indicator("/usr/bin/xattr", &v(&["xattr", "-l", "/tmp/f"])),
+            None
+        );
+        assert_eq!(
+            exec_indicator(
+                "/usr/bin/xattr",
+                &v(&[
+                    "xattr",
+                    "-d",
+                    "com.apple.metadata:kMDItemWhereFroms",
+                    "/tmp/f"
+                ])
+            ),
+            None
+        );
+        assert_eq!(
+            exec_indicator(
+                "/usr/bin/osascript",
+                &v(&["osascript", "-e", "set volume with output muted"])
+            ),
+            Some(IndicatorKind::SoundMuted)
+        );
+        assert_eq!(IndicatorKind::SoundMuted.base_severity(), None);
     }
 
     #[test]

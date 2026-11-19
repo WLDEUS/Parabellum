@@ -244,7 +244,7 @@ async fn behaviour_pipeline_alerts_after_learning_and_mark_normal() {
     assert_eq!(st.behavior.recent_anomalies[0].kind, AnomalyKind::File);
     assert_eq!(st.behavior.recent_anomalies[0].alert_id, Some(alert.id));
     // Resolve through the alert action.
-    let resolved = crate::actions::resolve_alert(&ctx, alert.id, AlertAction::MarkNormal)
+    let resolved = crate::actions::resolve_alert(&ctx, alert.id, AlertAction::MarkNormal, true)
         .await
         .unwrap();
     assert_eq!(resolved.status, AlertStatus::Resolved);

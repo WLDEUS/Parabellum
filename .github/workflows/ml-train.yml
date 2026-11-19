@@ -36,8 +36,10 @@ on:
         type: number
         default: 0
 
+# Supply chain: `train` downloads and featurizes malware samples (7-Zip, pb-features), so it has a
+# READ-ONLY token; `publish` runs no project code beyond ml/publish.sh and uploads the produced files.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: threat-db # shared with nightly-db.yml
@@ -51,6 +53,8 @@ jobs:
   train:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    permissions:
+      contents: read
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
@@ -70,14 +74,12 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: |
-            pipeline/requirements.txt
-            ml/requirements.txt
+          cache-dependency-path: ml/requirements.lock
       - name: Install tools
         run: |
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends 7zip
-          python -m pip install -r ml/requirements.txt
+          python -m pip install --require-hashes -r ml/requirements.lock
       - name: Restore clean corpus cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -114,16 +116,16 @@ jobs:
           ABUSECH_AUTH_KEY: ${{ secrets.ABUSECH_AUTH_KEY }}
           NO_MALWARE: ${{ (inputs.no_malware || vars.ML_FETCH_MALWARE == '0') && '--no-malware' || '' }}
           MAX_NEW: ${{ inputs.max_new_samples || 300 }}
+          REFEATURIZE: ${{ inputs.refeaturize_max || 0 }}
           ALLOW_SHRINK: ${{ inputs.allow_dataset_shrink && '--allow-dataset-shrink' || '' }}
         run: |
+          [[ "$MAX_NEW" =~ ^[0-9]+$ && "$REFEATURIZE" =~ ^[0-9]+$ ]] || { echo "::error::numeric inputs expected"; exit 1; }
           # shellcheck disable=SC2086 # NO_MALWARE / ALLOW_SHRINK are empty or one flag
           python -m ml.train --pb-features target/release/pb-features --out out/ml \
             --dataset-in prev/dataset.csv.gz --metrics-in prev/metrics.jsonl --current-model current \
-            --decision-in prev/decision.json --refeaturize-max "${{ inputs.refeaturize_max || 0 }}" \
+            --decision-in prev/decision.json --refeaturize-max "$REFEATURIZE" \
             --corpus-cache .cache/corpus --max-new-samples "$MAX_NEW" $NO_MALWARE $ALLOW_SHRINK
-      - name: Publish
-        if: inputs.kind != 'script'
-        run: bash ml/publish.sh out/ml
+          touch out/ml/TRAIN_OK # the publish job only uploads a run that finished
       # --- ml-files: script classifier (same gate, separate files: script_*) ---
       - name: Restore script corpus cache
         if: "!cancelled() && inputs.kind != 'macho'"
@@ -169,15 +171,22 @@ jobs:
           REFEATURIZE: ${{ inputs.refeaturize_max || 0 }}
           ALLOW_SHRINK: ${{ inputs.allow_dataset_shrink && '--allow-dataset-shrink' || '' }}
         run: |
+          [[ "$MAX_NEW" =~ ^[0-9]+$ && "$REFEATURIZE" =~ ^[0-9]+$ ]] || { echo "::error::numeric inputs expected"; exit 1; }
           # shellcheck disable=SC2086 # NO_MALWARE / ALLOW_SHRINK are empty or one flag
           python -m ml.train --kind script --pb-features target/release/pb-features --out out/ml-script \
             --dataset-in prev/script_dataset.csv.gz --metrics-in prev/script_metrics.jsonl --current-model current \
             --decision-in prev/script_decision.json $ALLOW_SHRINK \
             --corpus-cache .cache/corpus --script-corpus-cache .cache/script-corpus \
             --max-new-samples "$MAX_NEW" --refeaturize-max "$REFEATURIZE" $NO_MALWARE
-      - name: Publish scripts
-        if: "!cancelled() && inputs.kind != 'macho'"
-        run: bash ml/publish.sh out/ml-script script
+          touch out/ml-script/TRAIN_OK
+      - name: Hand the results to the publish job
+        if: "!cancelled()"
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ml-out
+          path: out
+          retention-days: 1
+          if-no-files-found: ignore
       - name: Save script corpus cache
         if: always() && inputs.kind != 'macho' && hashFiles('.cache/script-corpus/**') != ''
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -208,3 +217,35 @@ jobs:
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
               f.write("## ML training\n```json\n" + json.dumps(d, indent=2) + "\n```\n")
           PY
+
+  publish:
+    needs: train
+    if: "!cancelled() && needs.train.result != 'skipped'"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write # gh release upload (ml-dataset, ml-latest)
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      KIND: ${{ inputs.kind || 'both' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: ml/publish.sh
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        continue-on-error: true
+        with:
+          name: ml-out
+          path: out
+      - name: Publish
+        run: |
+          set -euo pipefail
+          # Data only: no link or special file may come out of the training job.
+          if [[ -d out ]] && find out -mindepth 1 ! -type f ! -type d | grep -q .; then
+            echo "::error::unexpected non-regular file in the training output"; exit 1
+          fi
+          if [[ "$KIND" != script && -f out/ml/TRAIN_OK ]]; then bash ml/publish.sh out/ml; fi
+          if [[ "$KIND" != macho && -f out/ml-script/TRAIN_OK ]]; then bash ml/publish.sh out/ml-script script; fi

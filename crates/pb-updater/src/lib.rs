@@ -47,9 +47,21 @@ pub use selfupdate::{
 include!(concat!(env!("OUT_DIR"), "/pubkey.rs"));
 
 /// The minisign public key (bare base64) compiled into the binary, used to verify the threat-DB
-/// bundle and Parabellum `.pkg` releases. `None` when the build had no key (`make keys` not run).
+/// bundle. `None` when the build had no key (`make keys` not run).
 pub fn embedded_public_key() -> Option<&'static str> {
     EMBEDDED_PUBKEY
+}
+
+/// Key that verifies Parabellum `.pkg` self-updates (installed as root): the dedicated release key
+/// when one was compiled in, so the DB-signing key (exposed to the nightly feed processing) can never
+/// sign an installer. Builds made before the release key existed fall back to the DB key.
+pub fn release_public_key() -> Option<&'static str> {
+    EMBEDDED_RELEASE_PUBKEY.or(EMBEDDED_PUBKEY)
+}
+
+/// True when the self-update key is the dedicated release key (not the DB-key fallback).
+pub fn has_dedicated_release_key() -> bool {
+    EMBEDDED_RELEASE_PUBKEY.is_some()
 }
 
 /// Message shown when no signing key was compiled in.

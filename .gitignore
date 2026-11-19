@@ -57,3 +57,23 @@ __pycache__/
 # ...but never hide test fixtures (sample .pkg for pb-engine, throwaway test keys for pb-updater)
 !**/fixtures/**/*.pkg
 !**/fixtures/**/*.key
+
+# --- Never commit malware, downloads or CI scratch (repo contamination guard, see
+#     scripts/check_repo_hygiene.py which CI runs on every push) ---------------------------------
+/.cache/
+/out/
+/prev/
+/current/
+/state/
+/ml-latest/
+/ci-logs/
+/.venv-*/
+*.whl
+*.dmg
+*.zip
+*.7z
+*.tar.gz
+*.exe
+*.dylib
+*.so
+*.app/

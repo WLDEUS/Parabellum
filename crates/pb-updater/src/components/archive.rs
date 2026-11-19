@@ -88,7 +88,11 @@ fn extract_from_zip(archive: &Path, out: &Path) -> Result<(), UpdateError> {
         let entry = zip
             .by_index(i)
             .map_err(|e| UpdateError::Archive(e.to_string()))?;
-        if entry.is_file() && is_binary_entry(entry.name()) {
+        let name = entry
+            .name()
+            .map_err(|e| UpdateError::Archive(e.to_string()))?
+            .into_owned();
+        if entry.is_file() && is_binary_entry(&name) {
             if entry.size() > MAX_BINARY {
                 return Err(UpdateError::Archive(
                     "binaire dnscrypt-proxy trop gros".into(),
@@ -227,7 +231,7 @@ pub(crate) fn prescan_zip(archive: &Path, max_total: u64) -> Result<(), UpdateEr
         if entry.enclosed_name().is_none() {
             return Err(UpdateError::Archive(format!(
                 "chemin interdit dans le zip : {}",
-                entry.name()
+                entry.name().map(|n| n.into_owned()).unwrap_or_default()
             )));
         }
         total = total.saturating_add(entry.size());

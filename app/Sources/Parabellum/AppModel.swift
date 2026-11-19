@@ -1090,14 +1090,32 @@ final class AppModel: ObservableObject {
 
     // MARK: - System helpers
 
+    /// Schemes the app may hand to `NSWorkspace`. Some URLs come from data (broker forms and the CNIL link
+    /// of the signed DB, component pages, daemon answers): never a `file:`, `javascript:` or arbitrary
+    /// app scheme that would launch something.
+    nonisolated static let allowedExternalSchemes: Set<String> = ["https", "http", "x-apple.systempreferences", "shortcuts", "macappstore"]
+
+    nonisolated static func safeExternalURL(_ urlString: String, schemes: Set<String> = allowedExternalSchemes) -> URL? {
+        guard urlString.count <= 2048,
+              !urlString.unicodeScalars.contains(where: { $0.properties.generalCategory == .control }),
+              let url = URL(string: urlString),
+              let scheme = url.scheme?.lowercased(), schemes.contains(scheme) else {
+            return nil
+        }
+        if (scheme == "https" || scheme == "http") && (url.host ?? "").isEmpty {
+            return nil
+        }
+        return url
+    }
+
     func open(urlString: String) {
-        guard let url = URL(string: urlString) else { return }
+        guard let url = Self.safeExternalURL(urlString) else { return }
         NSWorkspace.shared.open(url)
     }
 
     /// Chrome Web Store links open in Chrome when installed.
     func openInChrome(urlString: String) {
-        guard let url = URL(string: urlString) else { return }
+        guard let url = Self.safeExternalURL(urlString, schemes: ["https"]) else { return }
         if let chrome = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.google.Chrome") {
             NSWorkspace.shared.open([url], withApplicationAt: chrome, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
         } else {
@@ -1107,7 +1125,8 @@ final class AppModel: ObservableObject {
 
     /// apps.apple.com links open directly in the App Store app.
     func openInAppStore(urlString: String) {
-        guard var components = URLComponents(string: urlString) else { return }
+        guard Self.safeExternalURL(urlString, schemes: ["https", "macappstore"]) != nil,
+              var components = URLComponents(string: urlString) else { return }
         if components.host == "apps.apple.com" {
             components.scheme = "macappstore"
         }

@@ -431,14 +431,14 @@ impl Quarantine {
                 .mode(0o600)
                 .open(&tmp_bin)?;
             let (out, sha256, written, meta) = if is_dir {
-                let dfd = safefs::openat_dir(pfd.as_raw_fd(), &cname)?;
-                let meta = File::from(dfd).metadata()?;
+                let dir = File::from(safefs::openat_dir(pfd.as_raw_fd(), &cname)?);
+                let meta = dir.metadata()?;
                 if (meta.dev(), meta.ino()) != (est.dev, est.ino) {
                     return Err(QuarantineError::Unsupported(
                         "directory replaced while opening it".into(),
                     ));
                 }
-                let (out, sha, n) = pack_dir(&target, name, out)?;
+                let (out, sha, n) = pack_dir(&dir, &meta, name, out)?;
                 (out, sha, n, meta)
             } else {
                 let src = safefs::openat_read(pfd.as_raw_fd(), &cname)?;
@@ -794,18 +794,101 @@ fn copy_from(mut src: File, out: File) -> Result<(File, String, u64), Quarantine
     Ok((file, sha, n))
 }
 
-/// Packs a directory as tar (symlinks kept as links) through the XOR writer.
-fn pack_dir(path: &Path, name: &OsStr, out: File) -> Result<(File, String, u64), QuarantineError> {
+/// Packs a directory as tar (symlinks kept as links) through the XOR writer, walking **descriptors**
+/// (`openat(O_NOFOLLOW)` from the verified directory `dir`), never paths: the tree lives in a folder its
+/// owner can write, and a sub-directory swapped for a symlink to a root-only location while root walks
+/// it must not end up packed. Special files (FIFO, socket, device) are skipped.
+fn pack_dir(
+    dir: &File,
+    meta: &fs::Metadata,
+    name: &OsStr,
+    out: File,
+) -> Result<(File, String, u64), QuarantineError> {
     let w = XorWriter::new(io::BufWriter::with_capacity(COPY_BUF, out));
     let mut builder = tar::Builder::new(w);
-    builder.follow_symlinks(false);
-    builder.mode(tar::HeaderMode::Complete);
-    builder.append_dir_all(name, path)?;
+    let top = Path::new(name);
+    let mut h = tar_header(meta);
+    builder.append_data(&mut h, top, io::empty())?;
+    pack_tree(&mut builder, dir.as_raw_fd(), top, 0)?;
     let mut w = builder.into_inner()?;
     w.flush()?;
     let (buf, sha, n) = w.finish();
     let file = buf.into_inner().map_err(|e| e.into_error())?;
     Ok((file, sha, n))
+}
+
+/// Header from the metadata of an **open** file or directory (mode, owner, mtime, type, size).
+fn tar_header(meta: &fs::Metadata) -> tar::Header {
+    let mut h = tar::Header::new_gnu();
+    h.set_metadata_in_mode(meta, tar::HeaderMode::Complete);
+    if meta.is_dir() {
+        h.set_size(0);
+    }
+    h
+}
+
+fn pack_tree<W: Write>(
+    b: &mut tar::Builder<W>,
+    dir: std::os::fd::RawFd,
+    rel: &Path,
+    depth: usize,
+) -> Result<(), QuarantineError> {
+    if depth >= safefs::MAX_TREE_DEPTH {
+        return Err(QuarantineError::Unsupported(
+            "directory tree too deep".into(),
+        ));
+    }
+    let replaced = || QuarantineError::Unsupported("entry replaced during quarantine".into());
+    let mut names = safefs::list_dir(dir)?;
+    names.sort();
+    for n in names {
+        let path = rel.join(OsStr::from_bytes(n.as_bytes()));
+        let st = match safefs::stat_at(dir, &n) {
+            Ok(st) => st,
+            // Removed meanwhile: nothing to keep.
+            Err(e) if e.raw_os_error() == Some(libc::ENOENT) => continue,
+            Err(e) => return Err(e.into()),
+        };
+        match st.kind {
+            EntryKind::Dir => {
+                let child = File::from(safefs::openat_dir(dir, &n)?);
+                let m = child.metadata()?;
+                if !m.is_dir() || (m.dev(), m.ino()) != (st.dev, st.ino) {
+                    return Err(replaced());
+                }
+                let mut h = tar_header(&m);
+                b.append_data(&mut h, &path, io::empty())?;
+                pack_tree(b, child.as_raw_fd(), &path, depth + 1)?;
+            }
+            EntryKind::File => {
+                let f = safefs::openat_read(dir, &n)?;
+                let m = f.metadata()?;
+                if !m.is_file() || (m.dev(), m.ino()) != (st.dev, st.ino) {
+                    return Err(replaced());
+                }
+                let mut h = tar_header(&m);
+                let len = m.len();
+                h.set_size(len);
+                // Exactly `len` bytes even if the file changes size meanwhile (the tar stays valid).
+                let reader = f.take(len).chain(io::repeat(0)).take(len);
+                b.append_data(&mut h, &path, reader)?;
+            }
+            EntryKind::Symlink => {
+                let target = safefs::readlinkat(dir, &n)?;
+                let (uid, gid, mtime) = safefs::owner_at(dir, &n)?;
+                let mut h = tar::Header::new_gnu();
+                h.set_entry_type(tar::EntryType::Symlink);
+                h.set_mode(0o777);
+                h.set_uid(uid.into());
+                h.set_gid(gid.into());
+                h.set_mtime(mtime);
+                h.set_size(0);
+                b.append_link(&mut h, &path, OsStr::from_bytes(target.as_bytes()))?;
+            }
+            EntryKind::Other => {}
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
