@@ -158,8 +158,8 @@ define_features! {
     StringsBytesLog2 => "strings_bytes_log2": "log2(1 + bytes scanned for strings)",
     NPrintableLog2 => "n_printable_strings_log2": "log2(1 + number of printable ASCII runs of length >= 6)",
     StrOsascript => "str_osascript": "\"osascript\"",
-    StrDisplayDialog => "str_display_dialog": "\"display dialog\"",
-    StrHiddenAnswer => "str_hidden_answer": "\"hidden answer\"",
+    StrDisplayDialog => "str_display_dialog": "AppleScript dialog-presenting verb (password-prompt building block)",
+    StrHiddenAnswer => "str_hidden_answer": "AppleScript masked-input dialog option (password prompt)",
     StrLaunchAgents => "str_launch_agents": "\"LaunchAgents\", \"LaunchDaemons\"",
     StrKeychain => "str_keychain": "\"keychain\"",
     StrWallet => "str_wallet": "\"wallet\"",
@@ -175,7 +175,7 @@ define_features! {
     StrBrowserOther => "str_browser_other": "\"BraveSoftware\", \"Microsoft Edge\", \"Opera Software\", \"com.operasoftware\", \"Vivaldi\", \"Yandex\", \"Chromium\", \"Arc/User Data\"",
     StrCookies => "str_cookies": "\"Cookies\"",
     StrLoginData => "str_login_data": "\"Login Data\", \"logins.json\", \"key4.db\"",
-    StrCryptoWallets => "str_crypto_wallets": "\"Exodus\", \"Electrum\", \"MetaMask\", \"Coinomi\", \"Atomic Wallet\", \"Ledger Live\", \"Trezor\", \"Binance\", \"Guarda\", \"wallet.dat\", MetaMask/Phantom extension ids",
+    StrCryptoWallets => "str_crypto_wallets": "names and extension ids of crypto-wallet apps, wallet files and browser wallet extensions",
     StrPassword => "str_password": "\"password\"",
     StrSudo => "str_sudo": "\"sudo \"",
     StrShell => "str_shell": "\"/bin/sh\", \"/bin/bash\", \"/bin/zsh\"",
@@ -188,14 +188,14 @@ define_features! {
     StrSystemProfiler => "str_system_profiler": "\"system_profiler\"",
     StrVm => "str_vm_detect": "\"VMware\", \"VirtualBox\", \"VBox\", \"Parallels\", \"QEMU\"",
     StrDscl => "str_dscl": "\"dscl\"",
-    StrSecurityCmd => "str_security_cmd": "\"find-generic-password\", \"find-internet-password\", \"dump-keychain\"",
+    StrSecurityCmd => "str_security_cmd": "security(1) keychain secret-read and dump subcommands",
     StrArchiveCmd => "str_archive_cmd": "\"ditto -c\", \"zip -r\"",
     StrCrontab => "str_crontab": "\"crontab\"",
     StrNohup => "str_nohup": "\"nohup\"",
     StrKillall => "str_killall": "\"killall\"",
     StrIoplatform => "str_ioplatform": "\"IOPlatformExpertDevice\", \"IOPlatformUUID\", \"IOPlatformSerialNumber\"",
     StrExfilApi => "str_exfil_api": "\"api.telegram.org\", \"discord.com/api/webhooks\", \"discordapp.com/api/webhooks\", \"pastebin.com\", \"ngrok\"",
-    StrPersonalData => "str_personal_data": "\"NoteStore.sqlite\", \"Cookies.binarycookies\", \"AddressBook\", \"chat.db\"",
+    StrPersonalData => "str_personal_data": "Apple personal-data store file names (Notes, Safari cookies, Address Book, Messages)",
     StrUsersShared => "str_users_shared": "\"/Users/Shared\"",
     StrGatekeeper => "str_gatekeeper": "\"spctl\", \"master-disable\", \"csrutil\"",
     StrTcc => "str_tcc": "\"TCC.db\", \"com.apple.TCC\", \"tccutil\"",
@@ -228,13 +228,13 @@ define_features! {
     StrHexBlobs => "str_hex_blobs": "runs of >= 64 hexadecimal digits",
     StrMaxRunLog2 => "str_max_run_log2": "log2(1 + longest printable ASCII run)",
     StrOsascriptE => "str_osascript_e": "\"osascript -e\", \"osascript -l\"",
-    StrDsclAuthonly => "str_dscl_authonly": "\"-authonly\"",
+    StrDsclAuthonly => "str_dscl_authonly": "dscl(1) local password-validation flag",
     StrUserAgent => "str_user_agent": "\"Mozilla/5.0\"",
     StrCurlUpload => "str_curl_upload": "\"curl -F\", \"--data-binary\", \"--upload-file\", \"-X POST\"",
     StrPipeShell => "str_pipe_shell": "\"| sh\", \"| bash\", \"| zsh\", \"|sh\", \"|bash\", \"|zsh\"",
     StrDecodeCmd => "str_decode_cmd": "\"base64 -d\", \"base64 --decode\", \"base64 -D\", \"xxd -r\", \"openssl enc -d\"",
     StrSudoStdin => "str_sudo_stdin": "\"sudo -S\"",
-    StrKeychainDb => "str_keychain_db": "\"login.keychain\", \"keychain-db\"",
+    StrKeychainDb => "str_keychain_db": "login keychain database file names",
     StrOnionDyndns => "str_onion_dyndns": "\".onion\", \"duckdns\", \"no-ip.\", \"ddns.net\", \"trycloudflare\"",
     StrHiddenPath => "str_hidden_path": "\"/Users/Shared/.\", \"/tmp/.\", \"/private/tmp/.\", \"/var/tmp/.\"",
     // --- section entropy statistics -------------------------------------------------------------
@@ -290,133 +290,102 @@ pub fn feature_descriptions() -> &'static [&'static str] {
     FEATURE_DOCS
 }
 
-/// Indicator strings → feature (all matched ASCII-case-insensitively).
-const STRING_PATTERNS: &[(&str, F)] = &[
-    ("osascript", F::StrOsascript),
-    ("display dialog", F::StrDisplayDialog),
-    ("hidden answer", F::StrHiddenAnswer),
-    ("LaunchAgents", F::StrLaunchAgents),
-    ("LaunchDaemons", F::StrLaunchAgents),
-    ("keychain", F::StrKeychain),
-    ("wallet", F::StrWallet),
-    ("telegram", F::StrTelegram),
-    ("curl ", F::StrCurl),
-    ("base64", F::StrBase64),
-    ("/tmp/", F::StrTmp),
-    ("chmod +x", F::StrChmodX),
-    ("chmod 777", F::StrChmodX),
-    ("chmod 755", F::StrChmodX),
-    ("com.apple.quarantine", F::StrQuarantine),
-    ("xattr -d", F::StrXattrCmd),
-    ("xattr -c", F::StrXattrCmd),
-    ("xattr -r", F::StrXattrCmd),
-    ("Google/Chrome", F::StrChrome),
-    ("Firefox/Profiles", F::StrFirefox),
-    ("BraveSoftware", F::StrBrowserOther),
-    ("Microsoft Edge", F::StrBrowserOther),
-    ("Opera Software", F::StrBrowserOther),
-    ("com.operasoftware", F::StrBrowserOther),
-    ("Vivaldi", F::StrBrowserOther),
-    ("Yandex", F::StrBrowserOther),
-    ("Chromium", F::StrBrowserOther),
-    ("Arc/User Data", F::StrBrowserOther),
-    ("Cookies", F::StrCookies),
-    ("Login Data", F::StrLoginData),
-    ("logins.json", F::StrLoginData),
-    ("key4.db", F::StrLoginData),
-    ("Exodus", F::StrCryptoWallets),
-    ("Electrum", F::StrCryptoWallets),
-    ("MetaMask", F::StrCryptoWallets),
-    ("Coinomi", F::StrCryptoWallets),
-    ("Atomic Wallet", F::StrCryptoWallets),
-    ("Ledger Live", F::StrCryptoWallets),
-    ("Trezor", F::StrCryptoWallets),
-    ("Binance", F::StrCryptoWallets),
-    ("Guarda", F::StrCryptoWallets),
-    ("wallet.dat", F::StrCryptoWallets),
-    ("nkbihfbeogaeaoehlefnkodbefgpgknn", F::StrCryptoWallets),
-    ("bfnaelmomeimhlpmgjnjophhpkkoljpa", F::StrCryptoWallets),
-    ("password", F::StrPassword),
-    ("sudo ", F::StrSudo),
-    ("/bin/sh", F::StrShell),
-    ("/bin/bash", F::StrShell),
-    ("/bin/zsh", F::StrShell),
-    ("sh -c", F::StrShC),
-    ("http://", F::StrHttp),
-    ("https://", F::StrHttps),
-    ("launchctl", F::StrLaunchctl),
-    ("RunAtLoad", F::StrPlistKeys),
-    ("KeepAlive", F::StrPlistKeys),
-    ("ProgramArguments", F::StrPlistKeys),
-    ("screencapture", F::StrScreencapture),
-    ("system_profiler", F::StrSystemProfiler),
-    ("VMware", F::StrVm),
-    ("VirtualBox", F::StrVm),
-    ("VBox", F::StrVm),
-    ("Parallels", F::StrVm),
-    ("QEMU", F::StrVm),
-    ("dscl", F::StrDscl),
-    ("find-generic-password", F::StrSecurityCmd),
-    ("find-internet-password", F::StrSecurityCmd),
-    ("dump-keychain", F::StrSecurityCmd),
-    ("ditto -c", F::StrArchiveCmd),
-    ("zip -r", F::StrArchiveCmd),
-    ("crontab", F::StrCrontab),
-    ("nohup", F::StrNohup),
-    ("killall", F::StrKillall),
-    ("IOPlatformExpertDevice", F::StrIoplatform),
-    ("IOPlatformUUID", F::StrIoplatform),
-    ("IOPlatformSerialNumber", F::StrIoplatform),
-    ("api.telegram.org", F::StrExfilApi),
-    ("discord.com/api/webhooks", F::StrExfilApi),
-    ("discordapp.com/api/webhooks", F::StrExfilApi),
-    ("pastebin.com", F::StrExfilApi),
-    ("ngrok", F::StrExfilApi),
-    ("NoteStore.sqlite", F::StrPersonalData),
-    ("Cookies.binarycookies", F::StrPersonalData),
-    ("AddressBook", F::StrPersonalData),
-    ("chat.db", F::StrPersonalData),
-    ("/Users/Shared", F::StrUsersShared),
-    ("spctl", F::StrGatekeeper),
-    ("master-disable", F::StrGatekeeper),
-    ("csrutil", F::StrGatekeeper),
-    ("TCC.db", F::StrTcc),
-    ("com.apple.TCC", F::StrTcc),
-    ("tccutil", F::StrTcc),
-    ("login item", F::StrLoginItems),
-    ("LoginItems", F::StrLoginItems),
-    // v2
-    ("osascript -e", F::StrOsascriptE),
-    ("osascript -l", F::StrOsascriptE),
-    ("-authonly", F::StrDsclAuthonly),
-    ("Mozilla/5.0", F::StrUserAgent),
-    ("curl -F", F::StrCurlUpload),
-    ("--data-binary", F::StrCurlUpload),
-    ("--upload-file", F::StrCurlUpload),
-    ("-X POST", F::StrCurlUpload),
-    ("| sh", F::StrPipeShell),
-    ("| bash", F::StrPipeShell),
-    ("| zsh", F::StrPipeShell),
-    ("|sh", F::StrPipeShell),
-    ("|bash", F::StrPipeShell),
-    ("|zsh", F::StrPipeShell),
-    ("base64 -d", F::StrDecodeCmd),
-    ("base64 --decode", F::StrDecodeCmd),
-    ("xxd -r", F::StrDecodeCmd),
-    ("openssl enc -d", F::StrDecodeCmd),
-    ("sudo -S", F::StrSudoStdin),
-    ("login.keychain", F::StrKeychainDb),
-    ("keychain-db", F::StrKeychainDb),
-    (".onion", F::StrOnionDyndns),
-    ("duckdns", F::StrOnionDyndns),
-    ("no-ip.", F::StrOnionDyndns),
-    ("ddns.net", F::StrOnionDyndns),
-    ("trycloudflare", F::StrOnionDyndns),
-    ("/Users/Shared/.", F::StrHiddenPath),
-    ("/tmp/.", F::StrHiddenPath),
-    ("/private/tmp/.", F::StrHiddenPath),
-    ("/var/tmp/.", F::StrHiddenPath),
-];
+/// Indicator strings → feature column (all matched ASCII-case-insensitively). The pattern DATA is
+/// loaded at runtime from `signatures/macho_patterns.json` (shipped in the installer) so no binary
+/// embeds the info-stealer signature strings; only this engine's matching logic is compiled in. The
+/// table defines the feature-vector columns, so the data file carries a `features_version` that must
+/// equal [`FEATURES_VERSION`] or the whole table is rejected (ML off).
+pub(crate) struct StringPatterns {
+    /// Feature-vector index each pattern feeds (parallel to the automaton's pattern order).
+    feature_idx: Vec<usize>,
+    /// Compiled multi-pattern automaton.
+    ac: AhoCorasick,
+    /// Feature indices for the `http://` / `https://` columns (special URL handling).
+    http_idx: usize,
+    https_idx: usize,
+}
+
+#[derive(serde::Deserialize)]
+struct PatternEntry {
+    pattern: String,
+    feature: String,
+}
+#[derive(serde::Deserialize)]
+struct PatternFile {
+    features_version: u32,
+    patterns: Vec<PatternEntry>,
+}
+
+impl StringPatterns {
+    fn from_json(bytes: &[u8]) -> Result<Self, MlError> {
+        let file: PatternFile = serde_json::from_slice(bytes)?;
+        if file.features_version != FEATURES_VERSION {
+            return Err(MlError::FeatureMismatch(format!(
+                "macho_patterns.json features_version {} != engine {FEATURES_VERSION}",
+                file.features_version
+            )));
+        }
+        let idx_of = |name: &str| -> Result<usize, MlError> {
+            FEATURE_NAMES
+                .iter()
+                .position(|n| *n == name)
+                .ok_or_else(|| MlError::FeatureMismatch(format!("unknown feature {name:?}")))
+        };
+        let patterns: Vec<&str> = file.patterns.iter().map(|e| e.pattern.as_str()).collect();
+        let mut feature_idx = Vec::with_capacity(file.patterns.len());
+        for e in &file.patterns {
+            feature_idx.push(idx_of(&e.feature)?);
+        }
+        let ac = AhoCorasick::builder()
+            .ascii_case_insensitive(true)
+            .match_kind(MatchKind::Standard)
+            .build(&patterns)
+            .map_err(|e| MlError::FeatureMismatch(format!("macho pattern automaton: {e}")))?;
+        Ok(StringPatterns {
+            feature_idx,
+            ac,
+            http_idx: idx_of("str_http")?,
+            https_idx: idx_of("str_https")?,
+        })
+    }
+}
+
+static MACHO_PATTERNS: OnceLock<StringPatterns> = OnceLock::new();
+
+/// Loads the Mach-O indicator patterns from `path`. Returns an error (ML then stays off) on a missing
+/// or malformed file or a `features_version` mismatch. The first successful load wins.
+pub(crate) fn load_macho_patterns(path: &std::path::Path) -> Result<(), MlError> {
+    let bytes = std::fs::read(path)?;
+    let sp = StringPatterns::from_json(&bytes)?;
+    let _ = MACHO_PATTERNS.set(sp);
+    Ok(())
+}
+
+/// Repo path of the Mach-O pattern data file (tests only).
+#[cfg(any(test, feature = "test-util"))]
+fn repo_macho_patterns_path() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../signatures/macho_patterns.json")
+}
+
+/// The loaded patterns, or `None` when unavailable. Under `test`/`test-util` the repo file is
+/// auto-loaded so unit tests (here and in pb-engine) run against the shipped table.
+fn macho_patterns() -> Option<&'static StringPatterns> {
+    #[cfg(any(test, feature = "test-util"))]
+    {
+        MACHO_PATTERNS.get().or_else(|| {
+            StringPatterns::from_json(&std::fs::read(repo_macho_patterns_path()).ok()?)
+                .ok()
+                .and_then(|sp| {
+                    let _ = MACHO_PATTERNS.set(sp);
+                    MACHO_PATTERNS.get()
+                })
+        })
+    }
+    #[cfg(not(any(test, feature = "test-util")))]
+    {
+        MACHO_PATTERNS.get()
+    }
+}
 
 /// Entitlement key fragments and their risk weight (`ent_risk_score`). Matched inside `<key>…</key>`.
 const ENTITLEMENT_RISK: &[(&str, f32)] = &[
@@ -851,6 +820,10 @@ fn thin_cputype(bytes: &[u8]) -> u32 {
 }
 
 fn extract_inner(bytes: &[u8]) -> Result<Vec<f32>, MlError> {
+    // Indicator patterns are a runtime data file; without them the feature vector is incomplete, so
+    // we refuse rather than emit a vector that silently misses the string columns (ML off upstream).
+    let sp = macho_patterns()
+        .ok_or_else(|| MlError::FeatureMismatch("macho_patterns.json not loaded".to_string()))?;
     let mut fv = Fv::new();
     fv.log2(F::FileSizeLog2, bytes.len() as u64);
 
@@ -887,7 +860,7 @@ fn extract_inner(bytes: &[u8]) -> Result<Vec<f32>, MlError> {
     let imports = collect_imports(data, &m);
     import_features(&mut fv, &imports);
     export_and_symbol_features(&mut fv, data, &m);
-    string_features(&mut fv, data, &sections);
+    string_features(&mut fv, sp, data, &sections);
     Ok(fv.0)
 }
 
@@ -1577,19 +1550,7 @@ fn export_and_symbol_features(fv: &mut Fv, data: &[u8], m: &MachO<'_>) {
     fv.count(F::NSymbols, nsyms);
 }
 
-fn string_automaton() -> Option<&'static AhoCorasick> {
-    static AC: OnceLock<Option<AhoCorasick>> = OnceLock::new();
-    AC.get_or_init(|| {
-        AhoCorasick::builder()
-            .ascii_case_insensitive(true)
-            .match_kind(MatchKind::Standard)
-            .build(STRING_PATTERNS.iter().map(|(p, _)| p))
-            .ok()
-    })
-    .as_ref()
-}
-
-fn string_features(fv: &mut Fv, data: &[u8], sections: &[SectionInfo<'_>]) {
+fn string_features(fv: &mut Fv, sp: &StringPatterns, data: &[u8], sections: &[SectionInfo<'_>]) {
     let mut chunks: Vec<&[u8]> = Vec::new();
     let mut budget = MAX_STRING_SCAN;
     for s in sections {
@@ -1636,20 +1597,20 @@ fn string_features(fv: &mut Fv, data: &[u8], sections: &[SectionInfo<'_>]) {
     fv.log2(F::StrB64MaxLog2, st.b64_max as u64);
     fv.count(F::StrHexBlobs, st.hex_blobs);
 
-    let Some(ac) = string_automaton() else { return };
-    let mut counts = vec![0u64; STRING_PATTERNS.len()];
+    let mut counts = vec![0u64; sp.feature_idx.len()];
     let mut hosts: BTreeSet<&[u8]> = BTreeSet::new();
     let (mut url_ip, mut url_port) = (0u64, 0u64);
     for c in &chunks {
-        for mat in ac.find_overlapping_iter(*c) {
+        for mat in sp.ac.find_overlapping_iter(*c) {
             let pid = mat.pattern().as_usize();
             if let Some(slot) = counts.get_mut(pid) {
                 *slot += 1;
             }
-            if matches!(
-                STRING_PATTERNS.get(pid).map(|p| p.1),
-                Some(F::StrHttp) | Some(F::StrHttps)
-            ) {
+            if sp
+                .feature_idx
+                .get(pid)
+                .is_some_and(|&fi| fi == sp.http_idx || fi == sp.https_idx)
+            {
                 let (host, port) = url_host(&c[mat.end()..]);
                 if host.is_empty() {
                     continue;
@@ -1670,8 +1631,8 @@ fn string_features(fv: &mut Fv, data: &[u8], sections: &[SectionInfo<'_>]) {
     fv.count(F::StrUrlIp, url_ip);
     fv.count(F::StrUrlNonstdPort, url_port);
     let mut per_feature: std::collections::BTreeMap<usize, u64> = std::collections::BTreeMap::new();
-    for ((_, f), n) in STRING_PATTERNS.iter().zip(counts) {
-        *per_feature.entry(*f as usize).or_default() += n;
+    for (&fi, n) in sp.feature_idx.iter().zip(counts) {
+        *per_feature.entry(fi).or_default() += n;
     }
     // `sh -c` also matches inside `bash -c` / `zsh -c`, which is intended.
     for (idx, n) in per_feature {
@@ -1824,10 +1785,10 @@ mod tests {
         let set: BTreeSet<_> = FEATURE_NAMES.iter().collect();
         assert_eq!(set.len(), FEATURE_NAMES.len(), "duplicate feature names");
         assert_eq!(F::FatNcmdsSpread as usize, FEATURE_NAMES.len() - 1);
-        // Every v2 pattern / family maps to a v2 feature declared after the v1 block.
-        assert!(STRING_PATTERNS
-            .iter()
-            .all(|(_, f)| (*f as usize) < FEATURE_NAMES.len()));
+        // Every loaded pattern maps to a valid feature column.
+        let sp = macho_patterns().expect("macho patterns load");
+        assert!(sp.feature_idx.iter().all(|&i| i < FEATURE_NAMES.len()));
+        assert!(!sp.feature_idx.is_empty());
         assert!(FEATURE_NAMES.iter().all(|n| n
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')));

@@ -546,6 +546,15 @@ impl Engine {
             warnings.push(format!("YARA file rejected: {s}"));
         }
 
+        // ML indicator-pattern tables live in the installed signatures dir (data files, not in the
+        // binary). Without them the feature extractors refuse, so the classifiers stay off cleanly.
+        if let Err(e) = pb_ml::load_signatures(&paths.signatures_dir()) {
+            tracing::warn!(error = %e, "ML indicator patterns not loaded: classifiers disabled");
+            warnings.push(format!(
+                "tables ML indisponibles : classifieurs désactivés ({e})"
+            ));
+        }
+
         let (ml, ml_info) = load_model(
             bundle.as_deref(),
             pb_ml::ModelKind::MachO,

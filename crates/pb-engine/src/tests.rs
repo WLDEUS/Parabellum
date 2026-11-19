@@ -16,8 +16,10 @@ struct Fixture {
     data: PathBuf,
 }
 
-/// Built-in YARA rules, shipped as a data file; embedded only in the test binary.
+/// Detection signature data files, shipped by the installer; embedded only in the test binary.
 const BUILTIN_YAR: &[u8] = include_bytes!("../../../signatures/builtin.yar");
+const MACHO_PATTERNS_JSON: &[u8] = include_bytes!("../../../signatures/macho_patterns.json");
+const SCRIPT_PATTERNS_JSON: &[u8] = include_bytes!("../../../signatures/script_patterns.json");
 
 fn fixture() -> Fixture {
     let dir = tempfile::tempdir().unwrap();
@@ -25,8 +27,12 @@ fn fixture() -> Fixture {
     for d in paths.all_dirs() {
         std::fs::create_dir_all(d).unwrap();
     }
-    // Install the built-in rules the way the pkg would, so the engine detects EICAR & co.
-    std::fs::write(paths.signatures_dir().join("builtin.yar"), BUILTIN_YAR).unwrap();
+    // Install the signature data files the way the pkg would (built-in YARA + ML indicator tables),
+    // so the engine detects EICAR and the ML classifiers have their feature columns.
+    let sig = paths.signatures_dir();
+    std::fs::write(sig.join("builtin.yar"), BUILTIN_YAR).unwrap();
+    std::fs::write(sig.join("macho_patterns.json"), MACHO_PATTERNS_JSON).unwrap();
+    std::fs::write(sig.join("script_patterns.json"), SCRIPT_PATTERNS_JSON).unwrap();
     let data = dir.path().join("data");
     std::fs::create_dir_all(&data).unwrap();
     Fixture {

@@ -43,8 +43,17 @@ struct Args {
     /// Print the feature layout version of `--kind` and exit.
     #[arg(long)]
     features_version: bool,
+    /// Directory holding the indicator-pattern data files (macho_patterns.json,
+    /// script_patterns.json). Defaults to $PARABELLUM_SIGNATURES_DIR, else the repo signatures/ dir.
+    #[arg(long)]
+    signatures: Option<PathBuf>,
     /// Files or directories to scan.
     paths: Vec<PathBuf>,
+}
+
+/// Repo `signatures/` dir, resolved from this binary's crate at build time (training / CI default).
+fn default_signatures_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../signatures")
 }
 
 #[derive(Serialize)]
@@ -113,6 +122,20 @@ fn main() {
     if args.paths.is_empty() {
         eprintln!("pb-features: no input paths (see --help)");
         std::process::exit(2);
+    }
+    // Indicator patterns are a data file (not compiled in); the trainer must see the same table as
+    // the engine, so load it before extracting any features.
+    let sig_dir = args
+        .signatures
+        .clone()
+        .or_else(|| std::env::var_os("PARABELLUM_SIGNATURES_DIR").map(PathBuf::from))
+        .unwrap_or_else(default_signatures_dir);
+    if let Err(e) = pb_ml::load_signatures(&sig_dir) {
+        eprintln!(
+            "pb-features: cannot load indicator patterns from {}: {e}",
+            sig_dir.display()
+        );
+        std::process::exit(1);
     }
     let max_bytes = args.max_size_mb.saturating_mul(1024 * 1024);
     let mut errors = 0u64;

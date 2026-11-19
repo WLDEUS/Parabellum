@@ -8,6 +8,13 @@ fn fixtures() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
 
+/// Load the indicator-pattern data files from the repo so the library `extract_*` calls (used to
+/// cross-check the binary's output) have their feature columns. Idempotent.
+fn load_sigs() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../signatures");
+    let _ = pb_ml::load_signatures(&dir);
+}
+
 #[test]
 fn names_match_library() {
     let out = Command::new(BIN).arg("--names").output().unwrap();
@@ -45,6 +52,7 @@ fn emits_one_json_line_per_macho_and_skips_others() {
     assert!(pos.windows(2).all(|w| w[0] < w[1]), "{}", lines[0]);
     assert_eq!(v["label"], 1);
     assert_eq!(v["features_version"], pb_ml::FEATURES_VERSION);
+    load_sigs();
     let bytes = std::fs::read(dir.path().join("a.bin")).unwrap();
     let expected = pb_ml::extract_features(&bytes).unwrap();
     let got: Vec<f64> = serde_json::from_value(v["features"].clone()).unwrap();
@@ -104,6 +112,7 @@ fn script_kind_names_and_records() {
     let v: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
     assert!(v["path"].as_str().unwrap().ends_with("b.sh"));
     assert_eq!(v["features_version"], pb_ml::SCRIPT_FEATURES_VERSION);
+    load_sigs();
     let expected =
         pb_ml::extract_script_features(b"#!/bin/sh\necho hi\n", Some(&dir.path().join("b.sh")))
             .unwrap();
