@@ -481,17 +481,19 @@ fn walk_excludes_cache_risky_types_and_cancel() {
 }
 
 #[test]
-fn big_files_are_hash_only() {
+fn big_files_are_hashed_and_their_head_still_scanned() {
     let f = fixture();
     let e = Engine::load(&f.paths, &Config::default()).unwrap();
     let p = f.data.join("big.bin");
-    let mut content = EICAR.to_vec();
+    // A stealer-style script padded past max_file_size (EICAR itself only matches under 256 bytes).
+    let mut content = b"osascript -e 'display dialog \"Enter password\" default answer \"\" with hidden answer' ; dscl /Local/Default -authonly\n".to_vec();
     content.resize(3 * 1024 * 1024, b' ');
     std::fs::write(&p, &content).unwrap();
     let mut o = opts();
     o.max_file_size = 1024 * 1024;
     let r = e.scan_file(&p, &o);
-    assert_eq!(r.verdict, Verdict::Clean);
+    // Padding past max_file_size no longer hides the payload from the rules.
+    assert_ne!(r.verdict, Verdict::Clean);
     assert_eq!(
         r.sha256.as_deref(),
         Some(hex::encode(sha(&content)).as_str())
@@ -499,7 +501,7 @@ fn big_files_are_hash_only() {
     assert!(r
         .error
         .as_deref()
-        .is_some_and(|x| x.contains("hash check only")));
+        .is_some_and(|x| x.contains("hash check + YARA")));
     assert_eq!(sha256_file(&p).unwrap(), hex::encode(sha(&content)));
 }
 

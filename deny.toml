@@ -1,0 +1,36 @@
+# cargo-deny (CI job `supply-chain`): `cargo deny check advisories sources bans`.
+# Goal: no crate with a known vulnerability (RustSec), no dependency from anywhere but crates.io
+# (no git or alternate-registry crates that could change under a fixed version), no yanked crate.
+
+[graph]
+targets = [
+    { triple = "aarch64-apple-darwin" },
+    { triple = "x86_64-unknown-linux-gnu" },
+]
+all-features = false
+
+[advisories]
+# Vulnerabilities always fail; unmaintained / unsound notices fail only for crates we depend on
+# directly (transitive ones are reported but not blocking).
+unmaintained = "workspace"
+unsound = "workspace"
+yanked = "deny"
+# Every exception names its reason and is re-checked when the dependency moves.
+ignore = [
+    # rsa (via yara-x, Authenticode checks): the Marvin timing attack needs private-key decryption
+    # observed by an attacker; yara-x only VERIFIES public signatures. No fixed release yet.
+    { id = "RUSTSEC-2023-0071", reason = "verify-only use inside yara-x; no private key is ever loaded" },
+    # chrono: maintenance notice, no vulnerability and no safe upgrade available; migration to
+    # `jiff` / `time` tracked as tech debt.
+    { id = "RUSTSEC-2026-0543", reason = "unmaintained notice only, no known vulnerability" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
+
+[bans]
+multiple-versions = "allow"
+wildcards = "allow" # internal path crates only; crates.io deps are versioned in Cargo.lock

@@ -1,0 +1,74 @@
+name: Supply chain
+
+# Guards the repository and its dependencies (see docs/SECURITY-SUPPLY-CHAIN.md):
+#   * repository hygiene: no committed binary / archive / sample / secret, every action pinned to a
+#     commit SHA, no privileged trigger, no expression injected into a shell script;
+#   * Rust: cargo-deny (RustSec advisories, crates.io only, no yanked crate), also every Monday so a
+#     vulnerability published after the last push is reported;
+#   * Python: every lockfile installs with --require-hashes.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supply-chain-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  hygiene:
+    name: Repository hygiene
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: No binaries, samples, secrets or hijackable workflows in the repository
+        run: python3 scripts/check_repo_hygiene.py
+
+  cargo-deny:
+    name: Rust dependencies (cargo-deny)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # branch "stable" (2026-10)
+        with:
+          toolchain: stable
+      - name: Install cargo-deny (pinned, locked dependencies)
+        run: cargo install --locked cargo-deny --version 0.22.0
+      - name: cargo deny
+        run: cargo deny --locked check advisories sources bans
+
+  python-locks:
+    name: Python lockfiles install with hashes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: pip install --require-hashes (pipeline, ml, CI)
+        run: |
+          for lock in pipeline/requirements.lock ml/requirements.lock pipeline/requirements-ci.lock; do
+            python -m venv "$RUNNER_TEMP/venv-$(basename "$(dirname "$lock")")-$(basename "$lock")"
+            "$RUNNER_TEMP/venv-$(basename "$(dirname "$lock")")-$(basename "$lock")/bin/pip" install -q --require-hashes -r "$lock"
+          done

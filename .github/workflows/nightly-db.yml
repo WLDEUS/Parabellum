@@ -27,9 +27,12 @@ on:
         type: boolean
         default: false
 
+# Supply chain (docs/SECURITY-SUPPLY-CHAIN.md): `build-db` downloads untrusted feeds, unpacks malware
+# samples with 7-Zip and runs third-party code, so it gets a READ-ONLY token and never sees the signing
+# key. `sign-publish` runs no pipeline code: it checks the artifact's file list, signs it with minisign
+# and uploads it.
 permissions:
-  contents: write # gh release create/upload
-  attestations: read # gh attestation verify of the pinned sing-box release (pipeline/pins.py)
+  contents: read
 
 concurrency:
   group: threat-db # shared with ml-train.yml: never publish model and bundle at the same time
@@ -43,6 +46,9 @@ jobs:
   build-db:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    permissions:
+      contents: read
+      attestations: read # gh attestation verify of the pinned sing-box release (pipeline/pins.py)
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
@@ -62,12 +68,12 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: pipeline/requirements.txt
+          cache-dependency-path: pipeline/requirements.lock
       - name: Install tools
         run: |
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends minisign 7zip gnupg dirmngr
-          python -m pip install -r pipeline/requirements.txt
+          python -m pip install --require-hashes -r pipeline/requirements.lock
       - name: Restore clean corpus cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -132,32 +138,29 @@ jobs:
             echo "::error::gh release view ml-domain-latest: $err"
             exit 1
           fi
-      - name: Build bundle
+      - name: Build bundle (unsigned)
         env:
           ABUSECH_AUTH_KEY: ${{ secrets.ABUSECH_AUTH_KEY }}
-          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
           MALWARE_CORPUS: ${{ inputs.malware_corpus && '1' || '' }}
           ALLOW_SHRINK: ${{ inputs.allow_shrink && '--allow-shrink' || '' }}
         run: |
-          if [[ -z "$MINISIGN_SECRET_KEY" ]]; then
-            echo "::error::secret MINISIGN_SECRET_KEY is not set (scripts/setup-signing-keys.sh)"
-            exit 1
-          fi
           [[ -n "$ABUSECH_AUTH_KEY" ]] || echo "::warning::secret ABUSECH_AUTH_KEY is not set: abuse.ch sources are carried over"
           # shellcheck disable=SC2086 # ALLOW_SHRINK is empty or one flag
           python -m pipeline.build --out dist/db \
             --previous prev/parabellum-db.tar.gz --state prev/pipeline-state.tar.gz --published prev/manifest.json \
             --corpus-cache .cache/corpus --ml-dir ml-latest --pb-features target/release/pb-features \
-            --sign $ALLOW_SHRINK
-      - name: Verify the signature with the committed public key
-        run: |
-          if [[ -s keys/parabellum-db.pub ]]; then
-            minisign -V -p keys/parabellum-db.pub -m dist/db/parabellum-db.tar.gz
-          else
-            echo "::warning::keys/parabellum-db.pub is not committed: cannot cross-check the signing key"
-          fi
-      - name: Publish
-        run: bash pipeline/publish.sh dist/db
+            $ALLOW_SHRINK
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: threat-db
+          path: |
+            dist/db/parabellum-db.tar.gz
+            dist/db/pipeline-state.tar.gz
+            dist/db/manifest.json
+            dist/db/report.json
+            dist/db/shadowrocket-reject.list
+          retention-days: 1
+          if-no-files-found: error
       - name: Summary
         if: always()
         run: |
@@ -174,3 +177,50 @@ jobs:
         with:
           path: .cache/corpus
           key: corpus-v1-${{ hashFiles('pipeline/data/clean_corpus.toml') }}-${{ github.run_id }}
+
+  sign-publish:
+    needs: build-db
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write # gh release create/upload
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      # Only the public key and the publish script are read from the checkout.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            keys
+            pipeline/publish.sh
+          sparse-checkout-cone-mode: false
+      - run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends minisign
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: threat-db
+          path: dist/db
+      - name: Check, sign and verify
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          [[ -n "$MINISIGN_SECRET_KEY" ]] || { echo "::error::secret MINISIGN_SECRET_KEY is not set (scripts/setup-signing-keys.sh)"; exit 1; }
+          [[ -s keys/parabellum-db.pub ]] || { echo "::error::keys/parabellum-db.pub is not committed"; exit 1; }
+          # Exactly the expected regular files, nothing else (no links, no extra payload).
+          expected="manifest.json parabellum-db.tar.gz pipeline-state.tar.gz report.json shadowrocket-reject.list"
+          got="$(cd dist/db && find . -mindepth 1 -printf '%y %P\n' | sort | tr '\n' ' ')"
+          want="$(for f in $expected; do echo "f $f"; done | sort | tr '\n' ' ')"
+          [[ "$got" == "$want" ]] || { echo "::error::unexpected artifact content: $got"; exit 1; }
+          version="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["version"])' dist/db/manifest.json)"
+          [[ "$version" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]+$ ]] || { echo "::error::bad version '$version'"; exit 1; }
+          key="$RUNNER_TEMP/minisign.key"
+          (umask 077 && printf '%s\n' "$MINISIGN_SECRET_KEY" > "$key")
+          minisign -S -s "$key" -m dist/db/parabellum-db.tar.gz -t "parabellum-db $version" </dev/null
+          minisign -S -s "$key" -m dist/db/pipeline-state.tar.gz -t "parabellum-state $version" </dev/null
+          rm -f "$key"
+          minisign -V -p keys/parabellum-db.pub -m dist/db/parabellum-db.tar.gz
+          minisign -V -p keys/parabellum-db.pub -m dist/db/pipeline-state.tar.gz
+      - name: Publish
+        run: bash pipeline/publish.sh dist/db

@@ -30,7 +30,7 @@ DEV_ROOT := $(ROOT_DIR)/.dev-root
 DEV_SOCKET := $(DEV_ROOT)/run/parabellum.sock
 
 .PHONY: help version dev-check prereqs build build-rust build-swift app pkg install uninstall \
-	test lint fmt keys codesign-cert dev-daemon dev-app dev-cli clean distclean
+	test lint fmt keys release-key protect-repo codesign-cert dev-daemon dev-app dev-cli clean distclean
 
 help: ## Affiche cette aide
 	@printf 'Parabellum %s (build %s)\n\nUsage : make <cible> [VARIABLE=valeur]\n\n' "$(VERSION)" "$(BUILD_NUMBER)"
@@ -93,6 +93,12 @@ fmt: ## Formate le code Rust
 
 codesign-cert: ## Crée le certificat de signature stable (accès complet au disque conservé) + secrets CI
 	"$(ROOT_DIR)/scripts/setup-codesign-cert.sh"
+
+protect-repo: ## Durcit les réglages GitHub (règles main + tags v*, jeton Actions en lecture, Dependabot, secret scanning)
+	/bin/bash "$(ROOT_DIR)/scripts/protect-repo.sh"
+
+release-key: ## Crée la clé minisign dédiée aux .pkg (scripts/setup-release-key.sh) : secret GitHub + commit
+	/bin/bash "$(ROOT_DIR)/scripts/setup-release-key.sh"
 
 keys: ## Crée la paire de clés minisign de la base de menaces (scripts/setup-signing-keys.sh)
 	@[[ -f "$(ROOT_DIR)/scripts/setup-signing-keys.sh" ]] || { echo "erreur : scripts/setup-signing-keys.sh absent" >&2; exit 1; }

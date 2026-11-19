@@ -627,6 +627,7 @@ pub fn zip_has_app(path: &Path) -> bool {
         return false;
     };
     let found = archive.file_names().take(5_000).any(|n| {
+        let Ok(n) = n else { return false };
         let mut parts = n.split('/');
         let first = parts.next().unwrap_or("");
         let first = if first == "__MACOSX" { "" } else { first };

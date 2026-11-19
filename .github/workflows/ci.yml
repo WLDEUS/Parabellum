@@ -95,9 +95,9 @@ jobs:
       - name: cargo fmt
         run: cargo fmt --all --check 2>&1 | tee ci-logs/cargo-fmt.log
       - name: cargo clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee ci-logs/cargo-clippy.log
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings 2>&1 | tee ci-logs/cargo-clippy.log
       - name: cargo test
-        run: cargo test --workspace 2>&1 | tee ci-logs/cargo-test.log
+        run: cargo test --locked --workspace 2>&1 | tee ci-logs/cargo-test.log
       - name: no embedded malware signatures in release artifacts
         run: scripts/check-no-embedded-signatures.sh 2>&1 | tee ci-logs/check-no-embedded-signatures.log
       - name: Annotate errors
@@ -116,13 +116,11 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: |
-            pipeline/requirements*.txt
-            ml/requirements.txt
+          cache-dependency-path: pipeline/requirements-ci.lock
       - name: Install dependencies
         run: |
           sudo apt-get install -y --no-install-recommends minisign
-          python -m pip install -r pipeline/requirements-dev.txt -r ml/requirements.txt
+          python -m pip install --require-hashes -r pipeline/requirements-ci.lock
       - run: mkdir -p ci-logs
       - name: ruff
         run: |
@@ -139,8 +137,10 @@ jobs:
     # Public repository: GitHub-hosted macOS minutes are free, so this runs on every push to main, tag and PR.
     runs-on: macos-15 # arm64 (Apple silicon) image
     timeout-minutes: 90
+    # Read-only: this job compiles PR code and third-party crates. Failure logs are handed to the
+    # `ci-logs` job as an artifact; only that job (which runs no build) may push.
     permissions:
-      contents: write # only to push failure logs to the `ci-logs` branch
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -201,15 +201,42 @@ jobs:
       - name: Annotate errors
         if: failure()
         run: python3 -c "$ANNOTATE_PY"
-      - name: Push failure logs to the ci-logs branch
+      - name: Hand the failure logs to the ci-logs job
         if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-logs-macos
+          path: ci-logs/*.log
+          retention-days: 3
+          if-no-files-found: ignore
+      - name: Delete the temporary signing keychain
+        if: always()
+        run: scripts/ci-codesign.sh cleanup
+
+  ci-logs:
+    name: Push macOS failure logs
+    needs: macos
+    # Never for fork PRs (read-only token anyway); runs no project code, only git on the log files.
+    if: failure() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write # push to the `ci-logs` branch only
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: ci-logs-macos
+          path: ci-logs
+      - name: Keep plain log files only
+        run: find ci-logs -mindepth 1 \( ! -type f -o ! -name '*.log' \) -exec rm -rf {} + 2>/dev/null || true
+      - name: Push failure logs to the ci-logs branch
         env:
           GH_TOKEN: ${{ github.token }}
           JOB_NAME: macos
         run: |
           set -euo pipefail
           dest="runs/${GITHUB_RUN_ID}"
-          remote="${CI_LOGS_REMOTE:-https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git}"
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           src="$PWD/ci-logs"
           publish() {
             local work
@@ -247,6 +274,3 @@ jobs:
             sleep $((attempt * 5))
           done
           echo "::warning::could not push the ci-logs branch"
-      - name: Delete the temporary signing keychain
-        if: always()
-        run: scripts/ci-codesign.sh cleanup
