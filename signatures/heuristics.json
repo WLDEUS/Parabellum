@@ -1,0 +1,96 @@
+{
+  "_comment": "Parabellum behavioural heuristic signatures. Runtime data file shipped in the installer (installed under /Library/Application Support/Parabellum/signatures/heuristics.json) and loaded by the daemon at startup. Kept OUT of the executables so our own benign binaries carry no info-stealer signature strings (which would trip XProtect). Detection LOGIC stays in code (pb-monitor::sensitive, pb-daemon::guard::rules); only the pattern DATA lives here. Catalogue of what macOS info-stealers (AMOS/Atomic, Poseidon, Banshee, Cthulhu, Cuckoo) target and the Apple tools they drive.",
+  "sensitive_file_names": [
+    "Login Data",
+    "Login Data For Account",
+    "Cookies",
+    "Web Data",
+    "Local State",
+    "logins.json",
+    "key4.db",
+    "key3.db",
+    "cookies.sqlite",
+    "formhistory.sqlite",
+    "Cookies.binarycookies",
+    "login.keychain-db",
+    "login.keychain",
+    "NoteStore.sqlite",
+    "wallet.dat",
+    "exodus.wallet",
+    "seed.seco",
+    "passphrase.json",
+    "info.seco"
+  ],
+  "sensitive_path_fragments": [
+    "login data",
+    "/cookies",
+    "web data",
+    "local state",
+    "logins.json",
+    "key4.db",
+    "cookies.sqlite",
+    "cookies.binarycookies",
+    "library/keychains",
+    "keychain-db",
+    "notestore.sqlite",
+    "local extension settings",
+    "/exodus",
+    "/electrum",
+    "/atomic/local storage",
+    "wallet.dat",
+    "ledger live",
+    "/coinomi",
+    "/guarda",
+    "telegram desktop/tdata",
+    "/.ssh/id_",
+    "/.aws/credentials",
+    "/.config/gcloud",
+    "/.kube/config"
+  ],
+  "legit_store_roots": [
+    "Library/Application Support",
+    "Library/Containers",
+    "Library/Group Containers",
+    "Library/Cookies",
+    "Library/Keychains",
+    "Library/Safari",
+    "Library/Caches",
+    "Library/WebKit",
+    "Library/HTTPStorages"
+  ],
+  "watched_platform_tools": [
+    "osascript",
+    "security",
+    "dscl",
+    "sqlite3",
+    "cp",
+    "ditto",
+    "zip",
+    "tar",
+    "cat",
+    "base64",
+    "rsync",
+    "scp",
+    "curl",
+    "spctl",
+    "killall",
+    "openssl"
+  ],
+  "fake_dialog": [
+    "hidden answer",
+    "hiddenanswer"
+  ],
+  "keychain_find_secret": [
+    "find-generic-password",
+    "find-internet-password"
+  ],
+  "keychain_dump": [
+    "dump-keychain"
+  ],
+  "browser_safe_storage": [
+    "safe storage"
+  ],
+  "password_check": [
+    "-authonly"
+  ]
+}

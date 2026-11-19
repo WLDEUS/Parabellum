@@ -125,17 +125,23 @@ fn basename(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
 
+/// True when `a` contains any of `patterns`. The patterns come from the runtime heuristics data file
+/// (empty, i.e. never matching, when the heuristics are not loaded) so the detection literals are not
+/// embedded in this binary.
+fn any(patterns: &[String], a: &str) -> bool {
+    patterns.iter().any(|p| a.contains(p.as_str()))
+}
+
 /// Rule for an `exec` (tool path + argv).
 pub fn exec_indicator(tool_path: &str, args: &[String]) -> Option<IndicatorKind> {
     let name = basename(tool_path);
     let a = sensitive::joined_args(args);
     match name {
-        "osascript" if a.contains("hidden answer") || a.contains("hiddenanswer") => {
+        "osascript" if any(sensitive::fake_dialog_patterns(), &a) => {
             Some(IndicatorKind::FakePasswordPrompt)
         }
         "security" => {
-            let reads_secret = (a.contains("find-generic-password")
-                || a.contains("find-internet-password"))
+            let reads_secret = any(sensitive::keychain_find_secret_patterns(), &a)
                 && args.iter().skip(2).any(|x| {
                     x.len() >= 2
                         && x.starts_with('-')
@@ -143,18 +149,20 @@ pub fn exec_indicator(tool_path: &str, args: &[String]) -> Option<IndicatorKind>
                         && x[1..].bytes().all(|b| b.is_ascii_alphabetic())
                         && (x.contains('w') || x.contains('g'))
                 });
-            let browser_key = a.contains("safe storage")
+            let browser_key = any(sensitive::browser_safe_storage_patterns(), &a)
                 || [
                     "chrome", "chromium", "brave", "edge", "opera", "vivaldi", "arc", "yandex",
                 ]
                 .iter()
                 .any(|b| args.iter().any(|x| x.eq_ignore_ascii_case(b)));
-            let dumps = a.contains("dump-keychain")
+            let dumps = any(sensitive::keychain_dump_patterns(), &a)
                 || (reads_secret && browser_key)
                 || (a.contains(" export ") && a.contains("keychain"));
             dumps.then_some(IndicatorKind::KeychainDump)
         }
-        "dscl" if a.contains("-authonly") => Some(IndicatorKind::PasswordCheck),
+        "dscl" if any(sensitive::password_check_patterns(), &a) => {
+            Some(IndicatorKind::PasswordCheck)
+        }
         "spctl" if a.contains("--master-disable") || a.contains("--global-disable") => {
             Some(IndicatorKind::GatekeeperDisabled)
         }

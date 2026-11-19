@@ -92,6 +92,11 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
     let _log = setup::init_logging(&paths);
+    // Load behavioural heuristic signatures from the installed data file (shipped in the pkg). A
+    // missing file leaves the behaviour guard's stealer heuristics disabled; the daemon still runs.
+    if !pb_monitor::sensitive::load_from(&paths.signatures_dir().join("heuristics.json")) {
+        tracing::warn!("behavioural heuristics unavailable: stealer heuristics disabled");
+    }
     let _lock = match setup::acquire_lock_or_take_over(
         &paths,
         !dev_mode && setup::launched_by_launchd(),
