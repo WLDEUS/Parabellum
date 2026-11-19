@@ -128,6 +128,9 @@ fn new_request(b: &BrokerInfo, now: i64) -> StoredRequest {
             draft_path: None,
             note: None,
             last_error: None,
+            last_reply_at: None,
+            last_reply_kind: None,
+            last_reply_summary: None,
         },
         region: b.region.clone(),
         website: b.website.clone(),
@@ -273,7 +276,7 @@ pub fn apply_user_update(
             r.next_attempt_at = None;
             r.escalated_at = None;
         }
-        RemovalStatus::NeedsForm => {
+        RemovalStatus::NeedsForm | RemovalStatus::NeedsYou => {
             r.req.status = status;
             r.req.closed_at = None;
         }
@@ -295,9 +298,10 @@ pub fn summary(
     for r in reqs {
         match r.req.status {
             RemovalStatus::Queued => s.queued += 1,
-            RemovalStatus::DraftReady | RemovalStatus::NeedsForm | RemovalStatus::Failed => {
-                s.needs_action += 1
-            }
+            RemovalStatus::DraftReady
+            | RemovalStatus::NeedsForm
+            | RemovalStatus::NeedsYou
+            | RemovalStatus::Failed => s.needs_action += 1,
             RemovalStatus::Sent => {
                 if is_overdue(r, now) {
                     s.overdue += 1

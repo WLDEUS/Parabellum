@@ -597,6 +597,110 @@ pub fn profile(p: &IdentityProfile) -> String {
     o
 }
 
+fn agent_status(s: &MailAgentStatus) -> String {
+    use pb_privacy::agent::vault::kind_label;
+    let state = match s.state {
+        MailAgentState::Disabled => "désactivé",
+        MailAgentState::Waiting => "en attente d'un moment d'inactivité",
+        MailAgentState::Running => "en cours",
+        MailAgentState::Error => "erreur à la dernière passe",
+    };
+    let mut out = format!(
+        "Agent courrier : {state}\nModèle : {} (Ollama {})\n",
+        s.model,
+        s.ollama_version
+            .as_deref()
+            .unwrap_or(if s.ollama_installed {
+                "installé"
+            } else {
+                "pas encore installé"
+            })
+    );
+    if let Some(t) = s.last_run_at {
+        out.push_str(&format!(
+            "Dernière passe : {} — {} message(s) lu(s), {} rattaché(s), {} demande(s) mise(s) à jour\n",
+            ts(t),
+            s.last_fetched,
+            s.last_matched,
+            s.last_updated
+        ));
+    }
+    if let Some(e) = &s.last_error {
+        out.push_str(&format!("Erreur : {e}\n"));
+    }
+    out.push_str(&format!("À toi de répondre : {}\n", s.needs_you));
+    for e in s.events.iter().take(15) {
+        out.push_str(&format!(
+            "  {}  {} — {} : {}\n",
+            ts(e.ts),
+            e.broker_name,
+            kind_label(e.kind),
+            e.summary
+        ));
+    }
+    out
+}
+
+/// Result of `privacy notes`.
+#[derive(Debug, Serialize)]
+pub struct NotesWritten {
+    pub dir: PathBuf,
+    pub files: usize,
+}
+
+/// Write the Obsidian notes as the current user (refuses root: the notes live in a home folder).
+pub fn write_notes(c: &mut Client, dir: Option<&Path>) -> Result<NotesWritten, CliError> {
+    use pb_privacy::agent::vault;
+    // SAFETY: geteuid has no preconditions.
+    if unsafe { libc::geteuid() } == 0 {
+        return Err(CliError::Usage(
+            "les notes vont dans ton dossier personnel : lance la commande sans sudo".into(),
+        ));
+    }
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .filter(|h| h.is_absolute())
+        .ok_or_else(|| CliError::Usage("HOME absent".into()))?;
+    let target = match dir {
+        Some(d) => d.to_path_buf(),
+        None => {
+            let cfg: Config = c.call(Request::GetConfig)?;
+            let n = cfg.mail_agent.notes_dir;
+            if n.is_empty() {
+                return Err(CliError::Usage(
+                    "aucun dossier de notes (réglage mail_agent.notes_dir ou --dir)".into(),
+                ));
+            }
+            match n.strip_prefix("~/") {
+                Some(rest) => home.join(rest),
+                None => PathBuf::from(n),
+            }
+        }
+    };
+    let requests: Vec<RemovalRequest> = c.call(Request::PrivacyListRequests)?;
+    let status: MailAgentStatus = c.call(Request::MailAgentStatus)?;
+    let files = vault::render(&requests, &status.events, pb_core::now_ts());
+    std::fs::create_dir_all(target.join(vault::BROKERS_DIR))?;
+    for (rel, content) in &files {
+        let path = target.join(rel);
+        let old = std::fs::symlink_metadata(&path)
+            .ok()
+            .filter(|m| m.is_file() && m.len() < 1024 * 1024)
+            .and_then(|_| std::fs::read_to_string(&path).ok());
+        let merged = vault::merge(old.as_deref(), content);
+        if old.as_deref() == Some(merged.as_str()) {
+            continue;
+        }
+        let tmp = path.with_extension("md.tmp");
+        std::fs::write(&tmp, merged.as_bytes())?;
+        std::fs::rename(&tmp, &path)?;
+    }
+    Ok(NotesWritten {
+        dir: target,
+        files: files.len(),
+    })
+}
+
 fn removal_status(s: RemovalStatus) -> &'static str {
     match s {
         RemovalStatus::Queued => "en file",
@@ -607,6 +711,7 @@ fn removal_status(s: RemovalStatus) -> &'static str {
         RemovalStatus::Completed => "effacée",
         RemovalStatus::Refused => "refusée",
         RemovalStatus::NeedsForm => "formulaire web",
+        RemovalStatus::NeedsYou => "à toi de répondre",
         RemovalStatus::Failed => "échec",
     }
 }
@@ -850,7 +955,7 @@ pub fn privacy(
         PrivacyCmd::Mark { id, status, note } => {
             let st: RemovalStatus = parse_wire_enum(status).ok_or_else(|| {
                 CliError::Usage(format!(
-                    "statut inconnu « {status} » (sent, completed, refused, needs-form, queued)"
+                    "statut inconnu « {status} » (sent, completed, refused, needs-form, needs-you, queued)"
                 ))
             })?;
             let id = resolve_request_id(c, id)?;
@@ -921,6 +1026,26 @@ pub fn privacy(
                     d.authority, d.url, d.text
                 )
             })?;
+        }
+        PrivacyCmd::Agent { action } => {
+            let st: MailAgentStatus = match action {
+                Some(AgentCmd::Run) => c.call(Request::MailAgentRun)?,
+                None | Some(AgentCmd::Status) => c.call(Request::MailAgentStatus)?,
+            };
+            emit(cli, io, &st, agent_status)?;
+        }
+        PrivacyCmd::Notes { dir } => {
+            let n = write_notes(c, dir.as_deref())?;
+            if cli.json {
+                emit(cli, io, &n, |_| String::new())?;
+            } else {
+                writeln!(
+                    io.out,
+                    "{} note(s) écrite(s) dans {}",
+                    n.files,
+                    n.dir.display()
+                )?;
+            }
         }
         PrivacyCmd::Breaches { check } => {
             let l: Vec<BreachFinding> = if *check {

@@ -367,6 +367,7 @@ extension RemovalStatus {
         case .completed: return "Effacement confirmé"
         case .refused: return "Refusée"
         case .needsForm: return "Formulaire web"
+        case .needsYou: return "À toi de répondre"
         case .failed: return "Échec d'envoi"
         case .unknown: return "Inconnu"
         }

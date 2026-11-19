@@ -59,13 +59,14 @@ where
 }
 
 /// Every secret field of the configuration.
-fn secrets_mut(c: &mut Config) -> [&mut Option<String>; 5] {
+fn secrets_mut(c: &mut Config) -> [&mut Option<String>; 6] {
     [
         &mut c.updates.github_token,
         &mut c.privacy.virustotal_api_key,
         &mut c.data_removal.smtp_password,
         &mut c.breach.hibp_api_key,
         &mut c.aliases.api_key,
+        &mut c.mail_agent.imap_password,
     ]
 }
 
@@ -100,6 +101,7 @@ pub fn redact(cfg: &Config) -> Config {
     }
     c.data_removal.from_address = mask_identifier(&c.data_removal.from_address);
     c.data_removal.smtp_username = mask_identifier(&c.data_removal.smtp_username);
+    c.mail_agent.imap_username = mask_identifier(&c.mail_agent.imap_username);
     c
 }
 
@@ -134,6 +136,10 @@ pub fn unredact(new: &mut Config, old: &Config) {
     let user = std::slice::from_ref(&old.data_removal.smtp_username);
     if let Some(o) = unmask(&new.data_removal.smtp_username, user) {
         new.data_removal.smtp_username = o;
+    }
+    let imap = std::slice::from_ref(&old.mail_agent.imap_username);
+    if let Some(o) = unmask(&new.mail_agent.imap_username, imap) {
+        new.mail_agent.imap_username = o;
     }
 }
 
@@ -464,6 +470,8 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
                 .await
                 .map_err(crate::privacy::err)?,
         ),
+        Request::MailAgentStatus => json(&crate::mailagent::status(ctx).await?),
+        Request::MailAgentRun => json(&crate::mailagent::request_run(ctx).await?),
         Request::PrivacyComplaint { request_id } => json(
             &crate::privacy::service(ctx)?
                 .complaint(&ctx.config(), &request_id)

@@ -753,6 +753,9 @@ mod tests {
             draft_path: None,
             note: None,
             last_error: None,
+            last_reply_at: None,
+            last_reply_kind: None,
+            last_reply_summary: None,
         };
         let breach = |name: &str, seen| BreachFinding {
             email: "camille.martin@example.com".into(),

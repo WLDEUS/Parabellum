@@ -6,6 +6,9 @@
     "created_at": 1792000000,
     "due_at": 1794692000,
     "id": "2f1c8a4e-0000-4000-8000-000000000002",
+    "last_reply_at": 1794700000,
+    "last_reply_kind": "acknowledged",
+    "last_reply_summary": "Accusé de réception, réponse sous 30 jours.",
     "sent_at": 1792100000,
     "status": "sent"
   },
@@ -14,6 +17,9 @@
     "broker_name": "Acxiom",
     "created_at": 1792000000,
     "id": "2f1c8a4e-0000-4000-8000-000000000003",
+    "last_reply_at": 1794700000,
+    "last_reply_kind": "acknowledged",
+    "last_reply_summary": "Accusé de réception, réponse sous 30 jours.",
     "opt_out_url": "https://example.com/opt-out",
     "status": "needs_form"
   }

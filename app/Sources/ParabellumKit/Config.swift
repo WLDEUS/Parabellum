@@ -26,6 +26,8 @@ public struct Config: Codable, Sendable, Hashable {
     /// Rust `network`.
     public var networkGuard = NetworkGuardConfig()
     public var dataRemoval = DataRemovalConfig()
+    /// Local AI agent that reads the brokers' answers (`[mail_agent]`).
+    public var mailAgent = MailAgentConfig()
     public var breach = BreachConfig()
     public var aliases = AliasConfig()
     /// Intelligence: domain model + behavioural anomaly detection (`[intelligence]`).
@@ -45,6 +47,7 @@ public struct Config: Codable, Sendable, Hashable {
         case behaviorGuard = "guard"
         case networkGuard = "network"
         case dataRemoval = "data_removal"
+        case mailAgent = "mail_agent"
         case breach, aliases
         case intelligence
         // ----- Local network & permissions audit -----
@@ -72,6 +75,7 @@ public struct Config: Codable, Sendable, Hashable {
         behaviorGuard = try c.decodeOr(.behaviorGuard, behaviorGuard)
         networkGuard = try c.decodeOr(.networkGuard, networkGuard)
         dataRemoval = try c.decodeOr(.dataRemoval, dataRemoval)
+        mailAgent = try c.decodeOr(.mailAgent, mailAgent)
         breach = try c.decodeOr(.breach, breach)
         aliases = try c.decodeOr(.aliases, aliases)
         intelligence = try c.decodeOr(.intelligence, intelligence)
@@ -113,6 +117,7 @@ public struct Config: Codable, Sendable, Hashable {
             errors.append("L'intervalle d'énumération de la persistance ne peut pas être négatif.")
         }
         errors.append(contentsOf: protectionValidationErrors())
+        errors.append(contentsOf: mailAgent.validationErrors())
         errors.append(contentsOf: intelligence.validationErrors())
         // ----- Local network & permissions audit -----
         if lan.scanIntervalMinutes < 5 || lan.scanIntervalMinutes > 1440 {

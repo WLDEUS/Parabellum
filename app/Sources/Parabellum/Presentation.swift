@@ -240,7 +240,7 @@ extension RemovalStatus {
         case .completed: return .green
         case .sent, .reminded: return .blue
         case .queued, .draftReady: return .secondary
-        case .needsForm: return .orange
+        case .needsForm, .needsYou: return .orange
         case .escalated, .failed, .refused: return .red
         case .unknown: return .gray
         }

@@ -258,6 +258,108 @@ public struct DataRemovalConfig: Codable, Sendable, Hashable {
     }
 }
 
+/// `[mail_agent]`: local AI agent that reads the brokers' answers in a dedicated mailbox (IMAP) while the Mac
+/// is idle. The model only classifies; fixed code decides, and nothing is ever answered for you.
+public struct MailAgentConfig: Codable, Sendable, Hashable {
+    public var enabled: Bool = false
+    public var imapHost: String = ""
+    public var imapPort: Int = 993
+    public var imapUsername: String = ""
+    /// Secret (app password); redacted over IPC.
+    public var imapPassword: String?
+    public var mailbox: String = "INBOX"
+    /// Ollama library model (`name:tag`).
+    public var model: String = "qwen3:4b"
+    public var idleMinutes: Int = 10
+    public var requireAcPower: Bool = true
+    public var intervalHours: Int = 6
+    /// Obsidian notes folder (`~/…`, empty = no notes).
+    public var notesDir: String = "~/Documents/Parabellum RGPD"
+    public var maxMessagesPerRun: Int = 50
+
+    public init() {}
+
+    enum CodingKeys: String, CodingKey {
+        case enabled
+        case imapHost = "imap_host"
+        case imapPort = "imap_port"
+        case imapUsername = "imap_username"
+        case imapPassword = "imap_password"
+        case mailbox, model
+        case idleMinutes = "idle_minutes"
+        case requireAcPower = "require_ac_power"
+        case intervalHours = "interval_hours"
+        case notesDir = "notes_dir"
+        case maxMessagesPerRun = "max_messages_per_run"
+    }
+
+    public init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try c.decodeOr(.enabled, enabled)
+        imapHost = try c.decodeOr(.imapHost, imapHost)
+        imapPort = try c.decodeOr(.imapPort, imapPort)
+        imapUsername = try c.decodeOr(.imapUsername, imapUsername)
+        imapPassword = try c.decodeIfPresent(String.self, forKey: .imapPassword)
+        mailbox = try c.decodeOr(.mailbox, mailbox)
+        model = try c.decodeOr(.model, model)
+        idleMinutes = try c.decodeOr(.idleMinutes, idleMinutes)
+        requireAcPower = try c.decodeOr(.requireAcPower, requireAcPower)
+        intervalHours = try c.decodeOr(.intervalHours, intervalHours)
+        notesDir = try c.decodeOr(.notesDir, notesDir)
+        maxMessagesPerRun = try c.decodeOr(.maxMessagesPerRun, maxMessagesPerRun)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(enabled, forKey: .enabled)
+        try c.encode(imapHost, forKey: .imapHost)
+        try c.encode(imapPort, forKey: .imapPort)
+        try c.encode(imapUsername, forKey: .imapUsername)
+        if let imapPassword {
+            try c.encode(imapPassword, forKey: .imapPassword)
+        } else {
+            try c.encodeNil(forKey: .imapPassword)
+        }
+        try c.encode(mailbox, forKey: .mailbox)
+        try c.encode(model, forKey: .model)
+        try c.encode(idleMinutes, forKey: .idleMinutes)
+        try c.encode(requireAcPower, forKey: .requireAcPower)
+        try c.encode(intervalHours, forKey: .intervalHours)
+        try c.encode(notesDir, forKey: .notesDir)
+        try c.encode(maxMessagesPerRun, forKey: .maxMessagesPerRun)
+    }
+
+    /// Same rules as `MailAgentConfig::validate` in Rust (messages in French).
+    public func validationErrors() -> [String] {
+        var e: [String] = []
+        if !(1...240).contains(idleMinutes) {
+            e.append("L'agent courrier : inactivité entre 1 et 240 minutes.")
+        }
+        if !(1...168).contains(intervalHours) {
+            e.append("L'agent courrier : intervalle entre 1 et 168 heures.")
+        }
+        if !(1...500).contains(maxMessagesPerRun) {
+            e.append("L'agent courrier : entre 1 et 500 messages par passe.")
+        }
+        if !notesDir.isEmpty && (!notesDir.hasPrefix("~/") || notesDir.split(separator: "/").contains("..")) {
+            e.append("Le dossier des notes doit être dans ton dossier personnel (~/…).")
+        }
+        if enabled {
+            if imapHost.trimmingCharacters(in: .whitespaces).isEmpty {
+                e.append("L'agent courrier a besoin du serveur IMAP de la boîte dédiée.")
+            }
+            if !(1...65535).contains(imapPort) {
+                e.append("Port IMAP invalide.")
+            }
+            if imapUsername.trimmingCharacters(in: .whitespaces).isEmpty {
+                e.append("L'agent courrier a besoin de l'identifiant de la boîte dédiée.")
+            }
+        }
+        return e
+    }
+}
+
 /// `[breach]`: known data breaches for your addresses.
 public struct BreachConfig: Codable, Sendable, Hashable {
     public var enabled: Bool = false

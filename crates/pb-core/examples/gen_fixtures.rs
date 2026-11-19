@@ -349,6 +349,9 @@ fn removal_request(status: RemovalStatus) -> RemovalRequest {
         draft_path: None,
         note: None,
         last_error: None,
+        last_reply_at: Some(1_794_700_000),
+        last_reply_kind: Some(ReplyKind::Acknowledged),
+        last_reply_summary: Some("Accusé de réception, réponse sous 30 jours.".into()),
     }
 }
 
@@ -1331,6 +1334,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Request::PrivacyComplaint {
             request_id: "r".into(),
         },
+        Request::MailAgentStatus,
+        Request::MailAgentRun,
         Request::BreachList,
         Request::BreachCheckNow,
         Request::AliasList,

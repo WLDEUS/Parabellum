@@ -8,6 +8,7 @@
 
 mod apple;
 mod archive;
+pub mod ollama;
 mod specs;
 
 pub use specs::{

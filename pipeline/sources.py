@@ -358,6 +358,13 @@ def f_component_pin(spec: SourceSpec, ctx: Context) -> Fetched:
     return Fetched(files={pins.BUNDLE_PATH: data}, count=1)
 
 
+def f_ollama_pin(spec: SourceSpec, ctx: Context) -> Fetched:
+    """Ollama (mail agent's local model server) pinned after digest + Team ID checks (pipeline/pins.py)."""
+    lo = pins.parse_version(str(spec.opt("min_version", "0.12.0"))) or (0, 12, 0)
+    data, _version = pins.fetch_ollama_pin(ctx.http, lo)
+    return Fetched(files={pins.OLLAMA_BUNDLE_PATH: data}, count=1)
+
+
 def f_oui_list(spec: SourceSpec, ctx: Context) -> Fetched:
     """IEEE MAC vendor prefixes for the LAN inventory (see pipeline/oui.py)."""
     regs = tuple(str(r) for r in spec.opt("registries", ["MA-L", "MA-M", "MA-S"]))  # type: ignore[union-attr]
@@ -379,6 +386,7 @@ FETCHERS: dict[str, Callable[[SourceSpec, Context], Fetched]] = {
     "zbt_release": f_zbt_release,
     "privacy_brokers": f_privacy_brokers,
     "component_pin": f_component_pin,
+    "ollama_pin": f_ollama_pin,
     "ml_domain_local": f_ml_domain_local,
     "oui_list": f_oui_list,
 }
@@ -430,6 +438,9 @@ def carry_over(spec: SourceSpec, state_dir: Path | None, prev_dir: Path | None) 
         out.count = sum(privacy.count(d) for d in out.files.values())
     elif spec.fetcher == "component_pin" and prev_dir is not None:
         out.files = pins.carry_over(prev_dir)
+        out.count = len(out.files)
+    elif spec.fetcher == "ollama_pin" and prev_dir is not None:
+        out.files = pins.carry_over_ollama(prev_dir)
         out.count = len(out.files)
     elif spec.fetcher == "oui_list" and prev_dir is not None:
         out.files = oui.carry_over(prev_dir)

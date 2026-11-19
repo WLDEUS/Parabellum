@@ -54,6 +54,8 @@ pub struct OutgoingMail {
     pub to: String,
     pub subject: String,
     pub body: String,
+    /// `<…>` Message-ID (lets the mail agent tie the broker's answer to its request); generated if `None`.
+    pub message_id: Option<String>,
 }
 
 /// Sends mail (real SMTP in production, a fake in tests).
@@ -88,7 +90,14 @@ pub fn build_message(smtp: &SmtpSettings, mail: &OutgoingMail) -> Result<Message
         .reply_to(from)
         .to(to)
         .subject(subject)
-        .message_id(None)
+        .message_id(
+            mail.message_id
+                .as_deref()
+                .filter(|m| {
+                    m.starts_with('<') && m.ends_with('>') && !m.chars().any(char::is_control)
+                })
+                .map(str::to_string),
+        )
         .header(ContentType::TEXT_PLAIN)
         .body(mail.body.replace("\r\n", "\n").replace('\n', "\r\n"))
         .map_err(|e| format!("message invalide : {e}"))
@@ -145,12 +154,13 @@ mod tests {
             to: "dpo@broker.com".into(),
             subject: "Demande d'effacement (article 17 du RGPD)".into(),
             body: "Bonjour,\nété\n".into(),
+            message_id: Some("<pb.r.1@example.fr>".into()),
         };
         let msg = build_message(&s, &m).unwrap();
         let raw = String::from_utf8(msg.formatted()).unwrap();
         assert!(raw.contains("To: dpo@broker.com"));
         assert!(raw.contains("Reply-To: "));
-        assert!(raw.contains("Message-ID: <"));
+        assert!(raw.contains("Message-ID: <pb.r.1@example.fr>"));
         assert!(raw.contains("Content-Type: text/plain; charset=utf-8"));
         assert!(raw.contains("q@example.fr"));
         let bad = OutgoingMail {

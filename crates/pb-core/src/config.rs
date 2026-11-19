@@ -35,6 +35,8 @@ pub struct Config {
     pub guard: GuardConfig,
     pub network: NetworkGuardConfig,
     pub data_removal: DataRemovalConfig,
+    /// Local AI agent that reads the brokers' answers (IMAP) while the Mac is idle.
+    pub mail_agent: MailAgentConfig,
     pub breach: BreachConfig,
     pub aliases: AliasConfig,
     /// Intelligence: domain model + behavioural anomaly detection.
@@ -206,6 +208,7 @@ impl Config {
         if !d.from_address.is_empty() && !is_email(&d.from_address) {
             return invalid("data_removal.from_address must be an email address");
         }
+        self.mail_agent.validate()?;
         for e in &self.breach.emails {
             if !is_email(e) {
                 return Err(ConfigError::Invalid(format!(
@@ -768,6 +771,115 @@ impl Default for DataRemovalConfig {
     }
 }
 
+/// Local AI agent for the GDPR campaign: reads the answers in a dedicated mailbox (IMAP over TLS),
+/// classifies them with a small local model (Ollama, started only while the Mac is idle) and updates the
+/// requests. The model only classifies: every action is decided by fixed code, and nothing that asks for
+/// your identity or more data is ever answered automatically.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MailAgentConfig {
+    pub enabled: bool,
+    /// IMAP server of the dedicated mailbox (implicit TLS).
+    pub imap_host: String,
+    pub imap_port: u16,
+    pub imap_username: String,
+    /// Secret (app password); redacted over IPC.
+    pub imap_password: Option<String>,
+    /// Folder read (never modified: messages are read with `BODY.PEEK`).
+    pub mailbox: String,
+    /// Ollama library model (`name:tag`, no namespace). Default: Qwen3 4B (Q4_K_M, about 2.5 GB, 16 GB Macs).
+    pub model: String,
+    /// Run once the keyboard and mouse have been idle this long.
+    pub idle_minutes: u32,
+    /// Only on mains power.
+    pub require_ac_power: bool,
+    /// Hours between two runs when nothing changed (a run happens anyway after a campaign change).
+    pub interval_hours: u32,
+    /// Obsidian-compatible notes, written as the console user (`~/…` only). Empty: no notes.
+    pub notes_dir: String,
+    /// Messages handled per run.
+    pub max_messages_per_run: u32,
+}
+
+impl Default for MailAgentConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            imap_host: String::new(),
+            imap_port: 993,
+            imap_username: String::new(),
+            imap_password: None,
+            mailbox: "INBOX".into(),
+            model: "qwen3:4b".into(),
+            idle_minutes: 10,
+            require_ac_power: true,
+            interval_hours: 6,
+            notes_dir: "~/Documents/Parabellum RGPD".into(),
+            max_messages_per_run: 50,
+        }
+    }
+}
+
+/// `name` or `name:tag` of an Ollama *library* model (no registry host, no user namespace).
+pub fn is_ollama_model(s: &str) -> bool {
+    let (name, tag) = s.split_once(':').unwrap_or((s, "latest"));
+    let ok = |p: &str, max: usize, extra: &[u8]| {
+        !p.is_empty()
+            && p.len() <= max
+            && p.as_bytes()[0].is_ascii_alphanumeric()
+            && p.bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || extra.contains(&b))
+    };
+    ok(name, 64, b"._-") && ok(&tag.to_ascii_lowercase(), 64, b"._-")
+}
+
+impl MailAgentConfig {
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        let invalid = |m: &str| Err(ConfigError::Invalid(m.into()));
+        if !is_ollama_model(&self.model) {
+            return invalid("mail_agent.model must be an Ollama library model (name or name:tag)");
+        }
+        if !(1..=240).contains(&self.idle_minutes) {
+            return invalid("mail_agent.idle_minutes must be 1..240");
+        }
+        if !(1..=168).contains(&self.interval_hours) {
+            return invalid("mail_agent.interval_hours must be 1..168");
+        }
+        if !(1..=500).contains(&self.max_messages_per_run) {
+            return invalid("mail_agent.max_messages_per_run must be 1..500");
+        }
+        let m = self.mailbox.trim();
+        if m.is_empty()
+            || m.len() > 200
+            || m.chars().any(|c| c.is_control() || c == '"' || c == '\\')
+        {
+            return invalid("mail_agent.mailbox is invalid");
+        }
+        if !self.notes_dir.is_empty() {
+            let n = &self.notes_dir;
+            if !n.starts_with("~/")
+                || n.len() > 300
+                || n.split('/').any(|c| c == "..")
+                || n.chars().any(char::is_control)
+            {
+                return invalid("mail_agent.notes_dir must be a folder of your home (~/…)");
+            }
+        }
+        if self.enabled {
+            if self.imap_host.trim().is_empty() || !is_host_or_ip(self.imap_host.trim()) {
+                return invalid("mail_agent.imap_host is required");
+            }
+            if self.imap_port == 0 {
+                return invalid("mail_agent.imap_port must be > 0");
+            }
+            if self.imap_username.trim().is_empty() {
+                return invalid("mail_agent.imap_username is required");
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Data-breach lookup service.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -956,6 +1068,36 @@ impl Default for TravelConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mail_agent_validation() {
+        assert!(
+            is_ollama_model("qwen3:4b")
+                && is_ollama_model("gemma3")
+                && is_ollama_model("llama3.2:3b-instruct-q4_K_M")
+        );
+        assert!(!is_ollama_model("evil/model:latest"), "no user namespace");
+        assert!(!is_ollama_model("registry.example.com/x"));
+        assert!(!is_ollama_model("qwen3:4b; rm -rf /"));
+        assert!(!is_ollama_model(""));
+        let mut c = Config::default();
+        assert!(
+            c.validate().is_ok(),
+            "disabled by default, nothing required"
+        );
+        c.mail_agent.enabled = true;
+        assert!(c.validate().is_err(), "IMAP account required once enabled");
+        c.mail_agent.imap_host = "imap.example.com".into();
+        c.mail_agent.imap_username = "rgpd@example.com".into();
+        assert!(c.validate().is_ok());
+        c.mail_agent.notes_dir = "/etc/notes".into();
+        assert!(c.validate().is_err());
+        c.mail_agent.notes_dir = "~/../root".into();
+        assert!(c.validate().is_err());
+        c.mail_agent.notes_dir = String::new();
+        c.mail_agent.mailbox = "INBOX\"\r\nA1 DELETE".into();
+        assert!(c.validate().is_err());
+    }
 
     #[test]
     fn intelligence_section_validates() {

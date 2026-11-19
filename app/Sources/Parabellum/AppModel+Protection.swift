@@ -199,7 +199,7 @@ extension AppModel {
             !onlyStale || (needsRefresh(key) && !isBusy(key))
         }
         let summary = due("privacy"), profile = due("privacy-profile"), brokers = due("brokers")
-        let breaches = due("breaches"), aliases = due("aliases")
+        let breaches = due("breaches"), aliases = due("aliases"), mailAgent = due("mail-agent")
         await concurrently(
             { if summary { await self.loadRemovalRequests() } },
             {
@@ -233,8 +233,34 @@ extension AppModel {
                         self.emailAliases = list
                     }
                 }
+            },
+            {
+                guard mailAgent, self.config?.mailAgent.enabled == true else { return }
+                await self.fetch("mail-agent", .mailAgentStatus, as: MailAgentStatus.self) { value in
+                    if self.mailAgent != value {
+                        self.mailAgent = value
+                    }
+                }
             }
         )
+    }
+
+    /// Ask the mail agent to run at the next idle moment.
+    func runMailAgentNow() async {
+        let value = await perform("mail-agent-run") {
+            try await self.call(.mailAgentRun, as: MailAgentStatus.self)
+        }
+        if let value {
+            mailAgent = value
+            banner = Banner(message: "L'agent lira la boîte RGPD au prochain moment d'inactivité du Mac.", isError: false)
+        }
+    }
+
+    /// Folder of the Obsidian notes (`~/…` expanded for the current user), if configured.
+    var mailAgentNotesFolder: URL? {
+        guard let dir = config?.mailAgent.notesDir, dir.hasPrefix("~/") else { return nil }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(String(dir.dropFirst(2)), isDirectory: true)
     }
 
     /// GDPR summary + requests (one key: they are shown together).

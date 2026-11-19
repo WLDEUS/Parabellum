@@ -390,6 +390,17 @@ repo = "SagerNet/sing-box"
 min_version = "1.12.0"
 max_major = 2
 
+[[source]]
+# Ollama: local model server of the mail agent (reads the brokers' answers while the Mac is idle). No
+# provenance attestation upstream: the download must match the GitHub release API digest and `ollama` must
+# carry Ollama's Developer ID (Team ID 3MU9H2V9Y9); parabellumd re-checks the real code signature.
+name = "ollama"
+kind = "components"
+fetcher = "ollama_pin"
+url = "https://api.github.com/repos/ollama/ollama/releases"
+license = "MIT (ollama/ollama)"
+min_version = "0.12.0"
+
 # ------------------------------------------------------------------------------------------------
 # Intelligence: phishing / malicious-domain model (ml-domains.yml, daily), downloaded from the
 # `ml-domain-latest` release into --ml-dir. Ships ml/domain_model.json + meta + the brand list it was

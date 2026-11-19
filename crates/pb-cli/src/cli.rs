@@ -540,6 +540,18 @@ pub enum PrivacyCmd {
         /// Identifiant de la demande.
         id: String,
     },
+    /// Agent local qui lit les réponses des organismes (boîte IMAP dédiée) quand le Mac est inactif.
+    Agent {
+        #[command(subcommand)]
+        action: Option<AgentCmd>,
+    },
+    /// Écrire les notes Obsidian de la campagne (tableau de bord, une note par organisme) dans
+    /// `mail_agent.notes_dir` ou `--dir`, avec tes droits (jamais en sudo).
+    Notes {
+        /// Dossier (sinon le réglage `mail_agent.notes_dir`).
+        #[arg(long)]
+        dir: Option<PathBuf>,
+    },
     /// Fuites de données connues pour vos adresses.
     Breaches {
         /// Vérifier maintenant.
@@ -567,6 +579,14 @@ pub enum PrivacyCmd {
         #[arg(long)]
         in_place: bool,
     },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AgentCmd {
+    /// État, dernière passe et réponses lues (défaut).
+    Status,
+    /// Passer au prochain moment d'inactivité sans attendre l'intervalle.
+    Run,
 }
 
 #[derive(Debug, Subcommand)]

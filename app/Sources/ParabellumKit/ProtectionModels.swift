@@ -340,13 +340,15 @@ public enum RemovalStatus: String, TolerantEnum {
     case draftReady = "draft_ready"
     case sent, reminded, escalated, completed, refused
     case needsForm = "needs_form"
+    /// The broker answered and asks for something only you can decide (mail agent).
+    case needsYou = "needs_you"
     case failed
     case unknown
     public static let fallback: RemovalStatus = .unknown
     public init(from decoder: Decoder) throws { self = try Self.decodeTolerantly(from: decoder) }
 
     /// Statuses the user can set by hand (`privacy_update_request`).
-    public static let settable: [RemovalStatus] = [.sent, .reminded, .completed, .refused, .needsForm, .queued]
+    public static let settable: [RemovalStatus] = [.sent, .reminded, .completed, .refused, .needsForm, .needsYou, .queued]
 
     /// Closed: nothing more to do.
     public var isClosed: Bool { self == .completed || self == .refused }
@@ -368,6 +370,10 @@ public struct RemovalRequest: Codable, Sendable, Hashable, Identifiable {
     public let draftPath: String?
     public let note: String?
     public let lastError: String?
+    /// Last answer read by the mail agent.
+    public let lastReplyAt: Int64?
+    public let lastReplyKind: ReplyKind?
+    public let lastReplySummary: String?
 
     public var dueDate: Date? { dueAt.map(Date.init(unixSeconds:)) }
     public var sentDate: Date? { sentAt.map(Date.init(unixSeconds:)) }
@@ -380,7 +386,7 @@ public struct RemovalRequest: Codable, Sendable, Hashable, Identifiable {
 
     /// An email can be produced for it (first letter or reminder).
     public var canDraft: Bool {
-        brokerEmail != nil && !status.isClosed && status != .needsForm && status != .unknown
+        brokerEmail != nil && !status.isClosed && status != .needsForm && status != .needsYou && status != .unknown
     }
 
     enum CodingKeys: String, CodingKey {
@@ -398,6 +404,106 @@ public struct RemovalRequest: Codable, Sendable, Hashable, Identifiable {
         case draftPath = "draft_path"
         case note
         case lastError = "last_error"
+        case lastReplyAt = "last_reply_at"
+        case lastReplyKind = "last_reply_kind"
+        case lastReplySummary = "last_reply_summary"
+    }
+}
+
+/// What a broker's answer says (mail agent).
+public enum ReplyKind: String, TolerantEnum {
+    case erased
+    case noData = "no_data"
+    case acknowledged
+    case identityRequested = "identity_requested"
+    case infoRequested = "info_requested"
+    case formRequired = "form_required"
+    case refused
+    case autoReply = "auto_reply"
+    case bounce
+    case other
+    case unknown
+    public static let fallback: ReplyKind = .unknown
+    public init(from decoder: Decoder) throws { self = try Self.decodeTolerantly(from: decoder) }
+
+    public var label: String {
+        switch self {
+        case .erased: return "Données effacées"
+        case .noData: return "Aucune donnée"
+        case .acknowledged: return "Accusé de réception"
+        case .identityRequested: return "Pièce d'identité demandée"
+        case .infoRequested: return "Informations demandées"
+        case .formRequired: return "Formulaire exigé"
+        case .refused: return "Refus"
+        case .autoReply: return "Réponse automatique"
+        case .bounce: return "Adresse rejetée"
+        case .other, .unknown: return "À lire"
+        }
+    }
+}
+
+public enum MailAgentState: String, TolerantEnum {
+    case disabled, waiting, running, error, unknown
+    public static let fallback: MailAgentState = .unknown
+    public init(from decoder: Decoder) throws { self = try Self.decodeTolerantly(from: decoder) }
+
+    public var label: String {
+        switch self {
+        case .disabled: return "Désactivé"
+        case .waiting: return "Attend un moment d'inactivité"
+        case .running: return "En cours"
+        case .error: return "Erreur à la dernière passe"
+        case .unknown: return "Inconnu"
+        }
+    }
+}
+
+/// One answer handled by the mail agent.
+public struct MailAgentEvent: Codable, Sendable, Hashable {
+    public let ts: Int64
+    public let requestId: String?
+    public let brokerName: String
+    public let kind: ReplyKind
+    public let classifiedBy: String
+    public let summary: String
+    public let newStatus: RemovalStatus?
+
+    enum CodingKeys: String, CodingKey {
+        case ts
+        case requestId = "request_id"
+        case brokerName = "broker_name"
+        case kind
+        case classifiedBy = "classified_by"
+        case summary
+        case newStatus = "new_status"
+    }
+}
+
+/// `mail_agent_status`.
+public struct MailAgentStatus: Codable, Sendable, Hashable {
+    public let state: MailAgentState
+    public let model: String
+    public let ollamaInstalled: Bool
+    public let ollamaVersion: String?
+    public let lastRunAt: Int64?
+    public let lastError: String?
+    public let lastFetched: Int
+    public let lastMatched: Int
+    public let lastUpdated: Int
+    public let needsYou: Int
+    public let events: [MailAgentEvent]
+
+    enum CodingKeys: String, CodingKey {
+        case state, model
+        case ollamaInstalled = "ollama_installed"
+        case ollamaVersion = "ollama_version"
+        case lastRunAt = "last_run_at"
+        case lastError = "last_error"
+        case lastFetched = "last_fetched"
+        case lastMatched = "last_matched"
+        case lastUpdated = "last_updated"
+        case needsYou = "needs_you"
+        case events
     }
 }
 

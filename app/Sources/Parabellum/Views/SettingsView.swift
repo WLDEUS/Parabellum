@@ -32,6 +32,7 @@ struct SettingsView: View {
                         guardSection
                         networkGuardSection
                         dataRemovalSection
+                        mailAgentSection
                         breachSection
                         aliasesSection
                     }
@@ -501,6 +502,33 @@ struct SettingsView: View {
         }
     }
 
+    private var mailAgentSection: some View {
+        Section {
+            Toggle("Lire les réponses des organismes avec un agent local", isOn: $draft.mailAgent.enabled)
+            Group {
+                TextField("Serveur IMAP de la boîte dédiée", text: $draft.mailAgent.imapHost, prompt: Text("imap.gmail.com"))
+                TextField("Port IMAP (TLS)", value: $draft.mailAgent.imapPort, format: .number)
+                TextField("Identifiant", text: $draft.mailAgent.imapUsername)
+                secretField("Mot de passe d'application IMAP", $draft.mailAgent.imapPassword)
+                TextField("Dossier", text: $draft.mailAgent.mailbox)
+                TextField("Modèle (Ollama)", text: $draft.mailAgent.model)
+                Stepper(value: $draft.mailAgent.idleMinutes, in: 1...240) {
+                    LabeledContent("Démarrer après une inactivité de", value: "\(draft.mailAgent.idleMinutes) min")
+                }
+                Toggle("Seulement sur secteur", isOn: $draft.mailAgent.requireAcPower)
+                Stepper(value: $draft.mailAgent.intervalHours, in: 1...168) {
+                    LabeledContent("Au plus une passe toutes les", value: "\(draft.mailAgent.intervalHours) h")
+                }
+                TextField("Notes Obsidian (dossier, vide = aucune)", text: $draft.mailAgent.notesDir)
+            }
+            .disabled(!draft.mailAgent.enabled)
+        } header: {
+            Text("Agent courrier (RGPD)")
+        } footer: {
+            Text("Un petit modèle local (Ollama, environ 2,5 Go) démarre seulement quand le Mac est inactif, lit les réponses de la boîte dédiée sans les marquer comme lues et met les demandes à jour. Il ne répond jamais à ta place : pièce d'identité, informations ou formulaire te sont signalés. Utilise une adresse réservée aux demandes RGPD.")
+        }
+    }
+
     private var breachSection: some View {
         Section {
             Toggle("Surveiller mes adresses dans les fuites de données", isOn: $draft.breach.enabled)
@@ -665,6 +693,9 @@ struct SettingsView: View {
             if draft.dataRemoval.smtpUsername == before.dataRemoval.smtpUsername {
                 draft.dataRemoval.smtpUsername = fresh.dataRemoval.smtpUsername
             }
+            if draft.mailAgent.imapUsername == before.mailAgent.imapUsername {
+                draft.mailAgent.imapUsername = fresh.mailAgent.imapUsername
+            }
         }
         if draft.updates.githubToken == DaemonProtocol.redactedSecret {
             draft.updates.githubToken = fresh.updates.githubToken
@@ -674,6 +705,9 @@ struct SettingsView: View {
         }
         if draft.dataRemoval.smtpPassword == DaemonProtocol.redactedSecret {
             draft.dataRemoval.smtpPassword = fresh.dataRemoval.smtpPassword
+        }
+        if draft.mailAgent.imapPassword == DaemonProtocol.redactedSecret {
+            draft.mailAgent.imapPassword = fresh.mailAgent.imapPassword
         }
         if draft.breach.hibpApiKey == DaemonProtocol.redactedSecret {
             draft.breach.hibpApiKey = fresh.breach.hibpApiKey
