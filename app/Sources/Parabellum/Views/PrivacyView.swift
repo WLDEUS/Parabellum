@@ -1,3 +1,4 @@
+import AppKit
 import ParabellumKit
 import SwiftUI
 
@@ -77,6 +78,9 @@ private struct RemovalTab: View {
             }
             IdentityCard()
             CampaignCard()
+            if model.config?.mailAgent.enabled == true {
+                MailAgentCard()
+            }
             RequestsCard()
         }
     }
@@ -322,7 +326,7 @@ private struct RequestsCard: View {
         }
     }
 
-    private static let todoStatuses: [RemovalStatus] = [.queued, .draftReady, .needsForm, .failed, .escalated]
+    private static let todoStatuses: [RemovalStatus] = [.queued, .draftReady, .needsForm, .needsYou, .failed, .escalated]
 
     @EnvironmentObject private var model: AppModel
     @State private var filter: Filter = .todo
@@ -383,6 +387,59 @@ private struct ComplaintItem: Identifiable {
     let draft: ComplaintDraft
 }
 
+private struct MailAgentCard: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        Card(title: "Agent courrier", symbol: "envelope.badge") {
+            VStack(alignment: .leading, spacing: 8) {
+                if let s = model.mailAgent {
+                    HStack(spacing: 6) {
+                        Pill(text: s.state.label, color: s.state == .error ? .red : (s.state == .running ? .blue : .secondary))
+                        Text("\(s.model) · Ollama \(s.ollamaVersion ?? (s.ollamaInstalled ? "installé" : "installé au premier passage"))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let last = s.lastRunAt {
+                        Text("Dernière passe \(PBFormat.dateTime(unixSeconds: last)) : \(s.lastFetched) message(s) lu(s), \(s.lastMatched) rattaché(s), \(s.lastUpdated) demande(s) mise(s) à jour.")
+                            .font(.caption)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let error = s.lastError {
+                        Text(error).font(.caption).foregroundStyle(.red)
+                    }
+                    if s.needsYou > 0 {
+                        Text("\(s.needsYou) organisme(s) attendent ta réponse (filtre « À faire »).")
+                            .font(.callout)
+                            .foregroundStyle(.orange)
+                    }
+                    ForEach(Array(s.events.prefix(5).enumerated()), id: \.offset) { _, e in
+                        Text("\(PBFormat.dateTime(unixSeconds: e.ts)) · \(e.brokerName) — \(e.kind.label) : \(e.summary)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                } else {
+                    Text("Lit les réponses de la boîte dédiée quand le Mac est inactif, avec un modèle local. Ne répond jamais à ta place.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                HStack {
+                    Button("Lire la boîte au prochain moment d'inactivité") {
+                        Task { await model.runMailAgentNow() }
+                    }
+                    .disabled(model.isBusy("mail-agent-run"))
+                    if let folder = model.mailAgentNotesFolder {
+                        Button("Ouvrir les notes") {
+                            NSWorkspace.shared.open(folder)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 private struct RequestRow: View {
     @EnvironmentObject private var model: AppModel
     let request: RemovalRequest
@@ -403,6 +460,12 @@ private struct RequestRow: View {
                     .foregroundStyle(.secondary)
                 if let error = request.lastError {
                     Text(error).font(.caption).foregroundStyle(.red)
+                }
+                if let kind = request.lastReplyKind {
+                    Text("Réponse : \(kind.label)\(request.lastReplySummary.map { " — \($0)" } ?? "")")
+                        .font(.caption)
+                        .foregroundStyle(request.status == .needsYou ? Color.orange : Color.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 if let note = request.note, !note.isEmpty {
                     Text(note).font(.caption).foregroundStyle(.secondary)

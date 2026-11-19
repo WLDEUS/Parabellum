@@ -208,6 +208,8 @@ pub async fn start(opts: DaemonOptions) -> anyhow::Result<Daemon> {
         // ----- Local network & permissions audit -----
         tasks.push(tokio::spawn(crate::lan::run_loop(ctx.clone())));
         tasks.push(tokio::spawn(crate::permissions::periodic_loop(ctx.clone())));
+        // GDPR mail agent (idle-time, local model).
+        tasks.push(tokio::spawn(crate::mailagent::run_loop(ctx.clone())));
         // Activity report: VPN uptime / leak test sampling, monthly announcement.
         tasks.push(tokio::spawn(crate::report::monthly_loop(ctx.clone())));
     }

@@ -82,6 +82,20 @@
     "enabled": true,
     "scan_interval_minutes": 15
   },
+  "mail_agent": {
+    "enabled": false,
+    "idle_minutes": 10,
+    "imap_host": "",
+    "imap_password": null,
+    "imap_port": 993,
+    "imap_username": "",
+    "interval_hours": 6,
+    "mailbox": "INBOX",
+    "max_messages_per_run": 50,
+    "model": "qwen3:4b",
+    "notes_dir": "~/Documents/Parabellum RGPD",
+    "require_ac_power": true
+  },
   "ml": {
     "enabled": true,
     "only_untrusted": true,

@@ -32,6 +32,9 @@ pub use adblock::{
     adblock_extension_states, adblock_extension_states_for, CHROME_UBOL_EXTENSION_ID,
     CHROME_UBOL_STORE_URL, SAFARI_UBOL_STORE_URL,
 };
+pub use components::ollama::{
+    install_ollama, ollama_binary, ollama_installed_version, read_ollama_pin, OLLAMA_TEAM_ID,
+};
 pub use components::{
     dnscrypt_proxy_binary, read_db_pin, singbox_binary, ComponentManager, BLOCKBLOCK_DAEMON_APP,
     CLAMAV_PKG_CLAMSCAN, CLAMAV_TEAM_ID, COMPONENT_NAMES, DNSCRYPT_MINISIGN_KEY, LULU_APP,

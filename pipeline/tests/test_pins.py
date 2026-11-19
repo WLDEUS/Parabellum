@@ -199,3 +199,75 @@ license = "GPL-3.0"
     # Offline: network-only sources skipped entirely.
     assert run("offline", "--offline") == 0
     assert not (tmp_path / "offline" / "stage" / "privacy").exists()
+
+
+# --- Ollama ---------------------------------------------------------------------------------------
+
+OAPI = pins.api_url("ollama/ollama")
+ODL = "https://github.com/ollama/ollama/releases/download/"
+FAT = bytes([0xCA, 0xFE, 0xBA, 0xBE]) + b"\x00" * 32 + b"Developer ID Application: Infra Technologies, Inc (3MU9H2V9Y9)"
+
+
+def otar(files: dict[str, bytes], links: dict[str, str] | None = None) -> bytes:
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        for name, data in files.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tf.addfile(info, io.BytesIO(data))
+        for name, target in (links or {}).items():
+            info = tarfile.TarInfo(name)
+            info.type = tarfile.SYMTYPE
+            info.linkname = target
+            tf.addfile(info)
+    return buf.getvalue()
+
+
+def oroutes(data: bytes, digest: str | None = None, tag: str = "v0.40.11") -> dict[str, bytes]:
+    d = digest or hashlib.sha256(data).hexdigest()
+    rel = {
+        "tag_name": tag,
+        "assets": [
+            {"name": "Ollama.dmg", "browser_download_url": f"{ODL}{tag}/Ollama.dmg", "digest": "sha256:" + "1" * 64},
+            {
+                "name": "ollama-darwin.tgz",
+                "browser_download_url": f"{ODL}{tag}/ollama-darwin.tgz",
+                "digest": f"sha256:{d}",
+            },
+        ],
+    }
+    pre = {"tag_name": "v0.41.0-rc1", "prerelease": True, "assets": rel["assets"]}
+    return {OAPI: json.dumps([pre, rel]).encode(), f"{ODL}{tag}/ollama-darwin.tgz": data}
+
+
+def test_ollama_pin_ok() -> None:
+    data = otar({"ollama": FAT, "libggml-base.dylib": b"x"}, {"libggml.dylib": "libggml-base.dylib"})
+    out, version = pins.fetch_ollama_pin(FakeHttp(oroutes(data)))
+    pin = json.loads(out)["pins"]["ollama"]
+    assert version == "0.40.11"
+    assert pin["url"] == f"{ODL}v0.40.11/ollama-darwin.tgz" and pin["binary"] == "ollama"
+    assert pin["sha256"] == hashlib.sha256(data).hexdigest()
+    assert pin["verified_by"].endswith("3MU9H2V9Y9")
+
+
+@pytest.mark.parametrize(
+    "data,digest,msg",
+    [
+        (otar({"ollama": FAT}), "0" * 64, "API digest"),
+        (otar({"ollama": FAT.replace(b"3MU9H2V9Y9", b"AAAAAAAAAA")}), None, "Team ID"),
+        (otar({"ollama": b"#!/bin/sh\n"}), None, "Mach-O"),
+        (otar({"x": FAT}), None, "missing"),
+        (otar({"ollama": FAT, "../evil": b"x"}), None, "unsafe path"),
+        (otar({"ollama": FAT}, {"lib.dylib": "/usr/lib/libz.dylib"}), None, "unsafe link"),
+    ],
+)
+def test_ollama_pin_refusals(data, digest, msg) -> None:
+    with pytest.raises(FetchError, match=msg):
+        pins.fetch_ollama_pin(FakeHttp(oroutes(data, digest)))
+
+
+def test_ollama_release_needs_a_digest() -> None:
+    rels = json.loads(oroutes(otar({"ollama": FAT}))[OAPI])
+    del rels[1]["assets"][1]["digest"]
+    with pytest.raises(FetchError):
+        pins.select_ollama(rels)

@@ -24,6 +24,7 @@
 //! //      draft / complaint / breaches / check_breaches / aliases / create_alias
 //! ```
 
+pub mod agent;
 pub mod aliases;
 pub mod breach;
 pub mod brokers;
@@ -40,8 +41,8 @@ use letters::Lang;
 use mail::{LettreSender, MailSender, OutgoingMail, SmtpSettings};
 use pb_core::config::{is_email, Config, SendMode};
 use pb_core::model::{
-    BreachFinding, BrokerInfo, ComplaintDraft, EmailAlias, IdentityProfile, MailDraft,
-    RemovalRequest, RemovalStatus, RemovalSummary, Severity,
+    BreachFinding, BrokerInfo, ComplaintDraft, EmailAlias, IdentityProfile, MailAgentStatus,
+    MailDraft, RemovalRequest, RemovalStatus, RemovalSummary, ReplyKind, Severity,
 };
 use pb_core::paths::Paths;
 use requests::{Outbox, RequestsFile, StoredRequest};
@@ -63,6 +64,20 @@ pub enum PrivacyError {
     NotFound(String),
     #[error("{0}")]
     Failed(String),
+}
+
+/// Outcome of one mail-agent run.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AgentRunReport {
+    pub fetched: u32,
+    pub matched: u32,
+    pub updated: u32,
+    pub needs_you: Vec<String>,
+    pub refused: Vec<String>,
+    pub bounced: Vec<String>,
+    pub completed: Vec<String>,
+    /// The model failed (the remaining messages are retried next run).
+    pub error: Option<String>,
 }
 
 /// Alert raised by the privacy service (kind `privacy`), deduplicated by the daemon on `key` for 24 h.
@@ -280,6 +295,7 @@ const REQUESTS_FILE: &str = "requests.json";
 const BREACHES_FILE: &str = "breaches.json";
 const ALIASES_FILE: &str = "aliases.json";
 const OUTBOX_FILE: &str = "outbox.json";
+const AGENT_FILE: &str = "agent.json";
 
 #[derive(Debug, Default)]
 struct State {
@@ -288,6 +304,7 @@ struct State {
     breaches: BreachesFile,
     aliases: AliasesFile,
     outbox: Outbox,
+    agent: agent::AgentFile,
 }
 
 /// Local calendar day `YYYY-MM-DD` of `ts`.
@@ -373,6 +390,7 @@ impl PrivacyService {
             breaches: store::load_json(&dir.join(BREACHES_FILE)),
             aliases: store::load_json(&dir.join(ALIASES_FILE)),
             outbox: store::load_json(&dir.join(OUTBOX_FILE)),
+            agent: store::load_json(&dir.join(AGENT_FILE)),
         };
         Self {
             paths,
@@ -602,7 +620,9 @@ e-mail dans Parabellum (Vie privée)."
                                 .map(|r| (r, LetterKind::Initial))
                         })
                         .map(|(r, kind)| {
-                            let mail = compose(&st.profile, r, kind, &d.language);
+                            let mut mail = compose(&st.profile, r, kind, &d.language);
+                            mail.message_id =
+                                Some(agent::message_id(&r.req.id, now, &d.from_address));
                             (r.req.id.clone(), kind, mail, st.profile.full_name.clone())
                         })
                 }
@@ -670,6 +690,326 @@ de passe d'application) dans les réglages ; nouvel essai demain."
             if *shutdown.borrow() {
                 return;
             }
+        }
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Mail agent
+    // -----------------------------------------------------------------------------------------
+
+    /// Fill the run counters, the events and the "waiting for you" count of `base` (state, model and
+    /// Ollama fields come from the daemon).
+    pub async fn agent_status(&self, mut base: MailAgentStatus) -> MailAgentStatus {
+        let st = self.state.lock().await;
+        let a = &st.agent;
+        base.last_run_at = a.last_run_at;
+        base.last_error = a.last_error.clone();
+        base.last_fetched = a.last_fetched;
+        base.last_matched = a.last_matched;
+        base.last_updated = a.last_updated;
+        base.events = a.events.clone();
+        base.needs_you = st
+            .requests
+            .requests
+            .iter()
+            .filter(|r| {
+                matches!(
+                    r.req.status,
+                    RemovalStatus::NeedsYou | RemovalStatus::NeedsForm
+                )
+            })
+            .count() as u32;
+        base
+    }
+
+    /// Record a failed run (IMAP or model unavailable) without touching the cursor.
+    pub async fn agent_error(&self, error: &str) {
+        let mut st = self.state.lock().await;
+        st.agent.last_run_at = Some(pb_core::now_ts());
+        st.agent.last_error = Some(single_line(error, 300));
+        self.save(AGENT_FILE, &st.agent);
+    }
+
+    /// One full run: fetch the new messages of the dedicated mailbox, then [`Self::agent_process`].
+    pub async fn agent_run(
+        &self,
+        cfg: &Config,
+        classifier: &dyn agent::classify::Classifier,
+        cancel: &std::sync::atomic::AtomicBool,
+    ) -> Result<AgentRunReport, PrivacyError> {
+        let a = &cfg.mail_agent;
+        let settings = agent::imap::ImapSettings::from_config(a).map_err(PrivacyError::Invalid)?;
+        let key = format!(
+            "{}|{}|{}",
+            settings.host, settings.username, settings.mailbox
+        );
+        let (validity, last_uid) = {
+            let st = self.state.lock().await;
+            if st.agent.mailbox_key == key {
+                (st.agent.uid_validity, st.agent.last_uid)
+            } else {
+                (None, 0)
+            }
+        };
+        let now = pb_core::now_ts();
+        let fetched = match agent::imap::fetch_new(
+            &settings,
+            validity,
+            last_uid,
+            a.max_messages_per_run as usize,
+            now,
+        )
+        .await
+        {
+            Ok(f) => f,
+            Err(e) => {
+                self.agent_error(&e).await;
+                return Err(PrivacyError::Unavailable(e));
+            }
+        };
+        let items: Vec<(u32, Option<agent::parse::ParsedMail>)> = fetched
+            .messages
+            .iter()
+            .map(|(uid, raw)| (*uid, agent::parse::parse(*uid, raw)))
+            .collect();
+        let report = self
+            .agent_process(&key, fetched.uid_validity, items, classifier, cancel, now)
+            .await;
+        Ok(report)
+    }
+
+    /// Match, label and apply already fetched messages (`(uid, parsed)`, ascending uid). The state lock is
+    /// not held while the model works. Stops at the first model failure (those messages are retried next
+    /// run; after 3 failures on the same message it is left for you as `needs_you`).
+    pub async fn agent_process(
+        &self,
+        mailbox_key: &str,
+        uid_validity: u32,
+        items: Vec<(u32, Option<agent::parse::ParsedMail>)>,
+        classifier: &dyn agent::classify::Classifier,
+        cancel: &std::sync::atomic::AtomicBool,
+        now: i64,
+    ) -> AgentRunReport {
+        use agent::classify::{by_headers, ClassifyInput};
+        use std::sync::atomic::Ordering;
+        struct Job {
+            uid: u32,
+            mail: agent::parse::ParsedMail,
+            request_id: String,
+            broker_name: String,
+            broker_domain: String,
+        }
+        let fetched = items.len() as u32;
+        // Phase 1: match (under the lock).
+        let (jobs, mut done_uids, stuck) = {
+            let st = self.state.lock().await;
+            let mut jobs = Vec::new();
+            let mut done = Vec::new(); // uids needing no model call (unmatched, seen, spoofed, unparsable)
+            for (uid, mail) in items {
+                let Some(mail) = mail else {
+                    done.push(uid);
+                    continue;
+                };
+                let id = mail.message_id.clone().unwrap_or_default();
+                if mail.auth_failed || st.agent.was_seen(&id) {
+                    done.push(uid);
+                    continue;
+                }
+                match agent::match_request(&mail, &st.requests.requests) {
+                    Some((i, _)) => {
+                        let r = &st.requests.requests[i];
+                        jobs.push(Job {
+                            uid,
+                            request_id: r.req.id.clone(),
+                            broker_name: r.req.broker_name.clone(),
+                            broker_domain: r
+                                .req
+                                .broker_email
+                                .as_deref()
+                                .and_then(|e| e.rsplit_once('@'))
+                                .map(|(_, d)| d.to_ascii_lowercase())
+                                .unwrap_or_default(),
+                            mail,
+                        });
+                    }
+                    None => done.push(uid),
+                }
+            }
+            (jobs, done, (st.agent.stuck_uid, st.agent.stuck_count))
+        };
+        // Phase 2: label (no lock). `results`: (job index, kind, by, summary, form url).
+        let mut results = Vec::new();
+        let mut failure: Option<(u32, String)> = None;
+        for (i, j) in jobs.iter().enumerate() {
+            if cancel.load(Ordering::SeqCst) {
+                break;
+            }
+            if let Some(kind) = by_headers(&j.mail) {
+                results.push((
+                    i,
+                    kind,
+                    "règles".to_string(),
+                    agent::header_summary(kind).to_string(),
+                    None,
+                ));
+                continue;
+            }
+            let input = ClassifyInput {
+                broker_name: &j.broker_name,
+                broker_domain: &j.broker_domain,
+                subject: &j.mail.subject,
+                body: &j.mail.body,
+            };
+            match classifier.classify(&input).await {
+                Ok(c) => results.push((i, c.kind, classifier.name(), c.summary, c.form_url)),
+                Err(e) => {
+                    let count = if stuck.0 == Some(j.uid) {
+                        stuck.1 + 1
+                    } else {
+                        1
+                    };
+                    if count >= 3 {
+                        results.push((
+                            i,
+                            ReplyKind::Other,
+                            "règles".to_string(),
+                            "Réponse que l'agent n'a pas pu analyser : à lire.".to_string(),
+                            None,
+                        ));
+                        continue;
+                    }
+                    failure = Some((j.uid, e));
+                    break;
+                }
+            }
+        }
+        // Phase 3: apply (under the lock).
+        let mut st = self.state.lock().await;
+        let mut report = AgentRunReport {
+            fetched,
+            matched: jobs.len() as u32,
+            ..Default::default()
+        };
+        for (i, kind, by, summary, form_url) in results {
+            let j = &jobs[i];
+            done_uids.push(j.uid);
+            let Some(r) = st
+                .requests
+                .requests
+                .iter_mut()
+                .find(|r| r.req.id == j.request_id)
+            else {
+                continue;
+            };
+            let new = agent::apply(r, kind, &summary, form_url, now);
+            let ev = agent::event(r, kind, &by, &summary, new, now);
+            if let Some(s) = new {
+                report.updated += 1;
+                match s {
+                    RemovalStatus::NeedsYou | RemovalStatus::NeedsForm => {
+                        report.needs_you.push(r.req.broker_name.clone())
+                    }
+                    RemovalStatus::Refused => report.refused.push(r.req.broker_name.clone()),
+                    RemovalStatus::Failed => report.bounced.push(r.req.broker_name.clone()),
+                    RemovalStatus::Completed => report.completed.push(r.req.broker_name.clone()),
+                    _ => {}
+                }
+            }
+            st.agent.record(ev);
+            if let Some(id) = &j.mail.message_id {
+                st.agent.mark_seen(id);
+            }
+        }
+        // Cursor: highest uid such that every uid up to it is handled.
+        let mut all: Vec<u32> = jobs
+            .iter()
+            .map(|j| j.uid)
+            .chain(done_uids.iter().copied())
+            .collect();
+        all.sort_unstable();
+        all.dedup();
+        done_uids.sort_unstable();
+        let mut cursor =
+            if st.agent.mailbox_key == mailbox_key && st.agent.uid_validity == Some(uid_validity) {
+                st.agent.last_uid
+            } else {
+                0
+            };
+        for u in all {
+            if done_uids.binary_search(&u).is_ok() {
+                cursor = cursor.max(u);
+            } else {
+                break;
+            }
+        }
+        st.agent.mailbox_key = mailbox_key.to_string();
+        st.agent.uid_validity = Some(uid_validity);
+        st.agent.last_uid = cursor;
+        st.agent.last_run_at = Some(now);
+        st.agent.last_fetched = report.fetched;
+        st.agent.last_matched = report.matched;
+        st.agent.last_updated = report.updated;
+        match &failure {
+            Some((uid, e)) => {
+                if st.agent.stuck_uid == Some(*uid) {
+                    st.agent.stuck_count += 1;
+                } else {
+                    st.agent.stuck_uid = Some(*uid);
+                    st.agent.stuck_count = 1;
+                }
+                st.agent.last_error = Some(single_line(e, 300));
+                report.error = Some(e.clone());
+            }
+            None => {
+                st.agent.stuck_uid = None;
+                st.agent.stuck_count = 0;
+                st.agent.last_error = None;
+            }
+        }
+        if report.updated > 0 {
+            self.save(REQUESTS_FILE, &st.requests);
+        }
+        self.save(AGENT_FILE, &st.agent);
+        drop(st);
+        self.agent_alerts(&report);
+        report
+    }
+
+    fn agent_alerts(&self, r: &AgentRunReport) {
+        if !r.needs_you.is_empty() {
+            self.hooks.alert(PrivacyAlert {
+                severity: Severity::Medium,
+                title: format!("RGPD : {} organisme(s) attendent ta réponse", r.needs_you.len()),
+                message: format!(
+                    "{} demande(nt) une pièce d'identité, une information ou un formulaire. L'agent ne répond \
+jamais à ta place : lis leur message dans la boîte RGPD, réponds-leur, puis change le statut dans Parabellum.",
+                    list_names(&r.needs_you)
+                ),
+                key: format!("privacy:agent:needs-you:{}", short_hash(&r.needs_you)),
+            });
+        }
+        if !r.refused.is_empty() {
+            self.hooks.alert(PrivacyAlert {
+                severity: Severity::Medium,
+                title: format!("RGPD : {} refus", r.refused.len()),
+                message: format!(
+                    "{} refuse(nt) l'effacement. Tu peux saisir la CNIL : Parabellum prépare le texte de la \
+réclamation (Vie privée › Demandes).",
+                    list_names(&r.refused)
+                ),
+                key: format!("privacy:agent:refused:{}", short_hash(&r.refused)),
+            });
+        }
+        if !r.bounced.is_empty() {
+            self.hooks.alert(PrivacyAlert {
+                severity: Severity::Low,
+                title: format!("RGPD : {} adresse(s) rejetée(s)", r.bounced.len()),
+                message: format!(
+                    "Le message n'a pas pu être remis à : {}. Passe par leur formulaire ou une autre adresse.",
+                    list_names(&r.bounced)
+                ),
+                key: format!("privacy:agent:bounced:{}", short_hash(&r.bounced)),
+            });
         }
     }
 
@@ -844,6 +1184,13 @@ de passe d'application) dans les réglages ; nouvel essai demain."
             }
             RemovalStatus::Completed | RemovalStatus::Refused => {
                 return Err(PrivacyError::Invalid("demande close".into()))
+            }
+            RemovalStatus::NeedsYou => {
+                return Err(PrivacyError::Invalid(
+                    "l'organisme a répondu et attend une réponse de ta part : lis son message, réponds-lui \
+toi-même, puis change le statut de la demande"
+                        .into(),
+                ))
             }
         };
         let to = r.req.broker_email.clone().ok_or_else(|| {
@@ -1070,10 +1417,17 @@ fn compose(
             lang,
         ),
     };
+    // The reference lets the mail agent find the request this broker's answer belongs to.
+    let reference = agent::reference(&r.req.id);
+    let subject = match lang {
+        Lang::Fr => format!("{} [Réf. {reference}]", l.subject),
+        Lang::En => format!("{} [Ref. {reference}]", l.subject),
+    };
     OutgoingMail {
         to: r.req.broker_email.clone().unwrap_or_default(),
-        subject: l.subject,
+        subject,
         body: l.body,
+        message_id: None,
     }
 }
 

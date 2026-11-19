@@ -596,6 +596,9 @@ mod tests {
             draft_path: None,
             note: None,
             last_error: None,
+            last_reply_at: None,
+            last_reply_kind: None,
+            last_reply_summary: None,
         };
         let (auth, url, text) = complaint(&me(), &req, Some("https://acme.com"), Lang::Fr);
         assert_eq!(auth, "CNIL");

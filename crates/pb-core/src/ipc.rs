@@ -245,6 +245,12 @@ pub enum Request {
     /// Complaint text for the supervisory authority (CNIL) about an unanswered request. Contains your
     /// identity: admin. -> [`ComplaintDraft`]
     PrivacyComplaint { request_id: String },
+    /// Mail agent state and the answers it handled (summaries of your mail: installed app / CLI only).
+    /// -> [`MailAgentStatus`]
+    MailAgentStatus,
+    /// Run the mail agent now (still only while the Mac is idle and, if configured, on mains power: the
+    /// run starts at the next idle moment). -> [`MailAgentStatus`]
+    MailAgentRun,
     /// -> `Vec<BreachFinding>`
     BreachList,
     /// Check `breach.emails` now. -> `Vec<BreachFinding>`

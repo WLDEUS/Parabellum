@@ -128,6 +128,9 @@ public enum Request: Sendable, Equatable {
     case privacyDraft(requestId: String)
     /// Admin. → `ComplaintDraft`
     case privacyComplaint(requestId: String)
+    /// Mail agent (reads the brokers' answers while the Mac is idle). -> `MailAgentStatus`
+    case mailAgentStatus
+    case mailAgentRun
     /// → `[BreachFinding]`
     case breachList
     /// → `[BreachFinding]`
@@ -234,6 +237,8 @@ public enum Request: Sendable, Equatable {
         case .privacyUpdateRequest: return "privacy_update_request"
         case .privacyDraft: return "privacy_draft"
         case .privacyComplaint: return "privacy_complaint"
+        case .mailAgentStatus: return "mail_agent_status"
+        case .mailAgentRun: return "mail_agent_run"
         case .breachList: return "breach_list"
         case .breachCheckNow: return "breach_check_now"
         case .aliasList: return "alias_list"
@@ -338,7 +343,7 @@ public enum Request: Sendable, Equatable {
             break
         case .vpnStatus, .vpnConnect, .vpnDisconnect, .vpnRemoveProfile, .vpnLeakTest, .vpnListServices,
              .listNetworks, .guardStatus, .listSnapshots, .createSnapshot, .privacyListBrokers, .privacyListRequests,
-             .privacySummary, .breachList, .breachCheckNow, .aliasList:
+             .privacySummary, .breachList, .breachCheckNow, .aliasList, .mailAgentStatus, .mailAgentRun:
             break
         // Travel mode
         case .travelStatus, .travelEnable, .travelDisable:

@@ -500,3 +500,178 @@ async fn incomplete_smtp_account_is_reported() {
         .iter()
         .any(|a| a.key.starts_with("privacy:smtp-config:")));
 }
+
+// ----- Mail agent -----
+
+struct FakeModel {
+    calls: Mutex<Vec<String>>,
+    fail: std::sync::atomic::AtomicBool,
+}
+
+#[async_trait]
+impl agent::classify::Classifier for FakeModel {
+    fn name(&self) -> String {
+        "fake:1b".into()
+    }
+    async fn classify(
+        &self,
+        input: &agent::classify::ClassifyInput<'_>,
+    ) -> Result<agent::classify::Classification, String> {
+        self.calls
+            .lock()
+            .unwrap()
+            .push(input.broker_name.to_string());
+        if self.fail.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err("model down".into());
+        }
+        // A real model labels; here the body names the label (the code must not trust it beyond that).
+        let kind = if input.body.contains("supprim") {
+            ReplyKind::Erased
+        } else if input.body.contains("identit") {
+            ReplyKind::IdentityRequested
+        } else {
+            ReplyKind::Acknowledged
+        };
+        Ok(agent::classify::Classification {
+            kind,
+            summary: "résumé".into(),
+            form_url: None,
+        })
+    }
+}
+
+fn raw(from: &str, subject: &str, extra: &str, body: &str) -> Vec<u8> {
+    format!("From: {from}\r\nSubject: {subject}\r\nMessage-ID: <{}@x>\r\n{extra}Content-Type: text/plain; charset=utf-8\r\n\r\n{body}\r\n", uuid::Uuid::new_v4())
+        .into_bytes()
+}
+
+#[tokio::test]
+async fn mail_agent_reads_answers_and_never_acts_for_you() {
+    let e = env();
+    let c = cfg(SendMode::Smtp);
+    e.svc.set_profile(me()).await.unwrap();
+    e.svc.start_removal(&c, None).await.unwrap();
+    let (_tx, mut rx) = watch::channel(false);
+    e.svc.tick(&c, pb_core::now_ts(), &mut rx).await;
+    e.svc.state.lock().await.outbox.last_sent_at -= 60;
+    e.svc.tick(&c, pb_core::now_ts(), &mut rx).await;
+    let sent = e.smtp.sent.lock().unwrap().clone();
+    let sls = sent.iter().find(|m| m.to == "dpo@sls-data.fr").unwrap();
+    assert!(sls.subject.contains("[Réf. PB-"), "{}", sls.subject);
+    let msgid = sls.message_id.clone().unwrap();
+    assert!(msgid.starts_with("<pb.") && msgid.ends_with("@example.fr>"));
+
+    let model = FakeModel {
+        calls: Mutex::new(vec![]),
+        fail: Default::default(),
+    };
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    let items = [
+        // Answer to our Message-ID from a ticketing domain: erased.
+        (
+            10,
+            raw(
+                "support@tickets.example",
+                "Re: votre demande",
+                &format!("In-Reply-To: {msgid}\r\n"),
+                "Vos données ont été supprimées.",
+            ),
+        ),
+        // Matched by domain: asks for an identity document.
+        (
+            11,
+            raw(
+                "privacy@criteo.com",
+                "Your request",
+                "",
+                "Please send a copy of your identity document.",
+            ),
+        ),
+        // Spoofed (DKIM/DMARC failed): ignored, never shown to the model.
+        (
+            12,
+            raw(
+                "dpo@criteo.com",
+                "done",
+                "Authentication-Results: mx; dkim=fail; dmarc=fail\r\n",
+                "supprimées",
+            ),
+        ),
+        // Unrelated newsletter: never shown to the model.
+        (13, raw("news@shop.example", "Promo", "", "-50 %")),
+        // Bounce: decided by the headers.
+        (
+            14,
+            raw(
+                "MAILER-DAEMON@mx.example.fr",
+                "Undelivered Mail Returned to Sender",
+                "In-Reply-To: <pb.00000000-0000-4000-8000-000000000000.1@x>\r\n",
+                "550",
+            ),
+        ),
+    ];
+    let parsed = items
+        .iter()
+        .map(|(u, r)| (*u, agent::parse::parse(*u, r)))
+        .collect();
+    let rep = e
+        .svc
+        .agent_process(
+            "imap|rgpd|INBOX",
+            77,
+            parsed,
+            &model,
+            &cancel,
+            1_800_000_000,
+        )
+        .await;
+    assert_eq!(rep.fetched, 5);
+    assert_eq!(
+        rep.matched, 2,
+        "spoofed, newsletter and the unknown bounce are not matched"
+    );
+    assert_eq!(model.calls.lock().unwrap().len(), 2);
+    assert_eq!(rep.completed, vec!["Org sls".to_string()]);
+    assert_eq!(rep.needs_you, vec!["Org criteo".to_string()]);
+    let reqs = e.svc.requests().await;
+    let st = |id: &str| reqs.iter().find(|r| r.broker_id == id).unwrap().clone();
+    assert_eq!(st("sls").status, RemovalStatus::Completed);
+    assert_eq!(st("criteo").status, RemovalStatus::NeedsYou);
+    assert_eq!(
+        st("criteo").last_reply_kind,
+        Some(ReplyKind::IdentityRequested)
+    );
+    // Nothing was sent on your behalf.
+    assert_eq!(e.smtp.sent.lock().unwrap().len(), 2);
+    assert!(e
+        .hooks
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|a| a.title.contains("attendent ta réponse")));
+    let status = e.svc.agent_status(MailAgentStatus::default()).await;
+    assert_eq!(status.last_matched, 2);
+    assert_eq!(status.needs_you, 2, "criteo + the form-only broker");
+    assert_eq!(status.events.len(), 2);
+    assert_eq!(e.svc.state.lock().await.agent.last_uid, 14);
+    // A NeedsYou request has no letter to hand out.
+    let criteo = st("criteo").id;
+    assert!(e.svc.draft(&c, &criteo).await.is_err());
+
+    // Re-delivered message: not applied twice. Model down: the cursor stays before the failed message.
+    model.fail.store(true, std::sync::atomic::Ordering::SeqCst);
+    let again = vec![
+        (15, agent::parse::parse(15, &items[0].1)),
+        (
+            16,
+            agent::parse::parse(16, &raw("privacy@criteo.com", "Re", "", "x")),
+        ),
+    ];
+    let rep = e
+        .svc
+        .agent_process("imap|rgpd|INBOX", 77, again, &model, &cancel, 1_800_000_100)
+        .await;
+    assert!(rep.error.is_some());
+    assert_eq!(e.svc.state.lock().await.agent.last_uid, 15);
+}

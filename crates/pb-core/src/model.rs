@@ -998,6 +998,9 @@ pub enum RemovalStatus {
     Refused,
     /// The broker only accepts its web form: do it by hand, then mark it completed.
     NeedsForm,
+    /// The broker answered and asks for something only you can decide (identity document, more data,
+    /// an unclear answer): read it, then set the status by hand. Never answered automatically.
+    NeedsYou,
     /// Sending failed (see `last_error`).
     Failed,
 }
@@ -1030,6 +1033,91 @@ pub struct RemovalRequest {
     pub note: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_error: Option<String>,
+    /// Last answer read by the mail agent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_reply_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_reply_kind: Option<ReplyKind>,
+    /// One-line summary of that answer (model output, display only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_reply_summary: Option<String>,
+}
+
+/// What a broker's answer says (mail agent).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReplyKind {
+    /// The data was erased.
+    Erased,
+    /// The broker holds no data about you.
+    NoData,
+    /// Receipt acknowledged, answer to come.
+    Acknowledged,
+    /// The broker wants an identity document.
+    IdentityRequested,
+    /// The broker wants more information (account id, address…).
+    InfoRequested,
+    /// The broker only accepts its web form.
+    FormRequired,
+    /// The broker refuses.
+    Refused,
+    /// Out-of-office / automatic answer.
+    AutoReply,
+    /// Delivery failure (the broker address bounced).
+    Bounce,
+    /// Anything else (read it yourself).
+    Other,
+}
+
+/// One answer handled by the mail agent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MailAgentEvent {
+    pub ts: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
+    pub broker_name: String,
+    pub kind: ReplyKind,
+    /// `rules` (headers) or the model name.
+    pub classified_by: String,
+    pub summary: String,
+    /// Status after the answer was applied.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub new_status: Option<RemovalStatus>,
+}
+
+/// State of the mail agent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum MailAgentState {
+    #[default]
+    Disabled,
+    /// Waiting for the Mac to be idle (and on mains power).
+    Waiting,
+    Running,
+    /// Last run failed (see `last_error`).
+    Error,
+}
+
+/// `mail_agent_status`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct MailAgentStatus {
+    pub state: MailAgentState,
+    pub model: String,
+    pub ollama_installed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ollama_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_run_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+    /// Messages read / matched to a request / requests changed during the last run.
+    pub last_fetched: u32,
+    pub last_matched: u32,
+    pub last_updated: u32,
+    /// Requests waiting for you (`needs_you`, `needs_form`, `refused` with an unread answer).
+    pub needs_you: u32,
+    /// Newest first (at most 200).
+    pub events: Vec<MailAgentEvent>,
 }
 
 /// Counters of the removal campaign.

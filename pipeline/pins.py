@@ -193,3 +193,119 @@ def fetch_pin(
 def carry_over(prev_dir: Path) -> dict[str, bytes]:
     p = prev_dir / BUNDLE_PATH
     return {BUNDLE_PATH: p.read_bytes()} if p.is_file() and not p.is_symlink() else {}
+
+
+# --- Ollama (local model server of the mail agent) ----------------------------------------------------
+#
+# Ollama publishes no build-provenance attestation, but ships a notarized Developer ID build. Trust chain:
+# GitHub release API digest (computed by GitHub at upload) == SHA-256 of our download -> the archive holds a
+# Mach-O `ollama` whose embedded signing certificate names Ollama's Apple Team ID (sanity check here;
+# parabellumd verifies the real code signature with `codesign` before running it) -> SHA-256 pinned in our
+# minisign-signed bundle (components/ollama.json, same format as pins.json) -> the daemon checks the download.
+
+OLLAMA_BUNDLE_PATH = "components/ollama.json"
+OLLAMA_REPO = "ollama/ollama"
+OLLAMA_ASSET = "ollama-darwin.tgz"
+OLLAMA_TEAM_ID = "3MU9H2V9Y9"
+MAX_OLLAMA_ASSET = 400 * 1024 * 1024
+#: Mach-O universal (fat) or thin arm64.
+_MACHO_HEADS = (bytes([0xCA, 0xFE, 0xBA, 0xBE]), MACHO_ARM64[:4])
+
+
+def select_ollama(releases: object, min_version: tuple[int, int, int] = (0, 12, 0)) -> Candidate:
+    """Newest stable Ollama release with ``ollama-darwin.tgz`` and a GitHub digest (required)."""
+    if not isinstance(releases, list):
+        raise FetchError("unexpected releases JSON")
+    best: tuple[tuple[int, int, int], Candidate] | None = None
+    for rel in releases:
+        if not isinstance(rel, dict) or rel.get("draft") or rel.get("prerelease"):
+            continue
+        tag = str(rel.get("tag_name", ""))
+        v = parse_version(tag)
+        if v is None or v < min_version:
+            continue
+        for a in rel.get("assets", []):
+            if not isinstance(a, dict) or a.get("name") != OLLAMA_ASSET:
+                continue
+            url = str(a.get("browser_download_url", ""))
+            if url != f"https://github.com/{OLLAMA_REPO}/releases/download/{tag}/{OLLAMA_ASSET}":
+                continue
+            digest = a.get("digest")
+            hexd = digest[7:] if isinstance(digest, str) and digest.startswith("sha256:") else ""
+            if not re.fullmatch(r"[0-9a-f]{64}", hexd):
+                continue
+            cand = Candidate(".".join(map(str, v)), OLLAMA_ASSET, url, hexd)
+            if best is None or v > best[0]:
+                best = (v, cand)
+    if best is None:
+        raise FetchError("no stable Ollama release with ollama-darwin.tgz and a digest")
+    return best[1]
+
+
+def check_ollama_tarball(path: Path, team_id: str = OLLAMA_TEAM_ID) -> None:
+    """``ollama`` is a regular Mach-O signed with a certificate naming ``team_id``; no link or absolute path."""
+    try:
+        with tarfile.open(path, mode="r:gz") as tf:
+            found = False
+            for m in tf:
+                name = m.name.removeprefix("./")
+                if name.startswith("/") or ".." in name.split("/"):
+                    raise FetchError(f"unsafe path in the archive: {name}")
+                if m.issym() or m.islnk():
+                    target = m.linkname
+                    if target.startswith("/") or ".." in target.split("/"):
+                        raise FetchError(f"unsafe link in the archive: {name} -> {target}")
+                if name != "ollama":
+                    continue
+                if not m.isreg() or not (0 < m.size <= MAX_BINARY):
+                    raise FetchError("ollama: not a regular file of a sane size")
+                f = tf.extractfile(m)
+                data = f.read() if f else b""
+                if not data.startswith(_MACHO_HEADS):
+                    raise FetchError("ollama is not a Mach-O")
+                if f"({team_id})".encode() not in data or b"Developer ID Application" not in data:
+                    raise FetchError(f"ollama is not signed with Team ID {team_id}")
+                found = True
+    except tarfile.TarError as e:
+        raise FetchError(f"archive unreadable: {e}") from e
+    if not found:
+        raise FetchError("ollama missing from the archive")
+
+
+def fetch_ollama_pin(http: object, min_version: tuple[int, int, int] = (0, 12, 0)) -> tuple[bytes, str]:
+    """``components/ollama.json`` content and the pinned version. Raises FetchError on any doubt."""
+    url = api_url(OLLAMA_REPO)
+    releases = json.loads(http.get_bytes(url, headers=_github_headers(url), max_bytes=16 * 1024 * 1024))  # type: ignore[attr-defined]
+    cand = select_ollama(releases, min_version)
+    with tempfile.TemporaryDirectory(prefix="pins-ollama-") as tmp:
+        dest = Path(tmp) / cand.asset
+        digest = http.download(cand.url, dest, max_bytes=MAX_OLLAMA_ASSET)  # type: ignore[attr-defined]
+        h = hashlib.sha256()
+        with dest.open("rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        if h.hexdigest() != digest:
+            raise FetchError("download digest mismatch")
+        if cand.digest != digest:
+            raise FetchError(f"{cand.asset}: SHA-256 differs from the release API digest")
+        check_ollama_tarball(dest)
+    pins = {
+        "format": 1,
+        "pins": {
+            "ollama": {
+                "version": cand.version,
+                "asset": cand.asset,
+                "url": cand.url,
+                "sha256": digest,
+                "binary": "ollama",
+                "verified_by": f"github-release-digest+team-id:{OLLAMA_TEAM_ID}",
+            }
+        },
+    }
+    log.info("pinned ollama %s (%s)", cand.version, digest)
+    return (json.dumps(pins, indent=1, sort_keys=True) + "\n").encode(), cand.version
+
+
+def carry_over_ollama(prev_dir: Path) -> dict[str, bytes]:
+    p = prev_dir / OLLAMA_BUNDLE_PATH
+    return {OLLAMA_BUNDLE_PATH: p.read_bytes()} if p.is_file() and not p.is_symlink() else {}

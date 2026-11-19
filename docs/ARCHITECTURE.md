@@ -102,6 +102,17 @@
   suspendu (SIGSTOP) jusqu'à la décision de l'utilisateur.
 - **RGPD sans tiers** : le daemon compose les courriers (FR/EN) et suit les délais ; en mode brouillons, l'app écrit les
   `.eml` dans Téléchargements et Mail les envoie ; en mode SMTP, le daemon envoie avec un quota quotidien.
+- **Agent courrier RGPD (modèle local)** : boîte dédiée lue en IMAP (TLS, `EXAMINE` + `BODY.PEEK` : rien n'est
+  marqué lu). Chaque réponse est rattachée à sa demande par la référence `[Réf. PB-xxxxxxxx]` de l'objet, notre
+  `Message-ID` dans `In-Reply-To`, ou le domaine du courtier s'il est sans ambiguïté ; un échec DKIM/DMARC chez le
+  fournisseur l'écarte. Ollama (épinglé dans la base signée, signature Apple Team ID `3MU9H2V9Y9` vérifiée avec
+  `codesign` + Gatekeeper) démarre seulement quand le Mac est inactif et qu'un message doit être étiqueté, en
+  `nobody`, sur un port loopback aléatoire, et s'arrête dès que tu reprends la main. Le modèle (`qwen3:4b` par
+  défaut) ne fait que **classer** dans un schéma JSON à énumération fermée ; un tableau de décision fixe met à jour
+  la demande. L'agent n'envoie jamais de mail et ne répond jamais à ta place : pièce d'identité, informations,
+  formulaire → statut « à toi de répondre » + alerte. Notes Obsidian (tableau de bord, une note par organisme,
+  journal ; section « Mes notes » conservée) écrites par la CLI **en ton nom** ; la base root reste la source de
+  vérité, modifier les notes ne peut pas influencer l'agent.
 - **Outils locaux exécutés par l'utilisateur** : nettoyage des métadonnées et vérification d'un export de mots de passe
   passent par la CLI lancée par l'app, avec les droits de l'utilisateur, jamais par le daemon root.
 

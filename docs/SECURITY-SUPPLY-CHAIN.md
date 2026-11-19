@@ -11,6 +11,7 @@ signés. Ce document décrit les barrières en place et ce qu'il reste à faire 
 | Base de menaces (nightly) | minisign avant tout dépaquetage, puis chaque empreinte | `keys/parabellum-db.pub` (compilée dans le daemon) |
 | Mise à jour de Parabellum (`.pkg`, installée en root) | minisign | `keys/parabellum-release.pub` si présente, sinon la clé DB (transition) |
 | sing-box | SHA-256 épinglé dans la base signée, **URL limitée** à `https://github.com/SagerNet/sing-box/releases/download/` | base signée |
+| Ollama (agent courrier) | SHA-256 épinglé (`components/ollama.json`, URL limitée aux releases `ollama/ollama`), puis `codesign --strict` Team ID `3MU9H2V9Y9` + Gatekeeper sur `ollama` et `llama-server` | base signée + Apple |
 | ClamAV, osquery, LuLu, BlockBlock… | Team ID Apple | Apple |
 
 ## Deux clés, deux niveaux de confiance

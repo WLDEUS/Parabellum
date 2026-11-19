@@ -161,6 +161,7 @@ final class AppModel: ObservableObject {
     @Published var brokers: [BrokerInfo] = []
     @Published var removalRequests: [RemovalRequest] = []
     @Published var removalSummary: RemovalSummary?
+    @Published var mailAgent: MailAgentStatus?
     @Published var breaches: [BreachFinding] = []
     @Published var emailAliases: [EmailAlias] = []
 
