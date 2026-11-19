@@ -16,30 +16,49 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-skip_build=0
-[[ "${1:-}" == "--skip-build" ]] && skip_build=1
+[[ "${1:-}" == "--skip-build" ]] || true  # accepted for compatibility; paths now come from cargo
 
-target_dir="${CARGO_TARGET_DIR:-$repo_root/target}"
-rel="$target_dir/release"
+echo "building release artifacts (pb-ml, pb-engine, pb-monitor libs + pb-features bin)…"
+# Ask cargo exactly which files it produced instead of guessing hashed rlib paths under deps/ (a
+# restored build cache can report crates as "fresh" and leave the rlib where a glob won't find it).
+# compiler-artifact messages carry the real filenames even for fresh units.
+build_json="$(mktemp)"
+trap 'rm -f "$build_json"' EXIT
+cargo build --release --message-format=json \
+    -p pb-ml -p pb-engine -p pb-monitor --lib >"$build_json"
+cargo build --release --message-format=json -p pb-ml --bin pb-features >>"$build_json"
 
-if ((skip_build == 0)); then
-    echo "building release artifacts (pb-ml, pb-engine, pb-monitor libs + pb-features bin)…"
-    # Drop any stale hashed rlibs so the scan only sees freshly built artifacts.
-    rm -f "$rel"/deps/libpb_ml-*.rlib "$rel"/deps/libpb_engine-*.rlib \
-        "$rel"/deps/libpb_monitor-*.rlib
-    # A restored build cache can leave cargo thinking these crates are fresh, so after deleting the
-    # rlib it would not re-emit it and the scan would find nothing. Touch the crate roots to force a
-    # real recompile that writes the rlibs back.
-    touch crates/pb-ml/src/lib.rs crates/pb-engine/src/lib.rs crates/pb-monitor/src/lib.rs
-    cargo build --release -p pb-ml -p pb-engine -p pb-monitor --lib
-    cargo build --release -p pb-ml --bin pb-features
-fi
-
-# Library crates land as hashed rlibs under release/deps/; collect every matching rlib.
-collect_rlibs() {
-    local crate="$1"
-    find "$rel/deps" -maxdepth 1 -name "lib${crate}-*.rlib" 2>/dev/null || true
-}
+# Parse the rlibs of pb-ml/pb-engine/pb-monitor and the pb-features binary out of the cargo output.
+mapfile -t artifacts < <(python3 - "$build_json" <<'PY'
+import json, os, sys
+want = {"pb_ml", "pb_engine", "pb_monitor"}  # cargo target names use underscores
+libs, feat = {}, None
+for line in open(sys.argv[1], encoding="utf-8"):
+    line = line.strip()
+    if not line.startswith("{"):
+        continue
+    try:
+        m = json.loads(line)
+    except ValueError:
+        continue
+    if m.get("reason") != "compiler-artifact":
+        continue
+    name = m.get("target", {}).get("name")
+    for f in m.get("filenames") or []:
+        if f.endswith(".rlib") and name in want:
+            libs[name] = f
+        elif name == "pb-features" and not f.endswith(".rlib") and os.path.exists(f):
+            feat = f
+missing = want - set(libs)
+if missing:
+    sys.stderr.write("ERROR: cargo reported no rlib for: %s\n" % ", ".join(sorted(missing)))
+    sys.exit(2)
+if not feat:
+    sys.stderr.write("ERROR: cargo reported no pb-features binary\n")
+    sys.exit(2)
+print("\n".join(list(libs.values()) + [feat]))
+PY
+)
 
 # Dense signature clusters that must never be compiled into a Parabellum binary.
 tokens=(
@@ -66,26 +85,15 @@ tokens=(
     "MetaMask"
 )
 
-# Release artifacts to scan: the three library rlibs (hashed, under deps/) and the pb-features binary.
-artifacts=()
-for crate in pb_ml pb_engine pb_monitor; do
-    while IFS= read -r f; do
-        [[ -n "$f" ]] && artifacts+=("$f")
-    done < <(collect_rlibs "$crate")
-done
-artifacts+=("$rel/pb-features")
-
-# Every crate must have produced at least one rlib, or the scan would silently check nothing.
-for crate in pb_ml pb_engine pb_monitor; do
-    if [[ -z "$(collect_rlibs "$crate")" ]]; then
-        echo "ERROR: no release rlib for $crate under $rel/deps (build first)" >&2
-        exit 2
-    fi
-done
+if ((${#artifacts[@]} == 0)); then
+    echo "ERROR: could not determine artifacts to scan" >&2
+    exit 2
+fi
+printf 'scanning: %s\n' "${artifacts[@]}"
 
 strings_bin="$(command -v strings || true)"
 tmp="$(mktemp)"
-trap 'rm -f "$tmp"' EXIT
+trap 'rm -f "$tmp" "$build_json"' EXIT
 fail=0
 for art in "${artifacts[@]}"; do
     if [[ ! -e "$art" ]]; then
