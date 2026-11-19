@@ -1,4 +1,5 @@
-//! YARA-X rules: built-in rules + bundle `yara/*.yar`, compiled once and cached on disk.
+//! YARA-X rules: built-in rules (loaded from `signatures/builtin.yar`, a runtime data file shipped in
+//! the installer, NOT compiled into the binary) + bundle `yara/*.yar`, compiled once and cached on disk.
 //!
 //! Every bundle file is first compiled on its own (includes disabled) so that one broken file is
 //! skipped with a warning instead of breaking the whole set; the accepted files are then compiled
@@ -15,8 +16,8 @@ use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-/// Built-in rules (always loaded).
-pub(crate) const BUILTIN_RULES: &str = include_str!("builtin.yar");
+/// File name of the built-in rules inside the signatures directory.
+pub(crate) const BUILTIN_FILE: &str = "builtin.yar";
 const BUILTIN_NAMESPACE: &str = "builtin";
 const MAX_RULE_FILES: usize = 10_000;
 const MAX_RULE_FILE_BYTES: u64 = 16 * 1024 * 1024;
@@ -123,14 +124,15 @@ fn validate(src: &Source) -> Result<(), String> {
     Ok(())
 }
 
-fn cache_key(bundle_version: Option<&str>, sources: &[Source]) -> String {
+fn cache_key(bundle_version: Option<&str>, builtin: &[u8], sources: &[Source]) -> String {
     let mut h = Sha256::new();
-    h.update(b"pb-yara-cache-v1\0");
+    h.update(b"pb-yara-cache-v2\0");
     h.update(yara_x::VERSION.as_bytes());
     h.update([0]);
     h.update(bundle_version.unwrap_or("").as_bytes());
     h.update([0]);
-    h.update(BUILTIN_RULES.as_bytes());
+    h.update((builtin.len() as u64).to_le_bytes());
+    h.update(builtin);
     for s in sources {
         h.update(s.namespace.as_bytes());
         h.update([0]);
@@ -207,15 +209,27 @@ fn write_cache(cache_dir: &Path, path: &Path, rules: &yara_x::Rules) {
     }
 }
 
-/// Loads built-in + bundle rules (`bundle_yara_dir` = `<bundle>/yara`), using the on-disk cache
-/// when possible. Only a failure of the built-in rules is an error.
+/// Loads built-in + bundle rules, using the on-disk cache when possible.
+///
+/// `builtin_src` is the content of the runtime `builtin.yar` data file (shipped in the installer,
+/// read by the caller from the signatures directory). When it is `None` (file missing) or it fails
+/// to compile, the built-in rules are skipped with a logged error and loading continues with the
+/// bundle's `yara/*.yar` only — protection is reduced but never silently zero, and the daemon never
+/// fails to start over the signature files. `bundle_yara_dir` = `<bundle>/yara`.
 pub(crate) fn load(
+    builtin_src: Option<&[u8]>,
     bundle_yara_dir: Option<&Path>,
     cache_dir: Option<&Path>,
     bundle_version: Option<&str>,
 ) -> Result<YaraRules, String> {
+    let builtin = builtin_src.unwrap_or(&[]);
+    if builtin.is_empty() {
+        tracing::error!(
+            "built-in YARA rules ({BUILTIN_FILE}) missing or empty: using bundle rules only"
+        );
+    }
     let sources = bundle_yara_dir.map(bundle_sources).unwrap_or_default();
-    let key = cache_key(bundle_version, &sources);
+    let key = cache_key(bundle_version, builtin, &sources);
     let cache_path = cache_dir.map(|d| d.join(format!("yara-{key}.bin")));
     if let Some(p) = &cache_path {
         if let Some(rules) = try_cache(p) {
@@ -241,9 +255,18 @@ pub(crate) fn load(
         }
     }
     let mut c = new_compiler();
-    c.new_namespace(BUILTIN_NAMESPACE);
-    c.add_source(yara_x::SourceCode::from(BUILTIN_RULES).with_origin("builtin.yar"))
-        .map_err(|e| format!("built-in rules: {e}"))?;
+    if !builtin.is_empty() {
+        c.new_namespace(BUILTIN_NAMESPACE);
+        if let Err(e) = c.add_source(yara_x::SourceCode::from(builtin).with_origin(BUILTIN_FILE)) {
+            // A broken built-in file must not take the whole engine down: skip it, keep bundle rules.
+            tracing::error!(error = %e, "built-in YARA rules rejected: using bundle rules only");
+            skipped.push(format!(
+                "{BUILTIN_FILE}: {}",
+                e.to_string().lines().next().unwrap_or("")
+            ));
+            c = new_compiler();
+        }
+    }
     for s in accepted {
         c.new_namespace(&s.namespace);
         if let Err(e) =
@@ -395,9 +418,12 @@ mod tests {
     pub(crate) const EICAR: &[u8] =
         b"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*";
 
+    /// The shipped built-in rules, embedded only in the test binary (never in the release rlib).
+    const BUILTIN: &[u8] = include_bytes!("../../../signatures/builtin.yar");
+
     #[test]
     fn builtin_rules_compile_and_detect() {
-        let y = load(None, None, None).unwrap();
+        let y = load(Some(BUILTIN), None, None, None).unwrap();
         assert_eq!(y.count, 4);
         let mut s = new_scanner(&y.rules);
         let d = scan(&mut s, EICAR).unwrap();
@@ -449,7 +475,7 @@ mod tests {
         std::fs::write(yd.join("broken.yar"), "rule Broken { condition: $nope }").unwrap();
         std::fs::write(yd.join("notes.txt"), "not a rule").unwrap();
         let cache = d.path().join("cache");
-        let y = load(Some(&yd), Some(&cache), Some("v1")).unwrap();
+        let y = load(Some(BUILTIN), Some(&yd), Some(&cache), Some("v1")).unwrap();
         assert_eq!(y.count, 6);
         assert_eq!(y.skipped.len(), 1);
         assert!(y.skipped[0].starts_with("broken.yar"));
@@ -462,11 +488,33 @@ mod tests {
         // Second load comes from the cache.
         let cached: Vec<_> = std::fs::read_dir(&cache).unwrap().flatten().collect();
         assert_eq!(cached.len(), 1);
-        let y2 = load(Some(&yd), Some(&cache), Some("v1")).unwrap();
+        let y2 = load(Some(BUILTIN), Some(&yd), Some(&cache), Some("v1")).unwrap();
         assert_eq!(y2.count, 6);
         assert!(y2.skipped.is_empty());
         let mut s2 = new_scanner(&y2.rules);
         assert_eq!(scan(&mut s2, EICAR).unwrap()[0].name, "EICAR-Test-File");
+    }
+
+    #[test]
+    fn missing_builtin_falls_back_to_bundle_rules() {
+        let d = tempfile::tempdir().unwrap();
+        let yd = d.path().join("yara");
+        std::fs::create_dir_all(&yd).unwrap();
+        std::fs::write(
+            yd.join("bundle.yar"),
+            "rule Bundled { strings: $a = \"BUNDLE-ONLY-MARKER\" condition: $a }",
+        )
+        .unwrap();
+        // No built-in rules: load must still succeed with the bundle's rules only.
+        let y = load(None, Some(&yd), None, None).unwrap();
+        assert_eq!(y.count, 1);
+        let mut s = new_scanner(&y.rules);
+        assert_eq!(
+            scan(&mut s, b"xx BUNDLE-ONLY-MARKER").unwrap()[0].name,
+            "Bundled"
+        );
+        // EICAR is a built-in rule, so without the built-in file it is not detected.
+        assert!(scan(&mut s, EICAR).unwrap().is_empty());
     }
 
     #[test]

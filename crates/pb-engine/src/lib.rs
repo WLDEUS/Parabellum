@@ -521,7 +521,22 @@ impl Engine {
             .is_ok()
             .then_some(cache_dir);
         let yara_dir = bundle.as_ref().map(|b| b.join("yara"));
+        // Built-in rules live in the installed signatures directory, not in this binary.
+        let builtin_path = paths.signatures_dir().join(yara::BUILTIN_FILE);
+        let builtin_src = match std::fs::read(&builtin_path) {
+            Ok(b) => Some(b),
+            Err(e) => {
+                tracing::error!(path = %builtin_path.display(), error = %e,
+                    "built-in YARA rules not readable: using bundle rules only");
+                warnings.push(format!(
+                    "règles YARA intégrées introuvables ({}) : règles du bundle uniquement",
+                    builtin_path.display()
+                ));
+                None
+            }
+        };
         let yara = yara::load(
+            builtin_src.as_deref(),
             yara_dir.as_deref(),
             cache_dir.as_deref(),
             db_version.as_deref(),

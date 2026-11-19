@@ -16,12 +16,17 @@ struct Fixture {
     data: PathBuf,
 }
 
+/// Built-in YARA rules, shipped as a data file; embedded only in the test binary.
+const BUILTIN_YAR: &[u8] = include_bytes!("../../../signatures/builtin.yar");
+
 fn fixture() -> Fixture {
     let dir = tempfile::tempdir().unwrap();
     let paths = Paths::with_root(dir.path().join("root"));
     for d in paths.all_dirs() {
         std::fs::create_dir_all(d).unwrap();
     }
+    // Install the built-in rules the way the pkg would, so the engine detects EICAR & co.
+    std::fs::write(paths.signatures_dir().join("builtin.yar"), BUILTIN_YAR).unwrap();
     let data = dir.path().join("data");
     std::fs::create_dir_all(&data).unwrap();
     Fixture {
