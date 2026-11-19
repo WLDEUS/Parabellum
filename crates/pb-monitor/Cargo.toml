@@ -24,5 +24,9 @@ libc = { workspace = true }
 core-foundation = { workspace = true }
 io-kit-sys = { workspace = true }
 
+[features]
+# Lets dependent crates' tests load the behavioural heuristics from the repo signatures/ dir.
+test-util = []
+
 [dev-dependencies]
 tempfile = { workspace = true }

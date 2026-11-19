@@ -130,6 +130,12 @@ impl Paths {
     pub fn cache_dir(&self) -> PathBuf {
         self.root.join("cache")
     }
+    /// Detection signature data files shipped in the installer (YARA built-in rules, behavioural
+    /// heuristics, ML indicator tables). Loaded at runtime so no Parabellum binary embeds malware
+    /// signature strings (which would trip XProtect on our own, benign binaries).
+    pub fn signatures_dir(&self) -> PathBuf {
+        self.root.join("signatures")
+    }
     pub fn tmp_dir(&self) -> PathBuf {
         self.root.join("tmp")
     }
@@ -154,6 +160,7 @@ impl Paths {
             self.vpn_dir(),
             self.privacy_dir(),
             self.cache_dir(),
+            self.signatures_dir(),
             self.tmp_dir(),
             self.log_dir.clone(),
             self.socket

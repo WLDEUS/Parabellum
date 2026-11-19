@@ -1,0 +1,498 @@
+{
+  "_comment": "Parabellum Mach-O ML indicator patterns. Runtime data file; defines the feature-vector string columns coupled to features_version. Generated from features.rs STRING_PATTERNS.",
+  "features_version": 2,
+  "patterns": [
+    {
+      "feature": "str_osascript",
+      "pattern": "osascript"
+    },
+    {
+      "feature": "str_display_dialog",
+      "pattern": "display dialog"
+    },
+    {
+      "feature": "str_hidden_answer",
+      "pattern": "hidden answer"
+    },
+    {
+      "feature": "str_launch_agents",
+      "pattern": "LaunchAgents"
+    },
+    {
+      "feature": "str_launch_agents",
+      "pattern": "LaunchDaemons"
+    },
+    {
+      "feature": "str_keychain",
+      "pattern": "keychain"
+    },
+    {
+      "feature": "str_wallet",
+      "pattern": "wallet"
+    },
+    {
+      "feature": "str_telegram",
+      "pattern": "telegram"
+    },
+    {
+      "feature": "str_curl",
+      "pattern": "curl "
+    },
+    {
+      "feature": "str_base64",
+      "pattern": "base64"
+    },
+    {
+      "feature": "str_tmp",
+      "pattern": "/tmp/"
+    },
+    {
+      "feature": "str_chmod_x",
+      "pattern": "chmod +x"
+    },
+    {
+      "feature": "str_chmod_x",
+      "pattern": "chmod 777"
+    },
+    {
+      "feature": "str_chmod_x",
+      "pattern": "chmod 755"
+    },
+    {
+      "feature": "str_quarantine_xattr",
+      "pattern": "com.apple.quarantine"
+    },
+    {
+      "feature": "str_xattr_cmd",
+      "pattern": "xattr -d"
+    },
+    {
+      "feature": "str_xattr_cmd",
+      "pattern": "xattr -c"
+    },
+    {
+      "feature": "str_xattr_cmd",
+      "pattern": "xattr -r"
+    },
+    {
+      "feature": "str_browser_chrome",
+      "pattern": "Google/Chrome"
+    },
+    {
+      "feature": "str_browser_firefox",
+      "pattern": "Firefox/Profiles"
+    },
+    {
+      "feature": "str_browser_other",
+      "pattern": "BraveSoftware"
+    },
+    {
+      "feature": "str_browser_other",
+      "pattern": "Microsoft Edge"
+    },
+    {
+      "feature": "str_browser_other",
+      "pattern": "Opera Software"
+    },
+    {
+      "feature": "str_browser_other",
+      "pattern": "com.operasoftware"
+    },
+    {
+      "feature": "str_browser_other",
+      "pattern": "Vivaldi"
+    },
+    {
+      "feature": "str_browser_other",
+      "pattern": "Yandex"
+    },
+    {
+      "feature": "str_browser_other",
+      "pattern": "Chromium"
+    },
+    {
+      "feature": "str_browser_other",
+      "pattern": "Arc/User Data"
+    },
+    {
+      "feature": "str_cookies",
+      "pattern": "Cookies"
+    },
+    {
+      "feature": "str_login_data",
+      "pattern": "Login Data"
+    },
+    {
+      "feature": "str_login_data",
+      "pattern": "logins.json"
+    },
+    {
+      "feature": "str_login_data",
+      "pattern": "key4.db"
+    },
+    {
+      "feature": "str_crypto_wallets",
+      "pattern": "Exodus"
+    },
+    {
+      "feature": "str_crypto_wallets",
+      "pattern": "Electrum"
+    },
+    {
+      "feature": "str_crypto_wallets",
+      "pattern": "MetaMask"
+    },
+    {
+      "feature": "str_crypto_wallets",
+      "pattern": "Coinomi"
+    },
+    {
+      "feature": "str_crypto_wallets",
+      "pattern": "Atomic Wallet"
+    },
+    {
+      "feature": "str_crypto_wallets",
+      "pattern": "Ledger Live"
+    },
+    {
+      "feature": "str_crypto_wallets",
+      "pattern": "Trezor"
+    },
+    {
+      "feature": "str_crypto_wallets",
+      "pattern": "Binance"
+    },
+    {
+      "feature": "str_crypto_wallets",
+      "pattern": "Guarda"
+    },
+    {
+      "feature": "str_crypto_wallets",
+      "pattern": "wallet.dat"
+    },
+    {
+      "feature": "str_crypto_wallets",
+      "pattern": "nkbihfbeogaeaoehlefnkodbefgpgknn"
+    },
+    {
+      "feature": "str_crypto_wallets",
+      "pattern": "bfnaelmomeimhlpmgjnjophhpkkoljpa"
+    },
+    {
+      "feature": "str_password",
+      "pattern": "password"
+    },
+    {
+      "feature": "str_sudo",
+      "pattern": "sudo "
+    },
+    {
+      "feature": "str_shell",
+      "pattern": "/bin/sh"
+    },
+    {
+      "feature": "str_shell",
+      "pattern": "/bin/bash"
+    },
+    {
+      "feature": "str_shell",
+      "pattern": "/bin/zsh"
+    },
+    {
+      "feature": "str_sh_c",
+      "pattern": "sh -c"
+    },
+    {
+      "feature": "str_http",
+      "pattern": "http://"
+    },
+    {
+      "feature": "str_https",
+      "pattern": "https://"
+    },
+    {
+      "feature": "str_launchctl",
+      "pattern": "launchctl"
+    },
+    {
+      "feature": "str_plist_launch_keys",
+      "pattern": "RunAtLoad"
+    },
+    {
+      "feature": "str_plist_launch_keys",
+      "pattern": "KeepAlive"
+    },
+    {
+      "feature": "str_plist_launch_keys",
+      "pattern": "ProgramArguments"
+    },
+    {
+      "feature": "str_screencapture",
+      "pattern": "screencapture"
+    },
+    {
+      "feature": "str_system_profiler",
+      "pattern": "system_profiler"
+    },
+    {
+      "feature": "str_vm_detect",
+      "pattern": "VMware"
+    },
+    {
+      "feature": "str_vm_detect",
+      "pattern": "VirtualBox"
+    },
+    {
+      "feature": "str_vm_detect",
+      "pattern": "VBox"
+    },
+    {
+      "feature": "str_vm_detect",
+      "pattern": "Parallels"
+    },
+    {
+      "feature": "str_vm_detect",
+      "pattern": "QEMU"
+    },
+    {
+      "feature": "str_dscl",
+      "pattern": "dscl"
+    },
+    {
+      "feature": "str_security_cmd",
+      "pattern": "find-generic-password"
+    },
+    {
+      "feature": "str_security_cmd",
+      "pattern": "find-internet-password"
+    },
+    {
+      "feature": "str_security_cmd",
+      "pattern": "dump-keychain"
+    },
+    {
+      "feature": "str_archive_cmd",
+      "pattern": "ditto -c"
+    },
+    {
+      "feature": "str_archive_cmd",
+      "pattern": "zip -r"
+    },
+    {
+      "feature": "str_crontab",
+      "pattern": "crontab"
+    },
+    {
+      "feature": "str_nohup",
+      "pattern": "nohup"
+    },
+    {
+      "feature": "str_killall",
+      "pattern": "killall"
+    },
+    {
+      "feature": "str_ioplatform",
+      "pattern": "IOPlatformExpertDevice"
+    },
+    {
+      "feature": "str_ioplatform",
+      "pattern": "IOPlatformUUID"
+    },
+    {
+      "feature": "str_ioplatform",
+      "pattern": "IOPlatformSerialNumber"
+    },
+    {
+      "feature": "str_exfil_api",
+      "pattern": "api.telegram.org"
+    },
+    {
+      "feature": "str_exfil_api",
+      "pattern": "discord.com/api/webhooks"
+    },
+    {
+      "feature": "str_exfil_api",
+      "pattern": "discordapp.com/api/webhooks"
+    },
+    {
+      "feature": "str_exfil_api",
+      "pattern": "pastebin.com"
+    },
+    {
+      "feature": "str_exfil_api",
+      "pattern": "ngrok"
+    },
+    {
+      "feature": "str_personal_data",
+      "pattern": "NoteStore.sqlite"
+    },
+    {
+      "feature": "str_personal_data",
+      "pattern": "Cookies.binarycookies"
+    },
+    {
+      "feature": "str_personal_data",
+      "pattern": "AddressBook"
+    },
+    {
+      "feature": "str_personal_data",
+      "pattern": "chat.db"
+    },
+    {
+      "feature": "str_users_shared",
+      "pattern": "/Users/Shared"
+    },
+    {
+      "feature": "str_gatekeeper",
+      "pattern": "spctl"
+    },
+    {
+      "feature": "str_gatekeeper",
+      "pattern": "master-disable"
+    },
+    {
+      "feature": "str_gatekeeper",
+      "pattern": "csrutil"
+    },
+    {
+      "feature": "str_tcc",
+      "pattern": "TCC.db"
+    },
+    {
+      "feature": "str_tcc",
+      "pattern": "com.apple.TCC"
+    },
+    {
+      "feature": "str_tcc",
+      "pattern": "tccutil"
+    },
+    {
+      "feature": "str_login_items",
+      "pattern": "login item"
+    },
+    {
+      "feature": "str_login_items",
+      "pattern": "LoginItems"
+    },
+    {
+      "feature": "str_osascript_e",
+      "pattern": "osascript -e"
+    },
+    {
+      "feature": "str_osascript_e",
+      "pattern": "osascript -l"
+    },
+    {
+      "feature": "str_dscl_authonly",
+      "pattern": "-authonly"
+    },
+    {
+      "feature": "str_user_agent",
+      "pattern": "Mozilla/5.0"
+    },
+    {
+      "feature": "str_curl_upload",
+      "pattern": "curl -F"
+    },
+    {
+      "feature": "str_curl_upload",
+      "pattern": "--data-binary"
+    },
+    {
+      "feature": "str_curl_upload",
+      "pattern": "--upload-file"
+    },
+    {
+      "feature": "str_curl_upload",
+      "pattern": "-X POST"
+    },
+    {
+      "feature": "str_pipe_shell",
+      "pattern": "| sh"
+    },
+    {
+      "feature": "str_pipe_shell",
+      "pattern": "| bash"
+    },
+    {
+      "feature": "str_pipe_shell",
+      "pattern": "| zsh"
+    },
+    {
+      "feature": "str_pipe_shell",
+      "pattern": "|sh"
+    },
+    {
+      "feature": "str_pipe_shell",
+      "pattern": "|bash"
+    },
+    {
+      "feature": "str_pipe_shell",
+      "pattern": "|zsh"
+    },
+    {
+      "feature": "str_decode_cmd",
+      "pattern": "base64 -d"
+    },
+    {
+      "feature": "str_decode_cmd",
+      "pattern": "base64 --decode"
+    },
+    {
+      "feature": "str_decode_cmd",
+      "pattern": "xxd -r"
+    },
+    {
+      "feature": "str_decode_cmd",
+      "pattern": "openssl enc -d"
+    },
+    {
+      "feature": "str_sudo_stdin",
+      "pattern": "sudo -S"
+    },
+    {
+      "feature": "str_keychain_db",
+      "pattern": "login.keychain"
+    },
+    {
+      "feature": "str_keychain_db",
+      "pattern": "keychain-db"
+    },
+    {
+      "feature": "str_onion_dyndns",
+      "pattern": ".onion"
+    },
+    {
+      "feature": "str_onion_dyndns",
+      "pattern": "duckdns"
+    },
+    {
+      "feature": "str_onion_dyndns",
+      "pattern": "no-ip."
+    },
+    {
+      "feature": "str_onion_dyndns",
+      "pattern": "ddns.net"
+    },
+    {
+      "feature": "str_onion_dyndns",
+      "pattern": "trycloudflare"
+    },
+    {
+      "feature": "str_hidden_path",
+      "pattern": "/Users/Shared/."
+    },
+    {
+      "feature": "str_hidden_path",
+      "pattern": "/tmp/."
+    },
+    {
+      "feature": "str_hidden_path",
+      "pattern": "/private/tmp/."
+    },
+    {
+      "feature": "str_hidden_path",
+      "pattern": "/var/tmp/."
+    }
+  ]
+}

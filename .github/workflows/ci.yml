@@ -98,6 +98,8 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee ci-logs/cargo-clippy.log
       - name: cargo test
         run: cargo test --workspace 2>&1 | tee ci-logs/cargo-test.log
+      - name: no embedded malware signatures in release artifacts
+        run: scripts/check-no-embedded-signatures.sh 2>&1 | tee ci-logs/check-no-embedded-signatures.log
       - name: Annotate errors
         if: failure()
         run: python3 -c "$ANNOTATE_PY"

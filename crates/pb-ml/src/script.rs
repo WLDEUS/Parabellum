@@ -184,11 +184,11 @@ define_script_features! {
     Ipv4 => "ipv4": "IPv4 literals",
     // --- indicator families (counts over text + decoded layers) ---------------------------------
     IOsascript => "ind_osascript": "osascript",
-    IDialog => "ind_dialog": "display dialog / display alert / choose from list",
-    IHiddenAnswer => "ind_hidden_answer": "hidden answer / default answer",
-    IPasswordPrompt => "ind_password_prompt": "password prompts (\"enter your password\", \"requires your password\", \"system settings\", \"to launch the application\", \"password\")",
-    IDscl => "ind_dscl_authonly": "dscl, -authonly",
-    IKeychain => "ind_keychain": "security find-generic-password / find-internet-password / dump-keychain / unlock-keychain / export, login.keychain, keychain-db",
+    IDialog => "ind_dialog": "AppleScript dialog / alert / list-choice verbs",
+    IHiddenAnswer => "ind_hidden_answer": "AppleScript masked / default dialog input options (password prompt)",
+    IPasswordPrompt => "ind_password_prompt": "password-prompt phrasing used by fake credential dialogs",
+    IDscl => "ind_dscl_authonly": "dscl(1) with its local password-validation flag",
+    IKeychain => "ind_keychain": "security(1) keychain secret-read, dump, unlock and export subcommands and login-keychain db files",
     ISudoStdin => "ind_sudo_stdin": "sudo -S, | sudo",
     ICurlWget => "ind_download": "curl, wget, Invoke-WebRequest, urlopen, requests.get",
     IPipeShell => "ind_pipe_to_interpreter": "| sh, | bash, | zsh, | python, | perl, | osascript (with and without space)",
@@ -207,8 +207,8 @@ define_script_features! {
     IUpload => "ind_upload": "curl -F, --data-binary, --upload-file, -X POST, --form, requests.post, multipart/form-data",
     IExfilApi => "ind_exfil_service": "api.telegram.org, discord(app).com/api/webhooks, pastebin.com, ngrok, transfer.sh, file.io, gofile.io, webhook.site, trycloudflare",
     IBrowserData => "ind_browser_data": "Chrome / Brave / Edge / Firefox / Opera / Vivaldi / Yandex / Chromium / Arc profile paths, Login Data, Cookies, Web Data, logins.json, key4.db, Local State",
-    IWallets => "ind_wallets": "Exodus, Electrum, MetaMask, Coinomi, Atomic, Ledger Live, Trezor, Binance, Guarda, wallet.dat, Phantom, Trust Wallet, wallet extension ids",
-    IPersonalData => "ind_personal_data": "NoteStore.sqlite, group.com.apple.notes, Cookies.binarycookies, AddressBook, chat.db, Telegram Desktop, tdata, /Keychains",
+    IWallets => "ind_wallets": "crypto-wallet app names, wallet files and browser wallet extension ids",
+    IPersonalData => "ind_personal_data": "Apple personal-data stores (Notes, Safari cookies, Address Book, Messages), Telegram sessions and keychains",
     ISysinfo => "ind_sysinfo": "system_profiler, sw_vers, ioreg, IOPlatformUUID / SerialNumber, SPHardwareDataType, SPDisplaysDataType, whoami, hw.model",
     IVmDetect => "ind_vm_detect": "VMware, VirtualBox, VBox, Parallels, QEMU, kern.hv_vmm_present",
     IGatekeeper => "ind_gatekeeper_tcc": "spctl, master-disable, --global-disable, csrutil, tccutil, TCC.db, com.apple.TCC",
@@ -269,290 +269,93 @@ pub fn script_feature_descriptions() -> &'static [&'static str] {
     all_docs()
 }
 
-/// Indicator patterns (ASCII case-insensitive) → feature.
-const INDICATORS: &[(&str, S)] = &[
-    ("osascript", S::IOsascript),
-    ("display dialog", S::IDialog),
-    ("display alert", S::IDialog),
-    ("choose from list", S::IDialog),
-    ("hidden answer", S::IHiddenAnswer),
-    ("default answer", S::IHiddenAnswer),
-    ("enter your password", S::IPasswordPrompt),
-    ("requires your password", S::IPasswordPrompt),
-    ("system settings", S::IPasswordPrompt),
-    ("to launch the application", S::IPasswordPrompt),
-    ("password", S::IPasswordPrompt),
-    ("dscl", S::IDscl),
-    ("-authonly", S::IDscl),
-    ("find-generic-password", S::IKeychain),
-    ("find-internet-password", S::IKeychain),
-    ("dump-keychain", S::IKeychain),
-    ("unlock-keychain", S::IKeychain),
-    ("security export", S::IKeychain),
-    ("login.keychain", S::IKeychain),
-    ("keychain-db", S::IKeychain),
-    ("sudo -s", S::ISudoStdin),
-    ("| sudo", S::ISudoStdin),
-    ("curl ", S::ICurlWget),
-    ("curl\t", S::ICurlWget),
-    ("wget ", S::ICurlWget),
-    ("invoke-webrequest", S::ICurlWget),
-    ("urlopen(", S::ICurlWget),
-    ("requests.get(", S::ICurlWget),
-    ("| sh", S::IPipeShell),
-    ("| bash", S::IPipeShell),
-    ("| zsh", S::IPipeShell),
-    ("| python", S::IPipeShell),
-    ("| perl", S::IPipeShell),
-    ("| osascript", S::IPipeShell),
-    ("|sh", S::IPipeShell),
-    ("|bash", S::IPipeShell),
-    ("|zsh", S::IPipeShell),
-    ("|python", S::IPipeShell),
-    ("|osascript", S::IPipeShell),
-    ("$(curl", S::IEvalRemote),
-    ("`curl", S::IEvalRemote),
-    ("eval \"$(curl", S::IEvalRemote),
-    ("bash -c \"$(curl", S::IEvalRemote),
-    ("sh -c \"$(curl", S::IEvalRemote),
-    ("<(curl", S::IEvalRemote),
-    ("base64 -d", S::IDecode),
-    ("base64 --decode", S::IDecode),
-    ("b64decode", S::IDecode),
-    ("atob(", S::IDecode),
-    ("xxd -r", S::IDecode),
-    ("xxd -p -r", S::IDecode),
-    ("openssl enc -d", S::IDecode),
-    ("openssl base64 -d", S::IDecode),
-    ("frombase64string", S::IDecode),
-    ("unhexlify", S::IDecode),
-    ("rot13", S::IDecode),
-    ("eval ", S::IExecDynamic),
-    ("eval(", S::IExecDynamic),
-    ("exec(", S::IExecDynamic),
-    ("compile(", S::IExecDynamic),
-    ("__import__(", S::IExecDynamic),
-    ("marshal.loads", S::IExecDynamic),
-    ("run script", S::IExecDynamic),
-    ("new function(", S::IExecDynamic),
-    ("chmod +x", S::IChmodExec),
-    ("chmod 777", S::IChmodExec),
-    ("chmod 755", S::IChmodExec),
-    ("chmod u+x", S::IChmodExec),
-    ("chmod a+x", S::IChmodExec),
-    ("com.apple.quarantine", S::IQuarantine),
-    ("xattr -d", S::IQuarantine),
-    ("xattr -c", S::IQuarantine),
-    ("xattr -r", S::IQuarantine),
-    ("launchctl", S::ILaunchd),
-    ("launchagents", S::ILaunchd),
-    ("launchdaemons", S::ILaunchd),
-    ("runatload", S::ILaunchd),
-    ("keepalive", S::ILaunchd),
-    ("programarguments", S::ILaunchd),
-    ("login item", S::ILoginItems),
-    ("loginitems", S::ILoginItems),
-    ("sfltool", S::ILoginItems),
-    ("backgrounditems", S::ILoginItems),
-    ("crontab", S::ICron),
-    ("/etc/periodic", S::ICron),
-    ("nohup", S::IBackground),
-    ("disown", S::IBackground),
-    ("setsid", S::IBackground),
-    ("screen -dm", S::IBackground),
-    ("&>/dev/null &", S::IBackground),
-    ("> /dev/null 2>&1 &", S::IBackground),
-    ("/tmp/", S::ITmpPaths),
-    ("/private/tmp", S::ITmpPaths),
-    ("/var/tmp", S::ITmpPaths),
-    ("/users/shared", S::ITmpPaths),
-    ("$tmpdir", S::ITmpPaths),
-    ("/tmp/.", S::IHiddenPath),
-    ("/private/tmp/.", S::IHiddenPath),
-    ("/var/tmp/.", S::IHiddenPath),
-    ("/users/shared/.", S::IHiddenPath),
-    ("ditto -c", S::IArchive),
-    ("zip -r", S::IArchive),
-    ("zip -q", S::IArchive),
-    ("tar -cz", S::IArchive),
-    ("tar czf", S::IArchive),
-    ("tar -czf", S::IArchive),
-    ("7z a ", S::IArchive),
-    ("curl -f ", S::IUpload),
-    ("--data-binary", S::IUpload),
-    ("--upload-file", S::IUpload),
-    ("-x post", S::IUpload),
-    ("--form ", S::IUpload),
-    ("requests.post", S::IUpload),
-    ("multipart/form-data", S::IUpload),
-    ("api.telegram.org", S::IExfilApi),
-    ("discord.com/api/webhooks", S::IExfilApi),
-    ("discordapp.com/api/webhooks", S::IExfilApi),
-    ("pastebin.com", S::IExfilApi),
-    ("ngrok", S::IExfilApi),
-    ("transfer.sh", S::IExfilApi),
-    ("file.io", S::IExfilApi),
-    ("gofile.io", S::IExfilApi),
-    ("webhook.site", S::IExfilApi),
-    ("trycloudflare", S::IExfilApi),
-    ("google/chrome", S::IBrowserData),
-    ("bravesoftware", S::IBrowserData),
-    ("microsoft edge", S::IBrowserData),
-    ("firefox/profiles", S::IBrowserData),
-    ("opera software", S::IBrowserData),
-    ("com.operasoftware", S::IBrowserData),
-    ("vivaldi", S::IBrowserData),
-    ("yandex", S::IBrowserData),
-    ("chromium", S::IBrowserData),
-    ("arc/user data", S::IBrowserData),
-    ("login data", S::IBrowserData),
-    ("cookies", S::IBrowserData),
-    ("web data", S::IBrowserData),
-    ("logins.json", S::IBrowserData),
-    ("key4.db", S::IBrowserData),
-    ("local state", S::IBrowserData),
-    ("exodus", S::IWallets),
-    ("electrum", S::IWallets),
-    ("metamask", S::IWallets),
-    ("coinomi", S::IWallets),
-    ("atomic", S::IWallets),
-    ("ledger live", S::IWallets),
-    ("trezor", S::IWallets),
-    ("binance", S::IWallets),
-    ("guarda", S::IWallets),
-    ("wallet.dat", S::IWallets),
-    ("phantom", S::IWallets),
-    ("trust wallet", S::IWallets),
-    ("nkbihfbeogaeaoehlefnkodbefgpgknn", S::IWallets),
-    ("bfnaelmomeimhlpmgjnjophhpkkoljpa", S::IWallets),
-    ("notestore.sqlite", S::IPersonalData),
-    ("group.com.apple.notes", S::IPersonalData),
-    ("cookies.binarycookies", S::IPersonalData),
-    ("addressbook", S::IPersonalData),
-    ("chat.db", S::IPersonalData),
-    ("telegram desktop", S::IPersonalData),
-    ("tdata", S::IPersonalData),
-    ("/keychains", S::IPersonalData),
-    ("system_profiler", S::ISysinfo),
-    ("sw_vers", S::ISysinfo),
-    ("ioreg", S::ISysinfo),
-    ("ioplatformuuid", S::ISysinfo),
-    ("ioplatformserialnumber", S::ISysinfo),
-    ("sphardwaredatatype", S::ISysinfo),
-    ("spdisplaysdatatype", S::ISysinfo),
-    ("whoami", S::ISysinfo),
-    ("hw.model", S::ISysinfo),
-    ("vmware", S::IVmDetect),
-    ("virtualbox", S::IVmDetect),
-    ("vbox", S::IVmDetect),
-    ("parallels", S::IVmDetect),
-    ("qemu", S::IVmDetect),
-    ("kern.hv_vmm_present", S::IVmDetect),
-    ("spctl", S::IGatekeeper),
-    ("master-disable", S::IGatekeeper),
-    ("--global-disable", S::IGatekeeper),
-    ("csrutil", S::IGatekeeper),
-    ("tccutil", S::IGatekeeper),
-    ("tcc.db", S::IGatekeeper),
-    ("com.apple.tcc", S::IGatekeeper),
-    ("killall terminal", S::IHideTerminal),
-    ("application \"terminal\"", S::IHideTerminal),
-    ("set visible of", S::IHideTerminal),
-    ("visible:false", S::IHideTerminal),
-    ("system events", S::IAppleScriptUi),
-    ("keystroke", S::IAppleScriptUi),
-    ("key code", S::IAppleScriptUi),
-    ("click button", S::IAppleScriptUi),
-    ("with administrator privileges", S::IAppleScriptUi),
-    ("do shell script", S::IAppleScriptUi),
-    ("tell application \"finder\"", S::IAppleScriptUi),
-    ("duplicate file", S::IAppleScriptUi),
-    ("duplicate folder", S::IAppleScriptUi),
-    ("objc.import", S::IJxa),
-    ("$.nstask", S::IJxa),
-    ("$.nsstring", S::IJxa),
-    ("currentapplication", S::IJxa),
-    ("doshellscript", S::IJxa),
-    ("includestandardadditions", S::IJxa),
-    ("application('system events')", S::IJxa),
-    ("os.system", S::IPythonRisky),
-    ("subprocess", S::IPythonRisky),
-    ("pty.spawn", S::IPythonRisky),
-    ("socket.socket", S::IPythonRisky),
-    ("ctypes", S::IPythonRisky),
-    ("urllib.request", S::IPythonRisky),
-    ("base64.b64decode", S::IPythonRisky),
-    ("zlib.decompress", S::IPythonRisky),
-    ("pickle.loads", S::IPythonRisky),
-    ("getpass", S::IPythonRisky),
-    ("child_process", S::IJsRisky),
-    ("execsync", S::IJsRisky),
-    ("string.fromcharcode", S::IJsRisky),
-    ("unescape(", S::IJsRisky),
-    ("fs.writefilesync", S::IJsRisky),
-    ("io::socket", S::IPerlRisky),
-    ("mime::base64", S::IPerlRisky),
-    ("decode_base64", S::IPerlRisky),
-    ("pack(\"h*\"", S::IPerlRisky),
-    ("pack('h*'", S::IPerlRisky),
-    ("/dev/tcp/", S::IReverseShell),
-    ("nc -e", S::IReverseShell),
-    ("ncat -e", S::IReverseShell),
-    ("bash -i", S::IReverseShell),
-    ("sh -i", S::IReverseShell),
-    ("socat ", S::IReverseShell),
-    ("mkfifo", S::IReverseShell),
-    ("0>&1", S::IReverseShell),
-    ("mozilla/5.0", S::IUserAgent),
-    ("user-agent", S::IUserAgent),
-    ("killall", S::IKillProcs),
-    ("pkill", S::IKillProcs),
-    ("kill -9", S::IKillProcs),
-    ("launchctl unload", S::IKillProcs),
-    ("launchctl remove", S::IKillProcs),
-    ("launchctl bootout", S::IKillProcs),
-    ("pbpaste", S::IClipboard),
-    ("pbcopy", S::IClipboard),
-    ("the clipboard", S::IClipboard),
-    ("screencapture", S::IScreenCapture),
-    ("history -c", S::IHistoryWipe),
-    ("unset histfile", S::IHistoryWipe),
-    ("histfile=/dev/null", S::IHistoryWipe),
-    (".bash_history", S::IHistoryWipe),
-    (".zsh_history", S::IHistoryWipe),
-    ("rm \"$0\"", S::ISelfDelete),
-    ("rm -f \"$0\"", S::ISelfDelete),
-    ("rm -- \"$0\"", S::ISelfDelete),
-    ("rm -rf \"$0\"", S::ISelfDelete),
-    ("rm $0", S::ISelfDelete),
-    ("os.remove(__file__)", S::ISelfDelete),
-    ("srm ", S::ISelfDelete),
-    ("hdiutil attach", S::IDiskImage),
-    ("hdiutil mount", S::IDiskImage),
-    ("installer -pkg", S::IDiskImage),
-    ("/volumes/", S::IDiskImage),
-    ("dyld_insert_libraries", S::IDyldInject),
-    ("dyld_library_path", S::IDyldInject),
-    ("defaults write", S::IDefaultsWrite),
-    (".onion", S::IOnionDyndns),
-    ("duckdns", S::IOnionDyndns),
-    ("no-ip.", S::IOnionDyndns),
-    ("ddns.net", S::IOnionDyndns),
-    ("/dev/null", S::IDevNull),
-    ("chflags hidden", S::ISetUmaskHidden),
-    ("setfile -a v", S::ISetUmaskHidden),
-];
+/// Indicator patterns (ASCII case-insensitive) → feature column. The pattern DATA is loaded at
+/// runtime from `signatures/script_patterns.json` (shipped in the installer) so no binary embeds the
+/// info-stealer signature strings; only this engine's matching logic is compiled in. The table
+/// defines the feature-vector columns, so the data file carries a `features_version` that must equal
+/// [`SCRIPT_FEATURES_VERSION`] or the whole table is rejected (ML off).
+pub(crate) struct ScriptPatterns {
+    /// Base-feature index each pattern feeds (parallel to the automaton's pattern order).
+    feature_idx: Vec<usize>,
+    /// Compiled multi-pattern automaton.
+    ac: AhoCorasick,
+}
 
-fn indicator_automaton() -> Option<&'static AhoCorasick> {
-    static AC: OnceLock<Option<AhoCorasick>> = OnceLock::new();
-    AC.get_or_init(|| {
-        AhoCorasick::builder()
+#[derive(serde::Deserialize)]
+struct ScriptPatternEntry {
+    pattern: String,
+    feature: String,
+}
+#[derive(serde::Deserialize)]
+struct ScriptPatternFile {
+    features_version: u32,
+    patterns: Vec<ScriptPatternEntry>,
+}
+
+impl ScriptPatterns {
+    fn from_json(bytes: &[u8]) -> Result<Self, MlError> {
+        let file: ScriptPatternFile = serde_json::from_slice(bytes)?;
+        if file.features_version != SCRIPT_FEATURES_VERSION {
+            return Err(MlError::FeatureMismatch(format!(
+                "script_patterns.json features_version {} != engine {SCRIPT_FEATURES_VERSION}",
+                file.features_version
+            )));
+        }
+        let patterns: Vec<&str> = file.patterns.iter().map(|e| e.pattern.as_str()).collect();
+        let mut feature_idx = Vec::with_capacity(file.patterns.len());
+        for e in &file.patterns {
+            let idx = BASE_NAMES
+                .iter()
+                .position(|n| *n == e.feature)
+                .ok_or_else(|| {
+                    MlError::FeatureMismatch(format!("unknown feature {:?}", e.feature))
+                })?;
+            feature_idx.push(idx);
+        }
+        let ac = AhoCorasick::builder()
             .ascii_case_insensitive(true)
             .match_kind(MatchKind::Standard)
-            .build(INDICATORS.iter().map(|(p, _)| p))
-            .ok()
-    })
-    .as_ref()
+            .build(&patterns)
+            .map_err(|e| MlError::FeatureMismatch(format!("script pattern automaton: {e}")))?;
+        Ok(ScriptPatterns { feature_idx, ac })
+    }
+}
+
+static SCRIPT_PATTERNS: OnceLock<ScriptPatterns> = OnceLock::new();
+
+/// Loads the script indicator patterns from `path`. Errors (ML off) on a missing / malformed file or
+/// a `features_version` mismatch. First successful load wins.
+pub(crate) fn load_script_patterns(path: &Path) -> Result<(), MlError> {
+    let bytes = std::fs::read(path)?;
+    let sp = ScriptPatterns::from_json(&bytes)?;
+    let _ = SCRIPT_PATTERNS.set(sp);
+    Ok(())
+}
+
+/// Repo path of the script pattern data file (tests only).
+#[cfg(any(test, feature = "test-util"))]
+fn repo_script_patterns_path() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../signatures/script_patterns.json")
+}
+
+/// The loaded patterns, or `None` when unavailable. Under `test`/`test-util` the repo file is
+/// auto-loaded so unit tests (here and in pb-engine) run against the shipped table.
+fn script_patterns() -> Option<&'static ScriptPatterns> {
+    #[cfg(any(test, feature = "test-util"))]
+    {
+        SCRIPT_PATTERNS.get().or_else(|| {
+            ScriptPatterns::from_json(&std::fs::read(repo_script_patterns_path()).ok()?)
+                .ok()
+                .and_then(|sp| {
+                    let _ = SCRIPT_PATTERNS.set(sp);
+                    SCRIPT_PATTERNS.get()
+                })
+        })
+    }
+    #[cfg(not(any(test, feature = "test-util")))]
+    {
+        SCRIPT_PATTERNS.get()
+    }
 }
 
 fn lg(n: u64) -> f32 {
@@ -1113,13 +916,19 @@ fn count_escapes(text: &[u8]) -> (u64, u64, u64, u64) {
 pub fn extract_script_features(bytes: &[u8], path: Option<&Path>) -> Result<Vec<f32>, MlError> {
     let bytes = &bytes[..bytes.len().min(MAX_SCRIPT_BYTES)];
     let ty = detect_script_kind(bytes, path).ok_or(MlError::NotScript)?;
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| extract_inner(bytes, &ty))) {
+    // Indicator patterns are a runtime data file; without them the feature vector misses its string
+    // columns, so we refuse rather than emit an incomplete vector (ML off upstream).
+    let sp = script_patterns()
+        .ok_or_else(|| MlError::FeatureMismatch("script_patterns.json not loaded".to_string()))?;
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        extract_inner(bytes, &ty, sp)
+    })) {
         Ok(v) => Ok(v),
         Err(_) => Err(MlError::Malformed("script parser panicked".into())),
     }
 }
 
-fn extract_inner(bytes: &[u8], ty: &ScriptType) -> Vec<f32> {
+fn extract_inner(bytes: &[u8], ty: &ScriptType, sp: &ScriptPatterns) -> Vec<f32> {
     let mut v = Sv(vec![0.0; N_BASE + HASH_BUCKETS]);
     for k in ScriptKind::ALL {
         v.flag(kind_feature(k), ty.kind == k);
@@ -1172,15 +981,16 @@ fn extract_inner(bytes: &[u8], ty: &ScriptType) -> Vec<f32> {
     v.count(S::Ipv4, st.ipv4);
 
     // Indicators + URLs.
-    if let Some(ac) = indicator_automaton() {
+    {
+        let ac = &sp.ac;
         let mut counts = vec![0u64; N_BASE];
         let mut decoded_hits = 0u64;
         let mut hosts: BTreeSet<Vec<u8>> = BTreeSet::new();
         let (mut url_ip, mut url_port) = (0u64, 0u64);
         for (layer, t) in views.iter().enumerate() {
             for m in ac.find_overlapping_iter(*t) {
-                if let Some((_, f)) = INDICATORS.get(m.pattern().as_usize()) {
-                    counts[*f as usize] += 1;
+                if let Some(&fi) = sp.feature_idx.get(m.pattern().as_usize()) {
+                    counts[fi] += 1;
                     if layer > 0 {
                         decoded_hits += 1;
                     }
@@ -1360,8 +1170,22 @@ mod tests {
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')));
         assert_eq!(S::ISetUmaskHidden as usize, N_BASE - 1);
-        // Patterns are matched case-insensitively: keep them lower-case so the table reads as such.
-        assert!(INDICATORS.iter().all(|(p, _)| p.to_ascii_lowercase() == *p));
+        // Every loaded pattern maps to a valid base-feature column.
+        let sp = script_patterns().expect("script patterns load");
+        assert!(sp.feature_idx.iter().all(|&i| i < N_BASE));
+        assert!(!sp.feature_idx.is_empty());
+    }
+
+    #[test]
+    fn data_file_patterns_are_lowercase() {
+        // Patterns are matched case-insensitively; keep the data file lower-case so it reads as such.
+        let file: ScriptPatternFile =
+            serde_json::from_slice(&std::fs::read(repo_script_patterns_path()).unwrap()).unwrap();
+        assert_eq!(file.features_version, SCRIPT_FEATURES_VERSION);
+        assert!(file
+            .patterns
+            .iter()
+            .all(|e| e.pattern.to_ascii_lowercase() == e.pattern));
     }
 
     #[test]

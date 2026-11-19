@@ -106,6 +106,18 @@ pb_sign_binary "$bin/parabellum" "$PB_CLI_SIGN_ID"
 install -m 0755 "$PB_REPO_ROOT/scripts/uninstall.sh" "$bin/uninstall.sh"
 install -m 0755 "$PB_REPO_ROOT/scripts/restore-dns.sh" "$bin/restore-dns.sh"
 
+pb_info "Payload : signatures de détection (données chargées à l'exécution)"
+# Detection signatures ship as data files loaded at runtime (NOT compiled into the binaries, which
+# would make XProtect flag our own benign executables). Shipped in the pkg so there is no install-time
+# window without rules; the daemon reads them from <root>/signatures.
+sigs="$root/Library/Application Support/Parabellum/signatures"
+mkdir -p "$sigs"
+chmod 0755 "$sigs"
+for f in builtin.yar heuristics.json macho_patterns.json script_patterns.json; do
+    [[ -s "$PB_REPO_ROOT/signatures/$f" ]] || pb_die "signature manquante : signatures/$f"
+    install -m 0644 "$PB_REPO_ROOT/signatures/$f" "$sigs/$f"
+done
+
 pb_info "Payload : LaunchDaemon + LaunchAgent"
 install -m 0644 "$installer_dir/launchd/$PB_DAEMON_LABEL.plist" "$root/Library/LaunchDaemons/$PB_DAEMON_LABEL.plist"
 install -m 0644 "$installer_dir/launchd/$PB_UI_AGENT_LABEL.plist" "$root/Library/LaunchAgents/$PB_UI_AGENT_LABEL.plist"
@@ -148,6 +160,10 @@ for expected in \
     "Library/Application Support/Parabellum/bin/parabellum" \
     "Library/Application Support/Parabellum/bin/uninstall.sh" \
     "Library/Application Support/Parabellum/bin/restore-dns.sh" \
+    "Library/Application Support/Parabellum/signatures/builtin.yar" \
+    "Library/Application Support/Parabellum/signatures/heuristics.json" \
+    "Library/Application Support/Parabellum/signatures/macho_patterns.json" \
+    "Library/Application Support/Parabellum/signatures/script_patterns.json" \
     "Library/LaunchDaemons/$PB_DAEMON_LABEL.plist" \
     "Library/LaunchAgents/$PB_UI_AGENT_LABEL.plist"; do
     grep -Fqx "$expected" <<<"$payload" || pb_die "payload incomplet : $expected manquant"

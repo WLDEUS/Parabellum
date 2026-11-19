@@ -25,6 +25,30 @@ async fn daemon(root: &Path, skip_baselines: bool) -> Daemon {
 async fn daemon_with(root: &Path, skip_baselines: bool, access: Option<AccessPolicy>) -> Daemon {
     let paths = Paths::with_root(root);
     pb_daemon::setup::prepare_dirs(&paths, false).unwrap();
+    // Detection signatures ship as runtime data files (installed by the pkg); install them here so
+    // the engine has its built-in YARA rules and ML indicator tables.
+    let sig = paths.signatures_dir();
+    std::fs::create_dir_all(&sig).unwrap();
+    for (name, bytes) in [
+        (
+            "builtin.yar",
+            &include_bytes!("../../../signatures/builtin.yar")[..],
+        ),
+        (
+            "macho_patterns.json",
+            &include_bytes!("../../../signatures/macho_patterns.json")[..],
+        ),
+        (
+            "script_patterns.json",
+            &include_bytes!("../../../signatures/script_patterns.json")[..],
+        ),
+        (
+            "heuristics.json",
+            &include_bytes!("../../../signatures/heuristics.json")[..],
+        ),
+    ] {
+        std::fs::write(sig.join(name), bytes).unwrap();
+    }
     if skip_baselines {
         let s = pb_daemon::store::Store::open(&paths.state_db()).unwrap();
         s.kv_set(pb_daemon::baseline::Kind::Persistence.kv_key(), "1")

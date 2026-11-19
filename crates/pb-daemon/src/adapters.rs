@@ -679,6 +679,13 @@ mod tests {
     fn engine_adapter_loads_without_bundle() {
         let d = tempfile::tempdir().unwrap();
         let paths = Paths::with_root(d.path());
+        // Built-in YARA rules are a runtime data file (shipped in the pkg); install it like the pkg.
+        std::fs::create_dir_all(paths.signatures_dir()).unwrap();
+        std::fs::write(
+            paths.signatures_dir().join("builtin.yar"),
+            include_bytes!("../../../signatures/builtin.yar"),
+        )
+        .unwrap();
         let e = EngineLoaderImpl.load(&paths, &Config::default()).unwrap();
         assert!(e.db_status().yara_rules > 0, "built-in rules");
         let f = d.path().join("clean.txt");

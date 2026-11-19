@@ -1,4 +1,7 @@
-// Parabellum built-in rules, compiled into the binary and always loaded (even without a DB bundle).
+// Parabellum built-in rules. Shipped as a runtime data file (installed under
+// /Library/Application Support/Parabellum/signatures/builtin.yar), loaded at daemon startup and
+// always applied in addition to the DB bundle's yara/*.yar. Kept OUT of the executables so our own
+// benign binaries carry no malware-signature strings (which would trip XProtect).
 // Metadata: `family` = detection name, `severity` = info|low|medium|high|critical,
 // `engine` = "heuristic" for generic heuristics (reported as DetectionEngine::Heuristic).
 // Keep these conservative: medium severity only makes a file *suspicious*.

@@ -1,103 +1,145 @@
-//! Catalogue of what macOS info-stealers go after (AMOS / Atomic, Poseidon, Banshee, Cthulhu, Cuckoo…:
-//! browser credential and cookie stores, the login keychain, crypto wallets, Telegram sessions, Notes, SSH and
-//! cloud credentials) and of the Apple tools they drive (`osascript` fake password dialogs, `security`
-//! keychain dumps, `dscl -authonly` password checks, `cp`/`ditto`/`zip` staging, `curl` exfiltration).
+//! Catalogue of what macOS info-stealers go after (browser credential and cookie stores, the login
+//! keychain, crypto wallets, Telegram sessions, Notes, SSH and cloud credentials) and of the Apple
+//! tools they drive (`osascript` fake password dialogs, keychain dumps, password checks, staging,
+//! exfiltration).
 //!
-//! Shared by the eslogger watcher (cheap pre-filter: which platform-binary `exec`s and which file creations are
-//! worth forwarding) and the daemon's behaviour guard (the actual rules). Pure functions, no I/O.
+//! The pattern DATA lives in the runtime data file `signatures/heuristics.json` (shipped in the
+//! installer, loaded at daemon startup via [`load_from`]) so no Parabellum binary embeds info-stealer
+//! signature strings — which would trip XProtect on our own, benign binaries. The matching LOGIC stays
+//! here (and in the daemon's behaviour guard). When the file is missing the heuristics are simply
+//! disabled (every predicate returns the "nothing of interest" answer) and the daemon keeps running.
+//!
+//! Shared by the eslogger watcher (cheap pre-filter: which platform-binary `exec`s and which file
+//! creations are worth forwarding) and the daemon's behaviour guard (the actual rules). Pure
+//! functions over the loaded tables, no I/O once loaded.
 
+use serde::Deserialize;
 use std::path::Path;
+use std::sync::OnceLock;
 
-/// File names that only exist inside a browser / keychain / wallet store. A copy of one of them outside its
-/// home is the signature of credential staging.
-pub const SENSITIVE_FILE_NAMES: &[&str] = &[
-    // Chromium family (Chrome, Brave, Edge, Opera, Vivaldi, Arc, Chromium, Yandex)
-    "Login Data",
-    "Login Data For Account",
-    "Cookies",
-    "Web Data",
-    "Local State",
-    // Firefox
-    "logins.json",
-    "key4.db",
-    "key3.db",
-    "cookies.sqlite",
-    "formhistory.sqlite",
-    // Safari
-    "Cookies.binarycookies",
-    // Keychains
-    "login.keychain-db",
-    "login.keychain",
-    // Apple Notes
-    "NoteStore.sqlite",
-    // Wallets
-    "wallet.dat",
-    "exodus.wallet",
-    "seed.seco",
-    "passphrase.json",
-    "info.seco",
-];
+/// Behavioural heuristic pattern tables, loaded from `signatures/heuristics.json`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Heuristics {
+    /// File names that only exist inside a browser / keychain / wallet store.
+    #[serde(default)]
+    pub sensitive_file_names: Vec<String>,
+    /// Path fragments of credential stores (matched case-insensitively against `exec` arguments).
+    #[serde(default)]
+    pub sensitive_path_fragments: Vec<String>,
+    /// Roots (relative to the user's home) where the sensitive files legitimately live.
+    #[serde(default)]
+    pub legit_store_roots: Vec<String>,
+    /// Apple tools whose `exec` the guard inspects (eslogger normally skips platform binaries).
+    #[serde(default)]
+    pub watched_platform_tools: Vec<String>,
+    /// AppleScript hidden-answer (fake password dialog) argument fragments.
+    #[serde(default)]
+    pub fake_dialog: Vec<String>,
+    /// `security` sub-commands that read a stored secret.
+    #[serde(default)]
+    pub keychain_find_secret: Vec<String>,
+    /// `security` sub-commands that dump the keychain.
+    #[serde(default)]
+    pub keychain_dump: Vec<String>,
+    /// Chromium-family browser keychain encryption-key item fragments.
+    #[serde(default)]
+    pub browser_safe_storage: Vec<String>,
+    /// `dscl` local password-validation flags.
+    #[serde(default)]
+    pub password_check: Vec<String>,
+}
 
-/// Path fragments of credential stores (matched case-insensitively against `exec` arguments).
-pub const SENSITIVE_PATH_FRAGMENTS: &[&str] = &[
-    "login data",
-    "/cookies",
-    "web data",
-    "local state",
-    "logins.json",
-    "key4.db",
-    "cookies.sqlite",
-    "cookies.binarycookies",
-    "library/keychains",
-    "keychain-db",
-    "notestore.sqlite",
-    "local extension settings",
-    "/exodus",
-    "/electrum",
-    "/atomic/local storage",
-    "wallet.dat",
-    "ledger live",
-    "/coinomi",
-    "/guarda",
-    "telegram desktop/tdata",
-    "/.ssh/id_",
-    "/.aws/credentials",
-    "/.config/gcloud",
-    "/.kube/config",
-];
+impl Heuristics {
+    /// Parses the JSON content of a heuristics file.
+    pub fn from_json(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
+    }
+}
 
-/// Roots (relative to the user's home) where the sensitive files legitimately live.
-pub const LEGIT_STORE_ROOTS: &[&str] = &[
-    "Library/Application Support",
-    "Library/Containers",
-    "Library/Group Containers",
-    "Library/Cookies",
-    "Library/Keychains",
-    "Library/Safari",
-    "Library/Caches",
-    "Library/WebKit",
-    "Library/HTTPStorages",
-];
+static ACTIVE: OnceLock<Heuristics> = OnceLock::new();
 
-/// Apple tools whose `exec` the guard inspects (eslogger normally skips platform binaries).
-pub const WATCHED_PLATFORM_TOOLS: &[&str] = &[
-    "osascript",
-    "security",
-    "dscl",
-    "sqlite3",
-    "cp",
-    "ditto",
-    "zip",
-    "tar",
-    "cat",
-    "base64",
-    "rsync",
-    "scp",
-    "curl",
-    "spctl",
-    "killall",
-    "openssl",
-];
+/// Loads the heuristics from `path`. Returns `true` on success. A missing or malformed file logs a
+/// warning and leaves the heuristics disabled; the daemon keeps running. Idempotent: the first
+/// successful load wins.
+pub fn load_from(path: &Path) -> bool {
+    match std::fs::read(path) {
+        Ok(bytes) => match Heuristics::from_json(&bytes) {
+            Ok(h) => {
+                let _ = ACTIVE.set(h);
+                true
+            }
+            Err(e) => {
+                tracing::warn!(path = %path.display(), error = %e,
+                    "behavioural heuristics file malformed: heuristics disabled");
+                false
+            }
+        },
+        Err(e) => {
+            tracing::warn!(path = %path.display(), error = %e,
+                "behavioural heuristics file missing: heuristics disabled");
+            false
+        }
+    }
+}
+
+/// Repo path of the heuristics data file, for tests and tools (resolved from this crate's manifest
+/// dir, so it works from any crate's test binary). Embeds only the path, never the signature data.
+#[cfg(any(test, feature = "test-util"))]
+pub fn repo_heuristics_path() -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../signatures/heuristics.json")
+}
+
+/// The active heuristics, or `None` when none were loaded. Under `test`/`test-util` the repo file is
+/// auto-loaded so unit tests (in this crate and in the daemon) see the shipped tables.
+fn active() -> Option<&'static Heuristics> {
+    #[cfg(any(test, feature = "test-util"))]
+    {
+        // `get_or_init` returns the already-loaded tables when `load_from` ran first.
+        Some(ACTIVE.get_or_init(|| {
+            let p = repo_heuristics_path();
+            let bytes =
+                std::fs::read(&p).unwrap_or_else(|e| panic!("reading {}: {e}", p.display()));
+            Heuristics::from_json(&bytes).unwrap_or_else(|e| panic!("parsing {}: {e}", p.display()))
+        }))
+    }
+    #[cfg(not(any(test, feature = "test-util")))]
+    {
+        ACTIVE.get()
+    }
+}
+
+fn any_contains(patterns: &[String], haystack: &str) -> bool {
+    patterns.iter().any(|p| haystack.contains(p.as_str()))
+}
+
+// --- pattern groups exposed to the behaviour guard (pb-daemon::guard::rules) ----------------------
+// Each returns an empty slice when the heuristics are not loaded, so the guard's rules simply never
+// fire (heuristic disabled) rather than matching on literals embedded in the daemon binary.
+
+/// AppleScript hidden-answer (fake password dialog) fragments.
+pub fn fake_dialog_patterns() -> &'static [String] {
+    active().map(|h| h.fake_dialog.as_slice()).unwrap_or(&[])
+}
+/// `security` sub-commands that read a stored secret.
+pub fn keychain_find_secret_patterns() -> &'static [String] {
+    active()
+        .map(|h| h.keychain_find_secret.as_slice())
+        .unwrap_or(&[])
+}
+/// `security` sub-commands that dump the keychain.
+pub fn keychain_dump_patterns() -> &'static [String] {
+    active().map(|h| h.keychain_dump.as_slice()).unwrap_or(&[])
+}
+/// Chromium-family browser keychain encryption-key item fragments.
+pub fn browser_safe_storage_patterns() -> &'static [String] {
+    active()
+        .map(|h| h.browser_safe_storage.as_slice())
+        .unwrap_or(&[])
+}
+/// `dscl` local password-validation flags.
+pub fn password_check_patterns() -> &'static [String] {
+    active().map(|h| h.password_check.as_slice()).unwrap_or(&[])
+}
 
 fn basename(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
@@ -118,32 +160,35 @@ pub fn joined_args(args: &[String]) -> String {
 
 /// Some argument names a credential store.
 pub fn args_touch_sensitive(args_lower: &str) -> bool {
-    SENSITIVE_PATH_FRAGMENTS
-        .iter()
-        .any(|f| args_lower.contains(f))
+    match active() {
+        Some(h) => any_contains(&h.sensitive_path_fragments, args_lower),
+        None => false,
+    }
 }
 
 /// Cheap pre-filter: is this platform-binary `exec` worth forwarding to the behaviour guard?
 pub fn platform_exec_of_interest(path: &str, args: &[String]) -> bool {
+    let Some(h) = active() else {
+        return false;
+    };
     let name = basename(path);
-    if !WATCHED_PLATFORM_TOOLS.contains(&name) {
+    if !h.watched_platform_tools.iter().any(|t| t == name) {
         return false;
     }
     let a = joined_args(args);
     match name {
-        "osascript" => a.contains("hidden answer") || a.contains("hiddenanswer"),
+        "osascript" => any_contains(&h.fake_dialog, &a),
         "security" => {
-            a.contains("dump-keychain")
-                || a.contains("find-generic-password")
-                || a.contains("find-internet-password")
+            any_contains(&h.keychain_dump, &a)
+                || any_contains(&h.keychain_find_secret, &a)
                 || a.contains("export")
         }
-        "dscl" => a.contains("-authonly"),
+        "dscl" => any_contains(&h.password_check, &a),
         "spctl" => a.contains("--master-disable") || a.contains("--global-disable"),
         "killall" => a.contains("terminal"),
         "curl" => is_upload(args),
         "openssl" => a.contains("enc ") && (a.contains("-aes") || a.contains("-chacha")),
-        _ => args_touch_sensitive(&a),
+        _ => any_contains(&h.sensitive_path_fragments, &a),
     }
 }
 
@@ -169,15 +214,21 @@ pub fn is_upload(args: &[String]) -> bool {
 
 /// Name of a credential-store file (exact match on the last component).
 pub fn is_sensitive_file_name(path: &Path) -> bool {
+    let Some(h) = active() else {
+        return false;
+    };
     path.file_name()
         .and_then(|n| n.to_str())
-        .map(|n| SENSITIVE_FILE_NAMES.contains(&n))
+        .map(|n| h.sensitive_file_names.iter().any(|f| f == n))
         .unwrap_or(false)
 }
 
-/// The sensitive file sits where its application keeps it (under one of [`LEGIT_STORE_ROOTS`] of some
+/// The sensitive file sits where its application keeps it (under one of the legit store roots of some
 /// user's home, or in a Time Machine / system location).
 pub fn is_legit_store_location(path: &Path) -> bool {
+    let Some(h) = active() else {
+        return false;
+    };
     let s = path.to_string_lossy();
     if s.starts_with("/Volumes/") || s.starts_with("/System/") || s.starts_with("/private/var/db/")
     {
@@ -189,7 +240,7 @@ pub fn is_legit_store_location(path: &Path) -> bool {
         return false;
     }
     let rest = comps[3..].join("/");
-    LEGIT_STORE_ROOTS
+    h.legit_store_roots
         .iter()
         .any(|r| rest == *r || rest.starts_with(&format!("{r}/")))
 }
@@ -289,5 +340,21 @@ mod tests {
         assert!(is_legit_store_location(Path::new(
             "/Volumes/Backup/Users/q/Library/Cookies"
         )));
+    }
+
+    #[test]
+    fn repo_heuristics_file_loads_and_covers_groups() {
+        let h = Heuristics::from_json(&std::fs::read(repo_heuristics_path()).unwrap()).unwrap();
+        assert!(!h.sensitive_file_names.is_empty());
+        assert!(!h.sensitive_path_fragments.is_empty());
+        assert!(!h.watched_platform_tools.is_empty());
+        assert!(h.fake_dialog.iter().any(|p| p == "hidden answer"));
+        assert!(h
+            .keychain_find_secret
+            .iter()
+            .any(|p| p == "find-generic-password"));
+        assert!(h.keychain_dump.iter().any(|p| p == "dump-keychain"));
+        assert!(h.browser_safe_storage.iter().any(|p| p == "safe storage"));
+        assert!(h.password_check.iter().any(|p| p == "-authonly"));
     }
 }

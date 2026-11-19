@@ -70,6 +70,18 @@ pub enum MlError {
     FeatureMismatch(String),
 }
 
+/// Loads the ML indicator-pattern data files (`macho_patterns.json`, `script_patterns.json`) from
+/// `dir` (the installed signatures directory, or the repo `signatures/` dir for training/CI). These
+/// define the feature-vector string columns, so a file whose `features_version` does not match the
+/// engine's is rejected and the corresponding extractor stays off. Returns the first error; a caller
+/// that wants "ML off, keep running" logs it and continues. Call once at startup before any
+/// [`extract_features`] / [`extract_script_features`].
+pub fn load_signatures(dir: &std::path::Path) -> Result<(), MlError> {
+    features::load_macho_patterns(&dir.join("macho_patterns.json"))?;
+    script::load_script_patterns(&dir.join("script_patterns.json"))?;
+    Ok(())
+}
+
 /// Returns true when `bytes` starts with a thin Mach-O magic (32/64-bit, either endianness) or a
 /// universal-binary magic (`FAT_MAGIC` / `FAT_MAGIC_64`). Cheap pre-filter; a positive answer does
 /// not guarantee [`extract_features`] will succeed (Java class files share `0xCAFEBABE`).

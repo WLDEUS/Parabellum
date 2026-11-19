@@ -1,0 +1,1086 @@
+{
+  "_comment": "Parabellum script ML indicator patterns. Runtime data file; defines the feature-vector string columns coupled to features_version. Generated from script.rs INDICATORS.",
+  "features_version": 1,
+  "patterns": [
+    {
+      "feature": "ind_osascript",
+      "pattern": "osascript"
+    },
+    {
+      "feature": "ind_dialog",
+      "pattern": "display dialog"
+    },
+    {
+      "feature": "ind_dialog",
+      "pattern": "display alert"
+    },
+    {
+      "feature": "ind_dialog",
+      "pattern": "choose from list"
+    },
+    {
+      "feature": "ind_hidden_answer",
+      "pattern": "hidden answer"
+    },
+    {
+      "feature": "ind_hidden_answer",
+      "pattern": "default answer"
+    },
+    {
+      "feature": "ind_password_prompt",
+      "pattern": "enter your password"
+    },
+    {
+      "feature": "ind_password_prompt",
+      "pattern": "requires your password"
+    },
+    {
+      "feature": "ind_password_prompt",
+      "pattern": "system settings"
+    },
+    {
+      "feature": "ind_password_prompt",
+      "pattern": "to launch the application"
+    },
+    {
+      "feature": "ind_password_prompt",
+      "pattern": "password"
+    },
+    {
+      "feature": "ind_dscl_authonly",
+      "pattern": "dscl"
+    },
+    {
+      "feature": "ind_dscl_authonly",
+      "pattern": "-authonly"
+    },
+    {
+      "feature": "ind_keychain",
+      "pattern": "find-generic-password"
+    },
+    {
+      "feature": "ind_keychain",
+      "pattern": "find-internet-password"
+    },
+    {
+      "feature": "ind_keychain",
+      "pattern": "dump-keychain"
+    },
+    {
+      "feature": "ind_keychain",
+      "pattern": "unlock-keychain"
+    },
+    {
+      "feature": "ind_keychain",
+      "pattern": "security export"
+    },
+    {
+      "feature": "ind_keychain",
+      "pattern": "login.keychain"
+    },
+    {
+      "feature": "ind_keychain",
+      "pattern": "keychain-db"
+    },
+    {
+      "feature": "ind_sudo_stdin",
+      "pattern": "sudo -s"
+    },
+    {
+      "feature": "ind_sudo_stdin",
+      "pattern": "| sudo"
+    },
+    {
+      "feature": "ind_download",
+      "pattern": "curl "
+    },
+    {
+      "feature": "ind_download",
+      "pattern": "curl\t"
+    },
+    {
+      "feature": "ind_download",
+      "pattern": "wget "
+    },
+    {
+      "feature": "ind_download",
+      "pattern": "invoke-webrequest"
+    },
+    {
+      "feature": "ind_download",
+      "pattern": "urlopen("
+    },
+    {
+      "feature": "ind_download",
+      "pattern": "requests.get("
+    },
+    {
+      "feature": "ind_pipe_to_interpreter",
+      "pattern": "| sh"
+    },
+    {
+      "feature": "ind_pipe_to_interpreter",
+      "pattern": "| bash"
+    },
+    {
+      "feature": "ind_pipe_to_interpreter",
+      "pattern": "| zsh"
+    },
+    {
+      "feature": "ind_pipe_to_interpreter",
+      "pattern": "| python"
+    },
+    {
+      "feature": "ind_pipe_to_interpreter",
+      "pattern": "| perl"
+    },
+    {
+      "feature": "ind_pipe_to_interpreter",
+      "pattern": "| osascript"
+    },
+    {
+      "feature": "ind_pipe_to_interpreter",
+      "pattern": "|sh"
+    },
+    {
+      "feature": "ind_pipe_to_interpreter",
+      "pattern": "|bash"
+    },
+    {
+      "feature": "ind_pipe_to_interpreter",
+      "pattern": "|zsh"
+    },
+    {
+      "feature": "ind_pipe_to_interpreter",
+      "pattern": "|python"
+    },
+    {
+      "feature": "ind_pipe_to_interpreter",
+      "pattern": "|osascript"
+    },
+    {
+      "feature": "ind_eval_remote",
+      "pattern": "$(curl"
+    },
+    {
+      "feature": "ind_eval_remote",
+      "pattern": "`curl"
+    },
+    {
+      "feature": "ind_eval_remote",
+      "pattern": "eval \"$(curl"
+    },
+    {
+      "feature": "ind_eval_remote",
+      "pattern": "bash -c \"$(curl"
+    },
+    {
+      "feature": "ind_eval_remote",
+      "pattern": "sh -c \"$(curl"
+    },
+    {
+      "feature": "ind_eval_remote",
+      "pattern": "<(curl"
+    },
+    {
+      "feature": "ind_decode",
+      "pattern": "base64 -d"
+    },
+    {
+      "feature": "ind_decode",
+      "pattern": "base64 --decode"
+    },
+    {
+      "feature": "ind_decode",
+      "pattern": "b64decode"
+    },
+    {
+      "feature": "ind_decode",
+      "pattern": "atob("
+    },
+    {
+      "feature": "ind_decode",
+      "pattern": "xxd -r"
+    },
+    {
+      "feature": "ind_decode",
+      "pattern": "xxd -p -r"
+    },
+    {
+      "feature": "ind_decode",
+      "pattern": "openssl enc -d"
+    },
+    {
+      "feature": "ind_decode",
+      "pattern": "openssl base64 -d"
+    },
+    {
+      "feature": "ind_decode",
+      "pattern": "frombase64string"
+    },
+    {
+      "feature": "ind_decode",
+      "pattern": "unhexlify"
+    },
+    {
+      "feature": "ind_decode",
+      "pattern": "rot13"
+    },
+    {
+      "feature": "ind_dynamic_exec",
+      "pattern": "eval "
+    },
+    {
+      "feature": "ind_dynamic_exec",
+      "pattern": "eval("
+    },
+    {
+      "feature": "ind_dynamic_exec",
+      "pattern": "exec("
+    },
+    {
+      "feature": "ind_dynamic_exec",
+      "pattern": "compile("
+    },
+    {
+      "feature": "ind_dynamic_exec",
+      "pattern": "__import__("
+    },
+    {
+      "feature": "ind_dynamic_exec",
+      "pattern": "marshal.loads"
+    },
+    {
+      "feature": "ind_dynamic_exec",
+      "pattern": "run script"
+    },
+    {
+      "feature": "ind_dynamic_exec",
+      "pattern": "new function("
+    },
+    {
+      "feature": "ind_chmod_exec",
+      "pattern": "chmod +x"
+    },
+    {
+      "feature": "ind_chmod_exec",
+      "pattern": "chmod 777"
+    },
+    {
+      "feature": "ind_chmod_exec",
+      "pattern": "chmod 755"
+    },
+    {
+      "feature": "ind_chmod_exec",
+      "pattern": "chmod u+x"
+    },
+    {
+      "feature": "ind_chmod_exec",
+      "pattern": "chmod a+x"
+    },
+    {
+      "feature": "ind_quarantine_removal",
+      "pattern": "com.apple.quarantine"
+    },
+    {
+      "feature": "ind_quarantine_removal",
+      "pattern": "xattr -d"
+    },
+    {
+      "feature": "ind_quarantine_removal",
+      "pattern": "xattr -c"
+    },
+    {
+      "feature": "ind_quarantine_removal",
+      "pattern": "xattr -r"
+    },
+    {
+      "feature": "ind_launchd",
+      "pattern": "launchctl"
+    },
+    {
+      "feature": "ind_launchd",
+      "pattern": "launchagents"
+    },
+    {
+      "feature": "ind_launchd",
+      "pattern": "launchdaemons"
+    },
+    {
+      "feature": "ind_launchd",
+      "pattern": "runatload"
+    },
+    {
+      "feature": "ind_launchd",
+      "pattern": "keepalive"
+    },
+    {
+      "feature": "ind_launchd",
+      "pattern": "programarguments"
+    },
+    {
+      "feature": "ind_login_items",
+      "pattern": "login item"
+    },
+    {
+      "feature": "ind_login_items",
+      "pattern": "loginitems"
+    },
+    {
+      "feature": "ind_login_items",
+      "pattern": "sfltool"
+    },
+    {
+      "feature": "ind_login_items",
+      "pattern": "backgrounditems"
+    },
+    {
+      "feature": "ind_cron",
+      "pattern": "crontab"
+    },
+    {
+      "feature": "ind_cron",
+      "pattern": "/etc/periodic"
+    },
+    {
+      "feature": "ind_background",
+      "pattern": "nohup"
+    },
+    {
+      "feature": "ind_background",
+      "pattern": "disown"
+    },
+    {
+      "feature": "ind_background",
+      "pattern": "setsid"
+    },
+    {
+      "feature": "ind_background",
+      "pattern": "screen -dm"
+    },
+    {
+      "feature": "ind_background",
+      "pattern": "&>/dev/null &"
+    },
+    {
+      "feature": "ind_background",
+      "pattern": "> /dev/null 2>&1 &"
+    },
+    {
+      "feature": "ind_tmp_paths",
+      "pattern": "/tmp/"
+    },
+    {
+      "feature": "ind_tmp_paths",
+      "pattern": "/private/tmp"
+    },
+    {
+      "feature": "ind_tmp_paths",
+      "pattern": "/var/tmp"
+    },
+    {
+      "feature": "ind_tmp_paths",
+      "pattern": "/users/shared"
+    },
+    {
+      "feature": "ind_tmp_paths",
+      "pattern": "$tmpdir"
+    },
+    {
+      "feature": "ind_hidden_tmp_path",
+      "pattern": "/tmp/."
+    },
+    {
+      "feature": "ind_hidden_tmp_path",
+      "pattern": "/private/tmp/."
+    },
+    {
+      "feature": "ind_hidden_tmp_path",
+      "pattern": "/var/tmp/."
+    },
+    {
+      "feature": "ind_hidden_tmp_path",
+      "pattern": "/users/shared/."
+    },
+    {
+      "feature": "ind_archive",
+      "pattern": "ditto -c"
+    },
+    {
+      "feature": "ind_archive",
+      "pattern": "zip -r"
+    },
+    {
+      "feature": "ind_archive",
+      "pattern": "zip -q"
+    },
+    {
+      "feature": "ind_archive",
+      "pattern": "tar -cz"
+    },
+    {
+      "feature": "ind_archive",
+      "pattern": "tar czf"
+    },
+    {
+      "feature": "ind_archive",
+      "pattern": "tar -czf"
+    },
+    {
+      "feature": "ind_archive",
+      "pattern": "7z a "
+    },
+    {
+      "feature": "ind_upload",
+      "pattern": "curl -f "
+    },
+    {
+      "feature": "ind_upload",
+      "pattern": "--data-binary"
+    },
+    {
+      "feature": "ind_upload",
+      "pattern": "--upload-file"
+    },
+    {
+      "feature": "ind_upload",
+      "pattern": "-x post"
+    },
+    {
+      "feature": "ind_upload",
+      "pattern": "--form "
+    },
+    {
+      "feature": "ind_upload",
+      "pattern": "requests.post"
+    },
+    {
+      "feature": "ind_upload",
+      "pattern": "multipart/form-data"
+    },
+    {
+      "feature": "ind_exfil_service",
+      "pattern": "api.telegram.org"
+    },
+    {
+      "feature": "ind_exfil_service",
+      "pattern": "discord.com/api/webhooks"
+    },
+    {
+      "feature": "ind_exfil_service",
+      "pattern": "discordapp.com/api/webhooks"
+    },
+    {
+      "feature": "ind_exfil_service",
+      "pattern": "pastebin.com"
+    },
+    {
+      "feature": "ind_exfil_service",
+      "pattern": "ngrok"
+    },
+    {
+      "feature": "ind_exfil_service",
+      "pattern": "transfer.sh"
+    },
+    {
+      "feature": "ind_exfil_service",
+      "pattern": "file.io"
+    },
+    {
+      "feature": "ind_exfil_service",
+      "pattern": "gofile.io"
+    },
+    {
+      "feature": "ind_exfil_service",
+      "pattern": "webhook.site"
+    },
+    {
+      "feature": "ind_exfil_service",
+      "pattern": "trycloudflare"
+    },
+    {
+      "feature": "ind_browser_data",
+      "pattern": "google/chrome"
+    },
+    {
+      "feature": "ind_browser_data",
+      "pattern": "bravesoftware"
+    },
+    {
+      "feature": "ind_browser_data",
+      "pattern": "microsoft edge"
+    },
+    {
+      "feature": "ind_browser_data",
+      "pattern": "firefox/profiles"
+    },
+    {
+      "feature": "ind_browser_data",
+      "pattern": "opera software"
+    },
+    {
+      "feature": "ind_browser_data",
+      "pattern": "com.operasoftware"
+    },
+    {
+      "feature": "ind_browser_data",
+      "pattern": "vivaldi"
+    },
+    {
+      "feature": "ind_browser_data",
+      "pattern": "yandex"
+    },
+    {
+      "feature": "ind_browser_data",
+      "pattern": "chromium"
+    },
+    {
+      "feature": "ind_browser_data",
+      "pattern": "arc/user data"
+    },
+    {
+      "feature": "ind_browser_data",
+      "pattern": "login data"
+    },
+    {
+      "feature": "ind_browser_data",
+      "pattern": "cookies"
+    },
+    {
+      "feature": "ind_browser_data",
+      "pattern": "web data"
+    },
+    {
+      "feature": "ind_browser_data",
+      "pattern": "logins.json"
+    },
+    {
+      "feature": "ind_browser_data",
+      "pattern": "key4.db"
+    },
+    {
+      "feature": "ind_browser_data",
+      "pattern": "local state"
+    },
+    {
+      "feature": "ind_wallets",
+      "pattern": "exodus"
+    },
+    {
+      "feature": "ind_wallets",
+      "pattern": "electrum"
+    },
+    {
+      "feature": "ind_wallets",
+      "pattern": "metamask"
+    },
+    {
+      "feature": "ind_wallets",
+      "pattern": "coinomi"
+    },
+    {
+      "feature": "ind_wallets",
+      "pattern": "atomic"
+    },
+    {
+      "feature": "ind_wallets",
+      "pattern": "ledger live"
+    },
+    {
+      "feature": "ind_wallets",
+      "pattern": "trezor"
+    },
+    {
+      "feature": "ind_wallets",
+      "pattern": "binance"
+    },
+    {
+      "feature": "ind_wallets",
+      "pattern": "guarda"
+    },
+    {
+      "feature": "ind_wallets",
+      "pattern": "wallet.dat"
+    },
+    {
+      "feature": "ind_wallets",
+      "pattern": "phantom"
+    },
+    {
+      "feature": "ind_wallets",
+      "pattern": "trust wallet"
+    },
+    {
+      "feature": "ind_wallets",
+      "pattern": "nkbihfbeogaeaoehlefnkodbefgpgknn"
+    },
+    {
+      "feature": "ind_wallets",
+      "pattern": "bfnaelmomeimhlpmgjnjophhpkkoljpa"
+    },
+    {
+      "feature": "ind_personal_data",
+      "pattern": "notestore.sqlite"
+    },
+    {
+      "feature": "ind_personal_data",
+      "pattern": "group.com.apple.notes"
+    },
+    {
+      "feature": "ind_personal_data",
+      "pattern": "cookies.binarycookies"
+    },
+    {
+      "feature": "ind_personal_data",
+      "pattern": "addressbook"
+    },
+    {
+      "feature": "ind_personal_data",
+      "pattern": "chat.db"
+    },
+    {
+      "feature": "ind_personal_data",
+      "pattern": "telegram desktop"
+    },
+    {
+      "feature": "ind_personal_data",
+      "pattern": "tdata"
+    },
+    {
+      "feature": "ind_personal_data",
+      "pattern": "/keychains"
+    },
+    {
+      "feature": "ind_sysinfo",
+      "pattern": "system_profiler"
+    },
+    {
+      "feature": "ind_sysinfo",
+      "pattern": "sw_vers"
+    },
+    {
+      "feature": "ind_sysinfo",
+      "pattern": "ioreg"
+    },
+    {
+      "feature": "ind_sysinfo",
+      "pattern": "ioplatformuuid"
+    },
+    {
+      "feature": "ind_sysinfo",
+      "pattern": "ioplatformserialnumber"
+    },
+    {
+      "feature": "ind_sysinfo",
+      "pattern": "sphardwaredatatype"
+    },
+    {
+      "feature": "ind_sysinfo",
+      "pattern": "spdisplaysdatatype"
+    },
+    {
+      "feature": "ind_sysinfo",
+      "pattern": "whoami"
+    },
+    {
+      "feature": "ind_sysinfo",
+      "pattern": "hw.model"
+    },
+    {
+      "feature": "ind_vm_detect",
+      "pattern": "vmware"
+    },
+    {
+      "feature": "ind_vm_detect",
+      "pattern": "virtualbox"
+    },
+    {
+      "feature": "ind_vm_detect",
+      "pattern": "vbox"
+    },
+    {
+      "feature": "ind_vm_detect",
+      "pattern": "parallels"
+    },
+    {
+      "feature": "ind_vm_detect",
+      "pattern": "qemu"
+    },
+    {
+      "feature": "ind_vm_detect",
+      "pattern": "kern.hv_vmm_present"
+    },
+    {
+      "feature": "ind_gatekeeper_tcc",
+      "pattern": "spctl"
+    },
+    {
+      "feature": "ind_gatekeeper_tcc",
+      "pattern": "master-disable"
+    },
+    {
+      "feature": "ind_gatekeeper_tcc",
+      "pattern": "--global-disable"
+    },
+    {
+      "feature": "ind_gatekeeper_tcc",
+      "pattern": "csrutil"
+    },
+    {
+      "feature": "ind_gatekeeper_tcc",
+      "pattern": "tccutil"
+    },
+    {
+      "feature": "ind_gatekeeper_tcc",
+      "pattern": "tcc.db"
+    },
+    {
+      "feature": "ind_gatekeeper_tcc",
+      "pattern": "com.apple.tcc"
+    },
+    {
+      "feature": "ind_hide_terminal",
+      "pattern": "killall terminal"
+    },
+    {
+      "feature": "ind_hide_terminal",
+      "pattern": "application \"terminal\""
+    },
+    {
+      "feature": "ind_hide_terminal",
+      "pattern": "set visible of"
+    },
+    {
+      "feature": "ind_hide_terminal",
+      "pattern": "visible:false"
+    },
+    {
+      "feature": "ind_applescript_ui",
+      "pattern": "system events"
+    },
+    {
+      "feature": "ind_applescript_ui",
+      "pattern": "keystroke"
+    },
+    {
+      "feature": "ind_applescript_ui",
+      "pattern": "key code"
+    },
+    {
+      "feature": "ind_applescript_ui",
+      "pattern": "click button"
+    },
+    {
+      "feature": "ind_applescript_ui",
+      "pattern": "with administrator privileges"
+    },
+    {
+      "feature": "ind_applescript_ui",
+      "pattern": "do shell script"
+    },
+    {
+      "feature": "ind_applescript_ui",
+      "pattern": "tell application \"finder\""
+    },
+    {
+      "feature": "ind_applescript_ui",
+      "pattern": "duplicate file"
+    },
+    {
+      "feature": "ind_applescript_ui",
+      "pattern": "duplicate folder"
+    },
+    {
+      "feature": "ind_jxa",
+      "pattern": "objc.import"
+    },
+    {
+      "feature": "ind_jxa",
+      "pattern": "$.nstask"
+    },
+    {
+      "feature": "ind_jxa",
+      "pattern": "$.nsstring"
+    },
+    {
+      "feature": "ind_jxa",
+      "pattern": "currentapplication"
+    },
+    {
+      "feature": "ind_jxa",
+      "pattern": "doshellscript"
+    },
+    {
+      "feature": "ind_jxa",
+      "pattern": "includestandardadditions"
+    },
+    {
+      "feature": "ind_jxa",
+      "pattern": "application('system events')"
+    },
+    {
+      "feature": "ind_python_risky",
+      "pattern": "os.system"
+    },
+    {
+      "feature": "ind_python_risky",
+      "pattern": "subprocess"
+    },
+    {
+      "feature": "ind_python_risky",
+      "pattern": "pty.spawn"
+    },
+    {
+      "feature": "ind_python_risky",
+      "pattern": "socket.socket"
+    },
+    {
+      "feature": "ind_python_risky",
+      "pattern": "ctypes"
+    },
+    {
+      "feature": "ind_python_risky",
+      "pattern": "urllib.request"
+    },
+    {
+      "feature": "ind_python_risky",
+      "pattern": "base64.b64decode"
+    },
+    {
+      "feature": "ind_python_risky",
+      "pattern": "zlib.decompress"
+    },
+    {
+      "feature": "ind_python_risky",
+      "pattern": "pickle.loads"
+    },
+    {
+      "feature": "ind_python_risky",
+      "pattern": "getpass"
+    },
+    {
+      "feature": "ind_js_risky",
+      "pattern": "child_process"
+    },
+    {
+      "feature": "ind_js_risky",
+      "pattern": "execsync"
+    },
+    {
+      "feature": "ind_js_risky",
+      "pattern": "string.fromcharcode"
+    },
+    {
+      "feature": "ind_js_risky",
+      "pattern": "unescape("
+    },
+    {
+      "feature": "ind_js_risky",
+      "pattern": "fs.writefilesync"
+    },
+    {
+      "feature": "ind_perl_risky",
+      "pattern": "io::socket"
+    },
+    {
+      "feature": "ind_perl_risky",
+      "pattern": "mime::base64"
+    },
+    {
+      "feature": "ind_perl_risky",
+      "pattern": "decode_base64"
+    },
+    {
+      "feature": "ind_perl_risky",
+      "pattern": "pack(\"h*\""
+    },
+    {
+      "feature": "ind_perl_risky",
+      "pattern": "pack('h*'"
+    },
+    {
+      "feature": "ind_reverse_shell",
+      "pattern": "/dev/tcp/"
+    },
+    {
+      "feature": "ind_reverse_shell",
+      "pattern": "nc -e"
+    },
+    {
+      "feature": "ind_reverse_shell",
+      "pattern": "ncat -e"
+    },
+    {
+      "feature": "ind_reverse_shell",
+      "pattern": "bash -i"
+    },
+    {
+      "feature": "ind_reverse_shell",
+      "pattern": "sh -i"
+    },
+    {
+      "feature": "ind_reverse_shell",
+      "pattern": "socat "
+    },
+    {
+      "feature": "ind_reverse_shell",
+      "pattern": "mkfifo"
+    },
+    {
+      "feature": "ind_reverse_shell",
+      "pattern": "0>&1"
+    },
+    {
+      "feature": "ind_user_agent",
+      "pattern": "mozilla/5.0"
+    },
+    {
+      "feature": "ind_user_agent",
+      "pattern": "user-agent"
+    },
+    {
+      "feature": "ind_kill",
+      "pattern": "killall"
+    },
+    {
+      "feature": "ind_kill",
+      "pattern": "pkill"
+    },
+    {
+      "feature": "ind_kill",
+      "pattern": "kill -9"
+    },
+    {
+      "feature": "ind_kill",
+      "pattern": "launchctl unload"
+    },
+    {
+      "feature": "ind_kill",
+      "pattern": "launchctl remove"
+    },
+    {
+      "feature": "ind_kill",
+      "pattern": "launchctl bootout"
+    },
+    {
+      "feature": "ind_clipboard",
+      "pattern": "pbpaste"
+    },
+    {
+      "feature": "ind_clipboard",
+      "pattern": "pbcopy"
+    },
+    {
+      "feature": "ind_clipboard",
+      "pattern": "the clipboard"
+    },
+    {
+      "feature": "ind_screen_capture",
+      "pattern": "screencapture"
+    },
+    {
+      "feature": "ind_history_wipe",
+      "pattern": "history -c"
+    },
+    {
+      "feature": "ind_history_wipe",
+      "pattern": "unset histfile"
+    },
+    {
+      "feature": "ind_history_wipe",
+      "pattern": "histfile=/dev/null"
+    },
+    {
+      "feature": "ind_history_wipe",
+      "pattern": ".bash_history"
+    },
+    {
+      "feature": "ind_history_wipe",
+      "pattern": ".zsh_history"
+    },
+    {
+      "feature": "ind_self_delete",
+      "pattern": "rm \"$0\""
+    },
+    {
+      "feature": "ind_self_delete",
+      "pattern": "rm -f \"$0\""
+    },
+    {
+      "feature": "ind_self_delete",
+      "pattern": "rm -- \"$0\""
+    },
+    {
+      "feature": "ind_self_delete",
+      "pattern": "rm -rf \"$0\""
+    },
+    {
+      "feature": "ind_self_delete",
+      "pattern": "rm $0"
+    },
+    {
+      "feature": "ind_self_delete",
+      "pattern": "os.remove(__file__)"
+    },
+    {
+      "feature": "ind_self_delete",
+      "pattern": "srm "
+    },
+    {
+      "feature": "ind_disk_image",
+      "pattern": "hdiutil attach"
+    },
+    {
+      "feature": "ind_disk_image",
+      "pattern": "hdiutil mount"
+    },
+    {
+      "feature": "ind_disk_image",
+      "pattern": "installer -pkg"
+    },
+    {
+      "feature": "ind_disk_image",
+      "pattern": "/volumes/"
+    },
+    {
+      "feature": "ind_dyld_inject",
+      "pattern": "dyld_insert_libraries"
+    },
+    {
+      "feature": "ind_dyld_inject",
+      "pattern": "dyld_library_path"
+    },
+    {
+      "feature": "ind_defaults_write",
+      "pattern": "defaults write"
+    },
+    {
+      "feature": "ind_onion_dyndns",
+      "pattern": ".onion"
+    },
+    {
+      "feature": "ind_onion_dyndns",
+      "pattern": "duckdns"
+    },
+    {
+      "feature": "ind_onion_dyndns",
+      "pattern": "no-ip."
+    },
+    {
+      "feature": "ind_onion_dyndns",
+      "pattern": "ddns.net"
+    },
+    {
+      "feature": "ind_dev_null",
+      "pattern": "/dev/null"
+    },
+    {
+      "feature": "ind_chflags_hidden",
+      "pattern": "chflags hidden"
+    },
+    {
+      "feature": "ind_chflags_hidden",
+      "pattern": "setfile -a v"
+    }
+  ]
+}
