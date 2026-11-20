@@ -114,7 +114,9 @@
   un étranger. Le dossier racine reste hors temps réel (journaux, base, quarantaine), mais `bin/`, `signatures/` et
   l'app sont comparés au manifeste toutes les 6 h : fichier modifié, manquant ou inconnu → alerte. Le manifeste n'est
   pas signé à part (la clé release reste hors du job de build) : il hérite de l'authenticité du pkg, et le daemon le
-  scelle (version + empreinte) : un manifeste réécrit sans changement de version déclenche une alerte critique.
+  scelle (version + empreinte + date) : un nouveau manifeste n'est accepté que si le reçu de l'installateur macOS
+  (`/var/db/receipts/com.wldeus.parabellum.pkg.plist`, `InstallDate`) est plus récent que le sceau ; sinon alerte
+  critique. La version seule ne prouve rien : elle reste `0.1.0` d'un `make pkg` local à l'autre.
 - **Verdicts persistants par contenu** : un verdict propre et autonome (aucune détection, aucune erreur, aucune
   dépendance à la signature de code, ClamAV a répondu s'il était demandé) est gardé dans `verdict_cache`, sous une
   clé hash du contenu + typage du fichier + empreinte du moteur (version, base, règles, motifs, modèles, signataires,

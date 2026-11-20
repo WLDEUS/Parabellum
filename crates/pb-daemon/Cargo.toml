@@ -15,6 +15,7 @@ name = "parabellumd"
 path = "src/main.rs"
 
 [dependencies]
+plist = { workspace = true }
 pb-core = { workspace = true }
 pb-engine = { workspace = true }
 pb-monitor = { workspace = true }

@@ -2408,6 +2408,7 @@ dependencies = [
  "pb-privacy",
  "pb-updater",
  "pb-vpn",
+ "plist",
  "reqwest",
  "rusqlite",
  "serde",
