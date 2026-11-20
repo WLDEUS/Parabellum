@@ -20,7 +20,9 @@
 "%@ — %lld appareil(s)" = "%@ — %lld device(s)";
 "%@ — les commandes qui modifient l'état ne sont acceptées que depuis l'app installée dans /Applications." = "%@ — commands that change the state are only accepted from the app installed in /Applications.";
 "%lld (gérés dans la section VPN)" = "%lld (managed in the VPN section)";
+"%lld alerte" = "%lld alert";
 "%lld alerte(s) déjà résolue(s) ignorée(s)." = "%lld already resolved alert(s) skipped.";
+"%lld alertes" = "%lld alerts";
 "%lld alertes sont masquées par les filtres." = "%lld alerts are hidden by the filters.";
 "%lld alertes sélectionnées" = "%lld alerts selected";
 "%lld autorisations accordées · audit %@ · bases lues : " = "%lld permissions granted · audit %@ · databases read: ";
@@ -457,6 +459,7 @@
 "Dernière analyse" = "Last scan";
 "Dernière analyse %@" = "Last scan %@";
 "Dernière analyse %@ · automatique toutes les %lld min" = "Last scan %@ · automatic every %lld min";
+"Dernière analyse : %@" = "Last scan: %@";
 "Dernière MAJ" = "Last update";
 "Dernière mise à jour en échec" = "Last update failed";
 "Dernière passe %@ : %lld message(s) lu(s), %lld rattaché(s), %lld demande(s) mise(s) à jour." = "Last run %@: %lld message(s) read, %lld matched, %lld request(s) updated.";
@@ -956,6 +959,7 @@
 "Ouverte" = "Open";
 "Ouvertes" = "Open";
 "Ouvre l'e-mail prêt à envoyer dans Mail (autorisation administrateur : il contient ton identité)" = "Opens the ready-to-send e-mail in Mail (administrator authorization: it contains your identity)";
+"Ouvrez Parabellum une fois pour afficher l'état." = "Open Parabellum once to show the status.";
 "Ouvrir" = "Open";
 "Ouvrir %@" = "Open %@";
 "Ouvrir dans ~/Coffre plutôt que dans /Volumes" = "Open in ~/Coffre rather than in /Volumes";
@@ -1375,6 +1379,7 @@
 "Volumes" = "Volumes";
 "Volumes, claviers, USB, Bluetooth, Thunderbolt, interfaces et réseaux Wi-Fi apparaîtront ici." = "Volumes, keyboards, USB, Bluetooth, Thunderbolt, interfaces and Wi-Fi networks will appear here.";
 "VPN" = "VPN";
+"VPN %@" = "VPN %@";
 "VPN configuré dans macOS" = "VPN configured in macOS";
 "VPN configurés dans macOS" = "VPNs configured in macOS";
 "VPN connecté" = "VPN connected";
@@ -1428,6 +1433,7 @@
 "Énumération complète toutes les" = "Full enumeration every";
 "État" = "Status";
 "État de la protection" = "Protection status";
+"État de la protection, du VPN et du mode Voyage." = "Protection, VPN and Travel mode status.";
 "État des extensions de navigateur indisponible." = "Browser extension status unavailable.";
 "État du VPN indisponible" = "VPN status unavailable";
 "État en JSON (pour un script)" = "Status as JSON (for a script)";

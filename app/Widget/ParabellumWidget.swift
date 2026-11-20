@@ -71,7 +71,7 @@ struct StatusWidgetView: View {
                     .foregroundStyle(color)
                     .lineLimit(1)
                 if s.openAlerts > 0 {
-                    Label("\(s.openAlerts) alerte\(s.openAlerts > 1 ? "s" : "")", systemImage: "bell.badge.fill")
+                    Label(s.openAlerts > 1 ? "\(s.openAlerts) alertes" : "\(s.openAlerts) alerte", systemImage: "bell.badge.fill")
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }

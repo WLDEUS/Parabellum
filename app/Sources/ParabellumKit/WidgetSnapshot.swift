@@ -64,7 +64,7 @@ public struct WidgetSnapshot: Codable, Sendable, Hashable {
 
     public static let placeholder = WidgetSnapshot(
         protection: "active",
-        protectionLabel: "Protection active",
+        protectionLabel: String(localized: "Protection active"),
         openAlerts: 0,
         vpnLabel: String(localized: "connecté"),
         vpnConnected: true,
