@@ -45,8 +45,8 @@ enum VaultKeychain {
             case .notFound:
                 return String(localized: "Mot de passe du coffre absent du trousseau : saisissez-le (ou la clé de récupération).")
             case .status(let status):
-                let message = SecCopyErrorMessageString(status, nil) as String? ?? "code \(status)"
-                return "Trousseau : \(message)"
+                let message = SecCopyErrorMessageString(status, nil) as String? ?? String(localized: "code \(Int(status))")
+                return String(localized: "Trousseau : \(message)")
             case .authentication(let message):
                 return message
             }
@@ -109,7 +109,7 @@ enum VaultKeychain {
             case .userCancel, .appCancel, .systemCancel, .userFallback:
                 throw Failure.cancelled
             default:
-                throw Failure.authentication("Authentification impossible : \(error.localizedDescription)")
+                throw Failure.authentication(String(localized: "Authentification impossible : \(error.localizedDescription)"))
             }
         }
         // Data protection item: the evaluated context satisfies its access control (no second prompt).

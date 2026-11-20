@@ -39,8 +39,15 @@ FORMAT_SPEC = re.compile(
 )
 
 
+# French typography: a space before ":", ";", "?" or "!". A format made only of placeholders and such
+# punctuation ("%@ : %@") is still French text: English writes "%@: %@".
+FRENCH_PUNCT = re.compile(r"\S\s[:;?!](\s|$)")
+
+
 def is_french(text: str) -> bool:
     """Visible French prose (not identifiers, symbols, paths or URLs)."""
+    if FRENCH_PUNCT.search(text) and not re.search(r"://", text):
+        return True
     t = text.strip()
     if len(t) < 2 or not re.search(r"[A-Za-zÀ-ÿ]", t):
         return False
@@ -252,7 +259,7 @@ def scan_sources():
             for ln, text, prefix in swift_literals(src):
                 if "l10n-ignore" in (lines[ln - 1] if ln - 1 < len(lines) else ""):
                     continue
-                if is_french(literal_pattern(text).replace("\x00", "")):
+                if is_french(literal_pattern(text).replace("\x00", "%@")):
                     yield f.relative_to(REPO), ln, text, prefix.strip()
 
 
@@ -290,7 +297,11 @@ def main() -> int:
     # Every key with words needs an entry, even when English is the same ("ClamAV" = "ClamAV"): single
     # French words ("Faible", "Critique") do not look French to a heuristic, the table is the only proof.
     french_keys = {k for k in keys if is_french(k.replace("%", " "))}
-    worded = {k for k in keys if re.search(r"[A-Za-zÀ-ÿ]", FORMAT_SPEC.sub("", k))}
+    worded = {
+        k
+        for k in keys
+        if re.search(r"[A-Za-zÀ-ÿ]", FORMAT_SPEC.sub("", k)) or FRENCH_PUNCT.search(k)
+    }
     missing = sorted(k for k in worded if k not in en)
     for k in missing:
         print(

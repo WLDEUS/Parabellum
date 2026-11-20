@@ -155,7 +155,7 @@ struct CleaningView: View {
     }
 
     private var confirmTitle: String {
-        "Nettoyer \(PBFormat.bytes(store.selectedSize)) ?"
+        String(localized: "Nettoyer \(PBFormat.bytes(store.selectedSize)) ?")
     }
 
     private var confirmMessage: String {

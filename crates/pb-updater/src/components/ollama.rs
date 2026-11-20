@@ -1,7 +1,8 @@
 //! Ollama, the local model server of the mail agent. Not in the regular component list: it is installed
 //! (and updated) only when the mail agent is enabled, from the pin of the signed threat DB
 //! (`components/ollama.json`): the download must match the pinned SHA-256, then the extracted `ollama`
-//! and `llama-server` must pass `codesign --verify --deep --strict` with Ollama's Team ID and Gatekeeper.
+//! and `llama-server` must pass `codesign --verify --strict` against a Developer ID requirement with Ollama's Team ID, and
+//! Gatekeeper's notarization check on the primary signature (not `--type execute`, which only takes apps).
 //!
 //! Layout: `components/ollama/<version>/` (root-owned, 0755) and `components/ollama/current` -> `<version>`.
 
@@ -132,7 +133,7 @@ pub async fn install_ollama(paths: &Paths) -> Result<String, UpdateError> {
         for exe in ["ollama", "llama-server"] {
             let p = staging.join(exe);
             if p.exists() {
-                apple::verify_app(&p, OLLAMA_TEAM_ID).await?;
+                apple::verify_binary(&p, OLLAMA_TEAM_ID).await?;
             }
         }
         Ok::<(), UpdateError>(())

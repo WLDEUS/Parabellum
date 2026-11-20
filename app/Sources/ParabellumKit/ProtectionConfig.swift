@@ -503,7 +503,7 @@ extension Config {
             }
         }
         for address in vpn.externalServerAddresses where !ConfigSyntax.isHostOrIp(address) {
-            errors.append("Adresse de serveur VPN invalide : \(address)")
+            errors.append(String(localized: "Adresse de serveur VPN invalide : \(address)"))
         }
         for id in vpn.trustedNetworks where !ConfigSyntax.isNetworkId(id) {
             errors.append(String(localized: "Identifiant de réseau invalide : \(id)"))

@@ -134,12 +134,13 @@ public enum ParabellumURL {
         case let s where s.count == 2 && s[0] == "open":
             let section = s[1]
             guard (1...32).contains(section.count), section.allSatisfy({ $0.isASCII && $0.isLetter }) else {
-                return .failure(ParabellumURLError("Section inconnue : \(section)."))
+                return .failure(ParabellumURLError(String(localized: "Section inconnue : \(section).")))
             }
             return done(.open(section: section))
         default:
             let shown = segments.joined(separator: "/")
-            return .failure(ParabellumURLError("Action inconnue : \(shown.isEmpty ? "(vide)" : shown)."))
+            let shownOrEmpty = shown.isEmpty ? String(localized: "(vide)") : shown
+            return .failure(ParabellumURLError(String(localized: "Action inconnue : \(shownOrEmpty).")))
         }
     }
 

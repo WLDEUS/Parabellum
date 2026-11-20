@@ -65,6 +65,26 @@ pub(crate) fn parse_codesign_team(out: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// `spctl --assess --type open --context context:primary-signature -vv <binary>` (stderr): the way to ask
+/// Gatekeeper about a bare executable (`--type execute` only accepts app bundles: "does not seem to be an
+/// app"). Only an Apple notarization or an Apple-signed binary is accepted.
+pub(crate) fn parse_spctl_binary(out: &str) -> Result<(), String> {
+    let accepted = out.lines().any(|l| l.trim_end().ends_with(": accepted"));
+    let source = out
+        .lines()
+        .map(str::trim)
+        .find_map(|l| l.strip_prefix("source="))
+        .unwrap_or("")
+        .trim();
+    if accepted && matches!(source, "Notarized Developer ID" | "Apple System" | "Apple") {
+        Ok(())
+    } else if accepted {
+        Err(format!("binaire accepté mais non notarisé ({source})"))
+    } else {
+        Err(out.trim().to_string())
+    }
+}
+
 /// Mount points from `hdiutil attach -plist` output (`system-entities[].mount-point`).
 pub(crate) fn parse_hdiutil_mount_points(plist_xml: &[u8]) -> Vec<PathBuf> {
     let Ok(v) = plist::Value::from_reader(std::io::Cursor::new(plist_xml)) else {
@@ -232,6 +252,59 @@ pub(crate) async fn verify_app(app: &Path, team_id: &str) -> Result<(), UpdateEr
     Ok(())
 }
 
+/// Bare executable (a CLI tool, not an app bundle): strict signature, Developer ID chain with the expected
+/// Team ID (code requirement, so a self-signed certificate claiming the Team ID is refused), then Apple
+/// notarization checked by Gatekeeper on the primary signature.
+pub(crate) async fn verify_binary(bin: &Path, team_id: &str) -> Result<(), UpdateError> {
+    if !team_id
+        .bytes()
+        .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+        || team_id.len() != 10
+    {
+        return Err(UpdateError::Verification(format!(
+            "Team ID invalide : {team_id}"
+        )));
+    }
+    let requirement = format!(
+        "=anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] \
+         and certificate leaf[field.1.2.840.113635.100.6.1.13] and certificate leaf[subject.OU] = \"{team_id}\""
+    );
+    let out = run(
+        p(CODESIGN),
+        [
+            std::ffi::OsStr::new("--verify"),
+            std::ffi::OsStr::new("--strict"),
+            std::ffi::OsStr::new("-R"),
+            std::ffi::OsStr::new(&requirement),
+            bin.as_os_str(),
+        ],
+        RunOpts::timeout(120),
+    )
+    .await?;
+    if !out.success() {
+        return Err(UpdateError::Verification(format!(
+            "signature Developer ID ({team_id}) : {}",
+            out.summary()
+        )));
+    }
+    let out = run(
+        p(SPCTL),
+        [
+            p("--assess"),
+            p("--type"),
+            p("open"),
+            p("--context"),
+            p("context:primary-signature"),
+            p("-vv"),
+            bin,
+        ],
+        RunOpts::timeout(120),
+    )
+    .await?;
+    parse_spctl_binary(&out.combined())
+        .map_err(|e| UpdateError::Verification(format!("Gatekeeper refuse le binaire : {e}")))
+}
+
 /// `installer -pkg <pkg> -target /` (third-party packages; Parabellum's own update goes through a
 /// launchd job, see `crate::selfupdate`).
 pub(crate) async fn install_pkg(pkg: &Path) -> Result<String, UpdateError> {
@@ -373,6 +446,18 @@ pub(crate) async fn version_output(bin: &Path, flag: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn spctl_binary_requires_notarization() {
+        let ok = "/x/ollama: accepted\nsource=Notarized Developer ID\norigin=Developer ID Application: Infra Technologies, Inc (3MU9H2V9Y9)\n";
+        assert!(parse_spctl_binary(ok).is_ok());
+        let unnotarized = "/x/ollama: accepted\nsource=Developer ID\n";
+        assert!(parse_spctl_binary(unnotarized).is_err());
+        let rejected = "/x/ollama: rejected\nsource=Unnotarized Developer ID\n";
+        assert!(parse_spctl_binary(rejected).is_err());
+        let not_app = "/x/ollama: rejected (the code is valid but does not seem to be an app)\n";
+        assert!(parse_spctl_binary(not_app).is_err());
+    }
 
     const PKGUTIL_OK: &str = r#"Package "clamav-1.5.4.macos.universal.pkg":
    Status: signed by a developer certificate issued by Apple for distribution

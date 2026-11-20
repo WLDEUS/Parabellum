@@ -1,9 +1,13 @@
 /* English translation. Keys are the French source texts (scripts/check_localization.py). */
 
+" ; " = "; ";
 "%@ (introuvable)" = "%@ (not found)";
 "%@ (non fiable)" = "%@ (untrusted)";
+"%@ : " = "%@: ";
+"%@ : %@" = "%@: %@";
 "%@ : %lld alerte(s) traitée(s)." = "%@: %lld alert(s) handled.";
 "%@ : %lld traitée(s), %lld en échec." = "%@: %lld handled, %lld failed.";
+"%@ ?" = "%@?";
 "%@ cochés" = "%@ checked";
 "%@ est autorisé : le modèle ne le signalera plus." = "%@ is allowed: the model will no longer flag it.";
 "%@ fichiers" = "%@ files";
@@ -14,6 +18,7 @@
 "%@ réécrits" = "%@ overwritten";
 "%@ sur %lld alertes ?" = "%@ on %lld alerts?";
 "%@ · %@ sur %@ · pensez à le verrouiller après usage" = "%@ · %@ of %@ · remember to lock it after use";
+"%@ · %@ — %@ : %@" = "%@ · %@ — %@: %@";
 "%@ · box %@ · vu %@" = "%@ · router %@ · seen %@";
 "%@ · gravité %@" = "%@ · severity %@";
 "%@ · Ollama %@" = "%@ · Ollama %@";
@@ -53,6 +58,7 @@
 "%lld élément(s) supprimé(s), %lld en échec : voir le détail dans Coffre." = "%lld item(s) deleted, %lld failed: see the details in Vault.";
 "%lld élément(s), %lld fichier(s), %@. Irréversible : ils ne passent pas par la Corbeille." = "%lld item(s), %lld file(s), %@. Irreversible: they do not go through the Trash.";
 "%lld, tous réussis" = "%lld, all successful";
+"(vide)" = "(empty)";
 "1 alerte est masquée par les filtres." = "1 alert is hidden by the filters.";
 "1 h" = "1 h";
 "1 heure" = "1 hour";
@@ -81,6 +87,7 @@
 "Action annulée." = "Action cancelled.";
 "Action du lien annulée." = "Link action cancelled.";
 "Action inconnue" = "Unknown action";
+"Action inconnue : %@." = "Unknown action: %@.";
 "Action requise" = "Action required";
 "Actions" = "Actions";
 "Actions groupées" = "Bulk actions";
@@ -104,6 +111,7 @@
 "addy.io et SimpleLogin sont open source. Une adresse par site : tu la coupes si elle fuit." = "addy.io and SimpleLogin are open source. One address per site: you turn it off if it leaks.";
 "Adresse d'expédition (les réponses y arrivent)" = "Sender address (replies arrive there)";
 "Adresse d'écoute" = "Listen address";
+"Adresse de serveur VPN invalide : %@" = "Invalid VPN server address: %@";
 "Adresse IPv4" = "IPv4 address";
 "Adresse matérielle" = "Hardware address";
 "Adresse postale" = "Postal address";
@@ -281,6 +289,7 @@
 "Audit indisponible" = "Audit unavailable";
 "Audit toutes les" = "Audit every";
 "Auditer régulièrement les permissions des apps" = "Audit app permissions regularly";
+"Authentification impossible : %@" = "Authentication failed: %@";
 "Autorisation administrateur refusée." = "Administrator authorization denied.";
 "Autorisation administrateur requise" = "Administrator authorization required";
 "Autorisations orphelines" = "Orphaned permissions";
@@ -372,6 +381,7 @@
 "Clé API VirusTotal" = "VirusTotal API key";
 "Clé de récupération" = "Recovery key";
 "Clé générée (recommandé)" = "Generated key (recommended)";
+"code %lld" = "code %lld";
 "Coffre" = "Vault";
 "Coffre chiffré" = "Encrypted vault";
 "Coffre créé et ouvert. Votre mot de passe est la seule clé : sans lui, le contenu est irrécupérable." = "Vault created and open. Your password is the only key: without it, the content cannot be recovered.";
@@ -752,6 +762,7 @@
 "Laisser passer le réseau local (imprimante, NAS, AirDrop)" = "Let the local network through (printer, NAS, AirDrop)";
 "Lance une analyse ou sélectionne une analyse récente pour voir ses résultats." = "Start a scan or select a recent scan to see its results.";
 "Lance une analyse pour inventorier le réseau." = "Start a scan to inventory the network.";
+"lancement impossible : %@" = "could not start: %@";
 "Lancer" = "Start";
 "Lancer / compléter la campagne" = "Start / complete the campaign";
 "Lancer l'analyse complète" = "Start the full scan";
@@ -911,6 +922,7 @@
 "Nettoyage terminé" = "Cleanup finished";
 "Nettoyage terminé avec des erreurs" = "Cleanup finished with errors";
 "Nettoyer" = "Clean";
+"Nettoyer %@ ?" = "Clean %@?";
 "Nom" = "Name";
 "Nom affiché" = "Display name";
 "Nom Bonjour" = "Bonjour name";
@@ -1187,6 +1199,7 @@
 "Script" = "Script";
 "Script periodic" = "Periodic script";
 "Section inconnue : %@" = "Unknown section: %@";
+"Section inconnue : %@." = "Unknown section: %@.";
 "Semaine" = "Week";
 "Semaine dernière" = "Last week";
 "Sensible" = "Sensitive";
@@ -1316,6 +1329,7 @@
 "Transport" = "Transport";
 "Tri" = "Sort";
 "Tri : %@" = "Sort: %@";
+"Trousseau : %@" = "Keychain: %@";
 "Trousseau de session (Touch ID demandé par Parabellum)" = "Login keychain (Touch ID requested by Parabellum)";
 "Trousseau protégé (Touch ID exigé par macOS)" = "Protected keychain (Touch ID required by macOS)";
 "Tuer immédiatement un processus malveillant détecté au lancement" = "Immediately kill a malicious process detected at launch";
