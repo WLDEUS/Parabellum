@@ -66,7 +66,7 @@ public struct WidgetSnapshot: Codable, Sendable, Hashable {
         protection: "active",
         protectionLabel: "Protection active",
         openAlerts: 0,
-        vpnLabel: "connecté",
+        vpnLabel: String(localized: "connecté"),
         vpnConnected: true,
         travelActive: false,
         lastScan: nil,

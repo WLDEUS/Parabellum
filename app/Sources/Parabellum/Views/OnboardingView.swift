@@ -163,13 +163,13 @@ struct OnboardingView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             componentRow(name: "lulu", title: "LuLu", subtitle: "Pare-feu sortant (Objective-See)")
-            componentRow(name: "blockblock", title: "BlockBlock", subtitle: "Alerte sur les nouvelles persistances (Objective-See)")
+            componentRow(name: "blockblock", title: "BlockBlock", subtitle: String(localized: "Alerte sur les nouvelles persistances (Objective-See)"))
             Divider()
             if let adblock = model.adblock {
-                browserRow(title: "uBlock Origin Lite pour Chrome", state: adblock.chromeUblock) {
+                browserRow(title: String(localized: "uBlock Origin Lite pour Chrome"), state: adblock.chromeUblock) {
                     model.openInChrome(urlString: adblock.chromeStoreUrl)
                 }
-                browserRow(title: "uBlock Origin Lite pour Safari", state: adblock.safariUblock) {
+                browserRow(title: String(localized: "uBlock Origin Lite pour Safari"), state: adblock.safariUblock) {
                     model.openInAppStore(urlString: adblock.safariStoreUrl)
                 }
             } else {

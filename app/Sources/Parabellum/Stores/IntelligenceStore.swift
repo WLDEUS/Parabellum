@@ -89,7 +89,7 @@ final class IntelligenceStore: ObservableObject {
         }) {
             status = fresh
             lastRefresh = Date()
-            model.banner = Banner(message: "\(domain) est autorisé : le modèle ne le signalera plus.", isError: false)
+            model.banner = Banner(message: String(localized: "\(domain) est autorisé : le modèle ne le signalera plus."), isError: false)
             _ = await model.loadConfig()
         }
     }
@@ -111,7 +111,7 @@ final class IntelligenceStore: ObservableObject {
         }) {
             status = fresh
             lastRefresh = Date()
-            model.banner = Banner(message: "Référence effacée : nouvelle période d'apprentissage.", isError: false)
+            model.banner = Banner(message: String(localized: "Référence effacée : nouvelle période d'apprentissage."), isError: false)
         }
     }
 }

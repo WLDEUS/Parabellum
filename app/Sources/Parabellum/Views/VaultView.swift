@@ -97,24 +97,24 @@ struct VaultView: View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 14)], spacing: 14) {
             StatTile(
                 value: status.capacityBytes.map(PBFormat.bytes) ?? "—",
-                caption: "Taille maximale",
+                caption: String(localized: "Taille maximale"),
                 symbol: "externaldrive.fill",
                 tint: Brand.violet
             )
             StatTile(
                 value: status.allocatedBytes.map(PBFormat.bytes) ?? "—",
-                caption: "Place prise sur le Mac (chiffrée)",
+                caption: String(localized: "Place prise sur le Mac (chiffrée)"),
                 symbol: "internaldrive.fill",
                 tint: Brand.cyan
             )
             StatTile(
-                value: status.usedBytes.map(PBFormat.bytes) ?? "Verrouillé",
-                caption: status.mounted ? "Contenu du coffre" : "Contenu illisible sans le mot de passe",
+                value: status.usedBytes.map(PBFormat.bytes) ?? String(localized: "Verrouillé"),
+                caption: status.mounted ? String(localized: "Contenu du coffre") : String(localized: "Contenu illisible sans le mot de passe"),
                 symbol: status.mounted ? "doc.on.doc.fill" : "lock.fill"
             )
             StatTile(
                 value: store.autoLockMinutes == 0 ? "Jamais" : "\(store.autoLockMinutes) min",
-                caption: "Verrouillage après inactivité",
+                caption: String(localized: "Verrouillage après inactivité"),
                 symbol: "timer",
                 tint: .orange
             )
@@ -141,24 +141,24 @@ private struct VaultHero: View {
     }
 
     private var title: String {
-        if !status.exists { return "Aucun coffre" }
-        return status.mounted ? "Coffre ouvert" : "Coffre verrouillé"
+        if !status.exists { return String(localized: "Aucun coffre") }
+        return status.mounted ? String(localized: "Coffre ouvert") : String(localized: "Coffre verrouillé")
     }
 
     private var subtitle: String {
         if !status.exists {
-            return "Un dossier chiffré (AES-256) qui ne s'ouvre qu'avec Touch ID ou votre mot de passe."
+            return String(localized: "Un dossier chiffré (AES-256) qui ne s'ouvre qu'avec Touch ID ou votre mot de passe.")
         }
         if status.mounted {
             let place = status.mountPoint.map { ($0 as NSString).abbreviatingWithTildeInPath } ?? "?"
             if let used = status.usedBytes, let total = status.volumeTotalBytes {
-                return "\(place) · \(PBFormat.bytes(used)) sur \(PBFormat.bytes(total)) · pensez à le verrouiller après usage"
+                return String(localized: "\(place) · \(PBFormat.bytes(used)) sur \(PBFormat.bytes(total)) · pensez à le verrouiller après usage")
             }
             return place
         }
         return status.encrypted
-            ? "Contenu chiffré sur le disque. Touch ID ou votre mot de passe pour l'ouvrir."
-            : "Attention : cette image n'est pas chiffrée."
+            ? String(localized: "Contenu chiffré sur le disque. Touch ID ou votre mot de passe pour l'ouvrir.")
+            : String(localized: "Attention : cette image n'est pas chiffrée.")
     }
 
     var body: some View {
@@ -194,7 +194,7 @@ private struct VaultHero: View {
                             Button {
                                 Task { await store.unlock() }
                             } label: {
-                                busyLabel("Déverrouiller", symbol: "touchid", key: "vault-unlock")
+                                busyLabel(String(localized: "Déverrouiller"), symbol: "touchid", key: "vault-unlock")
                             }
                             .buttonStyle(.brand)
                             .disabled(model.isBusy("vault-unlock"))
@@ -234,13 +234,13 @@ private struct CreateVaultCard: View {
 
     private var passwordProblem: String? {
         guard !generateKey else { return nil }
-        if password.count < 12 { return "12 caractères au minimum (une phrase de plusieurs mots est idéale)." }
-        if password != confirmation { return "Les deux mots de passe diffèrent." }
+        if password.count < 12 { return String(localized: "12 caractères au minimum (une phrase de plusieurs mots est idéale).") }
+        if password != confirmation { return String(localized: "Les deux mots de passe diffèrent.") }
         return nil
     }
 
     var body: some View {
-        Card(title: "Créer le coffre", symbol: "lock.rectangle.stack") {
+        Card(title: String(localized: "Créer le coffre"), symbol: "lock.rectangle.stack") {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Image disque APFS chiffrée en AES-256 par macOS. Elle ne prend sur le disque que la place de son contenu. Le mot de passe est rangé dans votre trousseau et ne sort qu'après Touch ID ou votre mot de passe de session.")
                     .font(.callout)
@@ -376,11 +376,11 @@ private struct AddToVaultCard: View {
     @State private var removeOriginals = false
 
     var body: some View {
-        Card(title: "Ajouter au coffre", symbol: "tray.and.arrow.down.fill", content: {
+        Card(title: String(localized: "Ajouter au coffre"), symbol: "tray.and.arrow.down.fill", content: {
             VStack(alignment: .leading, spacing: 10) {
                 VaultDropZone(
-                    title: model.isBusy("vault-add") ? "Copie en cours…" : "Déposez des fichiers ici",
-                    subtitle: "Ils sont copiés dans le coffre chiffré.",
+                    title: model.isBusy("vault-add") ? String(localized: "Copie en cours…") : String(localized: "Déposez des fichiers ici"),
+                    subtitle: String(localized: "Ils sont copiés dans le coffre chiffré."),
                     symbol: "lock.doc.fill",
                     tint: .green
                 ) { urls in
@@ -398,7 +398,7 @@ private struct RecentItemsCard: View {
     let items: [VaultItem]
 
     var body: some View {
-        Card(title: "Modifiés récemment", symbol: "clock.arrow.circlepath") {
+        Card(title: String(localized: "Modifiés récemment"), symbol: "clock.arrow.circlepath") {
             if items.isEmpty {
                 Text("Le coffre est vide.").foregroundStyle(.secondary)
             } else {
@@ -434,12 +434,12 @@ private struct ShredCard: View {
     @ObservedObject var store: VaultStore
 
     var body: some View {
-        Card(title: "Effacement sûr", symbol: "flame.fill", content: {
+        Card(title: String(localized: "Effacement sûr"), symbol: "flame.fill", content: {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 14) {
                     VaultDropZone(
-                        title: model.isBusy("vault-shred") ? "Suppression…" : "Supprimer définitivement",
-                        subtitle: "Contenu réécrit puis supprimé, sans passer par la Corbeille. Confirmation demandée.",
+                        title: model.isBusy("vault-shred") ? "Suppression…" : String(localized: "Supprimer définitivement"),
+                        subtitle: String(localized: "Contenu réécrit puis supprimé, sans passer par la Corbeille. Confirmation demandée."),
                         symbol: "flame",
                         tint: .red
                     ) { urls in
@@ -491,8 +491,8 @@ private struct ShredReportRow: View {
         if report.dirs > 0 { parts.append("\(report.dirs) dossier(s)") }
         parts.append(PBFormat.bytes(report.bytes))
         switch report.zone {
-        case .vault: parts.append("dans le coffre : suppression simple")
-        case .some: parts.append("\(PBFormat.bytes(report.overwrittenBytes)) réécrits")
+        case .vault: parts.append(String(localized: "dans le coffre : suppression simple"))
+        case .some: parts.append(String(localized: "\(PBFormat.bytes(report.overwrittenBytes)) réécrits"))
         case nil: break
         }
         return parts.joined(separator: " · ")
@@ -523,9 +523,9 @@ private struct ShredConfirmSheet: View {
 
     private var title: String {
         switch plan.source {
-        case .files: return "Supprimer définitivement ?"
-        case .trash: return "Vider la Corbeille de façon sûre ?"
-        case .originals: return "Supprimer définitivement les originaux ?"
+        case .files: return String(localized: "Supprimer définitivement ?")
+        case .trash: return String(localized: "Vider la Corbeille de façon sûre ?")
+        case .originals: return String(localized: "Supprimer définitivement les originaux ?")
         }
     }
 
@@ -592,7 +592,7 @@ private struct FileVaultCard: View {
     let state: FileVaultState
 
     var body: some View {
-        Card(title: "FileVault", symbol: "lock.laptopcomputer", content: {
+        Card(title: String(localized: "FileVault"), symbol: "lock.laptopcomputer", content: {
             HStack(alignment: .top) {
                 Text(text)
                     .font(.callout)
@@ -608,11 +608,11 @@ private struct FileVaultCard: View {
 
     private var text: String {
         switch state {
-        case .on: return "Activé : tout le disque est chiffré. Les fichiers supprimés restent illisibles, même sur un SSD."
-        case .encrypting: return "Chiffrement du disque en cours."
-        case .off: return "Désactivé : en cas de vol, le disque est lisible, y compris des fichiers supprimés. Activez-le (Réglages Système > Confidentialité et sécurité > FileVault)."
-        case .decrypting: return "Déchiffrement en cours : le disque ne sera bientôt plus protégé."
-        case .unknown: return "État inconnu."
+        case .on: return String(localized: "Activé : tout le disque est chiffré. Les fichiers supprimés restent illisibles, même sur un SSD.")
+        case .encrypting: return String(localized: "Chiffrement du disque en cours.")
+        case .off: return String(localized: "Désactivé : en cas de vol, le disque est lisible, y compris des fichiers supprimés. Activez-le (Réglages Système > Confidentialité et sécurité > FileVault).")
+        case .decrypting: return String(localized: "Déchiffrement en cours : le disque ne sera bientôt plus protégé.")
+        case .unknown: return String(localized: "État inconnu.")
         }
     }
 }
@@ -629,7 +629,7 @@ private struct VaultSettingsCard: View {
     private var locked: Bool { store.exists && !store.isOpen }
 
     var body: some View {
-        Card(title: "Réglages du coffre", symbol: "slider.horizontal.3") {
+        Card(title: String(localized: "Réglages du coffre"), symbol: "slider.horizontal.3") {
             VStack(alignment: .leading, spacing: 12) {
                 Picker("Verrouiller après", selection: $store.autoLockMinutes) {
                     ForEach(VaultStore.autoLockChoices, id: \.self) { minutes in
@@ -906,7 +906,7 @@ private struct DestroyVaultSheet: View {
     @ObservedObject var store: VaultStore
     @State private var confirmation = ""
 
-    private static let word = "DÉTRUIRE"
+    private static let word = String(localized: "DÉTRUIRE")
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -979,8 +979,8 @@ struct VaultDashboardTile: View {
             model.section = .vault
         } label: {
             StatTile(
-                value: store.exists ? (store.isOpen ? "Ouvert" : "Verrouillé") : "Aucun",
-                caption: "Coffre chiffré",
+                value: store.exists ? (store.isOpen ? "Ouvert" : String(localized: "Verrouillé")) : "Aucun",
+                caption: String(localized: "Coffre chiffré"),
                 symbol: store.isOpen ? "lock.open.fill" : "lock.fill",
                 tint: store.exists ? (store.isOpen ? .orange : .green) : .gray
             )

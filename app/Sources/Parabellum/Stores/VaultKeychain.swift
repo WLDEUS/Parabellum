@@ -16,7 +16,7 @@ import Security
 enum VaultKeychain {
     static let service = "com.wldeus.parabellum.vault"
     static let account = "Coffre"
-    private static let label = "Parabellum — mot de passe du coffre"
+    private static let label = String(localized: "Parabellum — mot de passe du coffre")
 
     enum Backend: String {
         /// Enforced by the keychain (data protection keychain + access control).
@@ -26,8 +26,8 @@ enum VaultKeychain {
 
         var label: String {
             switch self {
-            case .dataProtection: return "Trousseau protégé (Touch ID exigé par macOS)"
-            case .login: return "Trousseau de session (Touch ID demandé par Parabellum)"
+            case .dataProtection: return String(localized: "Trousseau protégé (Touch ID exigé par macOS)")
+            case .login: return String(localized: "Trousseau de session (Touch ID demandé par Parabellum)")
             }
         }
     }
@@ -41,9 +41,9 @@ enum VaultKeychain {
         var errorDescription: String? {
             switch self {
             case .cancelled:
-                return "Déverrouillage annulé."
+                return String(localized: "Déverrouillage annulé.")
             case .notFound:
-                return "Mot de passe du coffre absent du trousseau : saisissez-le (ou la clé de récupération)."
+                return String(localized: "Mot de passe du coffre absent du trousseau : saisissez-le (ou la clé de récupération).")
             case .status(let status):
                 let message = SecCopyErrorMessageString(status, nil) as String? ?? "code \(status)"
                 return "Trousseau : \(message)"
@@ -80,7 +80,7 @@ enum VaultKeychain {
         }
         var query = baseQuery(dataProtection: false)
         query[kSecAttrLabel as String] = label
-        query[kSecAttrDescription as String] = "mot de passe du coffre"
+        query[kSecAttrDescription as String] = String(localized: "mot de passe du coffre")
         query[kSecValueData as String] = data
         let status = SecItemAdd(query as CFDictionary, nil)
         guard status == errSecSuccess else {

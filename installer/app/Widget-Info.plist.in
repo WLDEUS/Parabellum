@@ -5,6 +5,11 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>fr</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>fr</string>
+		<string>en</string>
+	</array>
 	<key>CFBundleIdentifier</key>
 	<string>com.wldeus.parabellum.widget</string>
 	<key>CFBundleName</key>

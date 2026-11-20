@@ -46,15 +46,15 @@ public enum DaemonClientError: Error, Equatable, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .notRunning:
-            return "Le service Parabellum (parabellumd) ne répond pas."
+            return String(localized: "Le service Parabellum (parabellumd) ne répond pas.")
         case .permissionDenied:
-            return "Accès refusé au socket du service Parabellum."
+            return String(localized: "Accès refusé au socket du service Parabellum.")
         case .timeout:
-            return "Le service Parabellum n'a pas répondu à temps."
+            return String(localized: "Le service Parabellum n'a pas répondu à temps.")
         case .connectionLost:
-            return "La connexion au service Parabellum a été interrompue."
+            return String(localized: "La connexion au service Parabellum a été interrompue.")
         case .protocolError(let detail):
-            return "Réponse inattendue du service : \(detail)"
+            return String(localized: "Réponse inattendue du service : \(detail)")
         case .daemon(let error):
             return error.message
         }
@@ -94,7 +94,7 @@ public struct LineBuffer {
             if chunk[index] == 0x0A {
                 let partLength = index - lineStart
                 if pending.count + partLength > maxLineBytes {
-                    throw DaemonClientError.protocolError("ligne de plus de \(maxLineBytes) octets")
+                    throw DaemonClientError.protocolError(String(localized: "ligne de plus de \(maxLineBytes) octets"))
                 }
                 if pending.isEmpty {
                     if partLength > 0 {
@@ -112,7 +112,7 @@ public struct LineBuffer {
         if lineStart < chunk.endIndex {
             pending.append(contentsOf: chunk[lineStart..<chunk.endIndex])
             if pending.count > maxLineBytes {
-                throw DaemonClientError.protocolError("ligne de plus de \(maxLineBytes) octets")
+                throw DaemonClientError.protocolError(String(localized: "ligne de plus de \(maxLineBytes) octets"))
             }
         }
         return lines
@@ -162,7 +162,7 @@ final class LineSocket: @unchecked Sendable {
         let capacity = MemoryLayout.size(ofValue: address.sun_path)
         guard !pathBytes.isEmpty, pathBytes.count < capacity else {
             _ = Darwin.close(fd)
-            throw DaemonClientError.protocolError("chemin de socket invalide ou trop long : \(path)")
+            throw DaemonClientError.protocolError(String(localized: "chemin de socket invalide ou trop long : \(path)"))
         }
         withUnsafeMutableBytes(of: &address.sun_path) { raw in
             raw.copyBytes(from: pathBytes)
@@ -690,7 +690,7 @@ enum EventSubscription {
                 state.markEstablished()
                 continuation.yield(.connected)
             } else {
-                state.fail(.daemon(response.error ?? IpcError(code: .unknown, message: "Abonnement refusé")))
+                state.fail(.daemon(response.error ?? IpcError(code: .unknown, message: String(localized: "Abonnement refusé"))))
                 socket.close()
             }
         }

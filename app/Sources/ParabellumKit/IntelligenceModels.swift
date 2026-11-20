@@ -47,19 +47,19 @@ public struct IntelligenceConfig: Codable, Sendable, Hashable {
     public func validationErrors() -> [String] {
         var errors: [String] = []
         if !(1...60).contains(learningDays) {
-            errors.append("La période d'apprentissage doit être comprise entre 1 et 60 jours.")
+            errors.append(String(localized: "La période d'apprentissage doit être comprise entre 1 et 60 jours."))
         }
         if !(0.5...0.99).contains(anomalyThreshold) {
-            errors.append("Le seuil d'anomalie doit être compris entre 0,5 et 0,99.")
+            errors.append(String(localized: "Le seuil d'anomalie doit être compris entre 0,5 et 0,99."))
         }
         if !(1...100).contains(maxAnomalyAlertsPerDay) {
-            errors.append("Le nombre d'alertes d'anomalie par jour doit être compris entre 1 et 100.")
+            errors.append(String(localized: "Le nombre d'alertes d'anomalie par jour doit être compris entre 1 et 100."))
         }
         if domainAllowlist.count > 1000 {
-            errors.append("La liste des domaines autorisés est limitée à 1000 entrées.")
+            errors.append(String(localized: "La liste des domaines autorisés est limitée à 1000 entrées."))
         }
         for d in domainAllowlist where !d.contains(".") || !ConfigSyntax.isHostOrIp(d) || d != d.lowercased() {
-            errors.append("Domaine autorisé invalide : \(d)")
+            errors.append(String(localized: "Domaine autorisé invalide : \(d)"))
         }
         return errors
     }
@@ -330,12 +330,12 @@ public struct DomainVerdictInfo: Codable, Sendable, Hashable {
 extension AnomalyKind {
     public var label: String {
         switch self {
-        case .exec: return "Nouveau programme lancé"
-        case .interpreter: return "Interpréteur inhabituel"
-        case .launchedBy: return "Parent inhabituel"
-        case .file: return "Nouvel emplacement modifié"
-        case .hour: return "Heure inhabituelle"
-        case .unknown: return "Anomalie"
+        case .exec: return String(localized: "Nouveau programme lancé")
+        case .interpreter: return String(localized: "Interpréteur inhabituel")
+        case .launchedBy: return String(localized: "Parent inhabituel")
+        case .file: return String(localized: "Nouvel emplacement modifié")
+        case .hour: return String(localized: "Heure inhabituelle")
+        case .unknown: return String(localized: "Anomalie")
         }
     }
 

@@ -90,41 +90,41 @@ public struct Config: Codable, Sendable, Hashable {
     public func validationErrors() -> [String] {
         var errors: [String] = []
         if scan.maxFileSizeMb <= 0 {
-            errors.append("La taille maximale de fichier doit être supérieure à 0 Mo.")
+            errors.append(String(localized: "La taille maximale de fichier doit être supérieure à 0 Mo."))
         }
         if scan.archiveMaxDepth < 0 || scan.archiveMaxDepth > 10 {
-            errors.append("La profondeur d'archives imbriquées doit être comprise entre 0 et 10.")
+            errors.append(String(localized: "La profondeur d'archives imbriquées doit être comprise entre 0 et 10."))
         }
         if scan.archiveMaxTotalMb < 0 || scan.archiveMaxEntries < 0 {
-            errors.append("Les limites d'archives ne peuvent pas être négatives.")
+            errors.append(String(localized: "Les limites d'archives ne peuvent pas être négatives."))
         }
         if !(0.0...1.0).contains(ml.suspiciousThreshold) {
-            errors.append("Le seuil ML doit être compris entre 0 et 1.")
+            errors.append(String(localized: "Le seuil ML doit être compris entre 0 et 1."))
         }
         if updates.dailyHour < 0 || updates.dailyHour > 23 {
-            errors.append("L'heure de mise à jour doit être comprise entre 0 et 23.")
+            errors.append(String(localized: "L'heure de mise à jour doit être comprise entre 0 et 23."))
         }
         if energy.pauseOnBatteryBelow < 0 || energy.pauseOnBatteryBelow > 100 {
-            errors.append("Le seuil de batterie doit être compris entre 0 et 100 %.")
+            errors.append(String(localized: "Le seuil de batterie doit être compris entre 0 et 100 %."))
         }
         if security.spywareScanWeekday < 1 || security.spywareScanWeekday > 7 {
-            errors.append("Le jour de l'analyse anti-spyware doit être compris entre 1 (lundi) et 7 (dimanche).")
+            errors.append(String(localized: "Le jour de l'analyse anti-spyware doit être compris entre 1 (lundi) et 7 (dimanche)."))
         }
         if security.spywareScanHour < 0 || security.spywareScanHour > 23 {
-            errors.append("L'heure de l'analyse anti-spyware doit être comprise entre 0 et 23.")
+            errors.append(String(localized: "L'heure de l'analyse anti-spyware doit être comprise entre 0 et 23."))
         }
         if persistence.fullScanIntervalMinutes < 0 {
-            errors.append("L'intervalle d'énumération de la persistance ne peut pas être négatif.")
+            errors.append(String(localized: "L'intervalle d'énumération de la persistance ne peut pas être négatif."))
         }
         errors.append(contentsOf: protectionValidationErrors())
         errors.append(contentsOf: mailAgent.validationErrors())
         errors.append(contentsOf: intelligence.validationErrors())
         // ----- Local network & permissions audit -----
         if lan.scanIntervalMinutes < 5 || lan.scanIntervalMinutes > 1440 {
-            errors.append("L'intervalle d'analyse du réseau local doit être compris entre 5 et 1440 minutes.")
+            errors.append(String(localized: "L'intervalle d'analyse du réseau local doit être compris entre 5 et 1440 minutes."))
         }
         if permissionsAudit.intervalHours < 1 || permissionsAudit.intervalHours > 168 {
-            errors.append("L'intervalle d'audit des permissions doit être compris entre 1 et 168 heures.")
+            errors.append(String(localized: "L'intervalle d'audit des permissions doit être compris entre 1 et 168 heures."))
         }
         return errors
     }

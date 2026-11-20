@@ -49,7 +49,7 @@ final class KeyboardAlertPanelController {
             backing: .buffered,
             defer: false
         )
-        panel.title = "Nouveau clavier détecté"
+        panel.title = String(localized: "Nouveau clavier détecté")
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
         panel.isFloatingPanel = true
@@ -82,7 +82,7 @@ final class KeyboardAlertPanelController {
             return
         }
         guard let model else {
-            entry.state.error = "Parabellum n'est pas prêt : réessaie dans un instant."
+            entry.state.error = String(localized: "Parabellum n'est pas prêt : réessaie dans un instant.")
             return
         }
         guard !entry.state.busy else { return }

@@ -31,7 +31,7 @@ struct CleaningView: View {
                     }
                     startupCard
                     if let warnings = store.scan?.warnings, !warnings.isEmpty {
-                        Card(title: "Non analysé", symbol: "eye.slash") {
+                        Card(title: String(localized: "Non analysé"), symbol: "eye.slash") {
                             VStack(alignment: .leading, spacing: 4) {
                                 ForEach(warnings, id: \.self) { Text($0).font(.callout).foregroundStyle(.secondary) }
                             }
@@ -162,27 +162,27 @@ struct CleaningView: View {
         var parts: [String] = []
         let permanent = store.categories.filter { store.permanent.contains($0.category) && store.selectedSize($0) > 0 }
         if permanent.isEmpty {
-            parts.append("Les éléments cochés vont à la corbeille.")
+            parts.append(String(localized: "Les éléments cochés vont à la corbeille."))
         } else {
-            parts.append("Suppression définitive pour : \(permanent.map(\.title).joined(separator: ", ")). Le reste va à la corbeille.")
+            parts.append(String(localized: "Suppression définitive pour : \(permanent.map(\.title).joined(separator: ", ")). Le reste va à la corbeille."))
         }
         if let trash = store.categories.first(where: { $0.category == .trash }), store.selectedSize(trash) > 0 {
-            parts.append("La corbeille actuelle sera vidée définitivement.")
+            parts.append(String(localized: "La corbeille actuelle sera vidée définitivement."))
         }
-        parts.append("Les applications ouvertes gardent leurs fichiers : quitte-les pour un nettoyage complet.")
+        parts.append(String(localized: "Les applications ouvertes gardent leurs fichiers : quitte-les pour un nettoyage complet."))
         return parts.joined(separator: " ")
     }
 
     // MARK: - Result
 
     private func summaryCard(_ s: CleaningSummary) -> some View {
-        Card(title: s.failed == 0 ? "Nettoyage terminé" : "Nettoyage terminé avec des erreurs", symbol: s.failed == 0 ? "checkmark.seal.fill" : "exclamationmark.triangle.fill") {
+        Card(title: s.failed == 0 ? String(localized: "Nettoyage terminé") : String(localized: "Nettoyage terminé avec des erreurs"), symbol: s.failed == 0 ? "checkmark.seal.fill" : "exclamationmark.triangle.fill") {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 12) {
-                    StatTile(value: PBFormat.bytes(s.freedBytes), caption: "libérés", symbol: "externaldrive.badge.checkmark", tint: .green)
-                    StatTile(value: PBFormat.bytes(s.trashedBytes), caption: "dans la corbeille", symbol: "trash", tint: Brand.indigo)
-                    StatTile(value: PBFormat.count(s.cleaned), caption: "éléments nettoyés", symbol: "sparkles", tint: Brand.cyan)
-                    StatTile(value: PBFormat.count(s.skipped + s.failed), caption: "ignorés ou en échec", symbol: "forward", tint: .orange)
+                    StatTile(value: PBFormat.bytes(s.freedBytes), caption: String(localized: "libérés"), symbol: "externaldrive.badge.checkmark", tint: .green)
+                    StatTile(value: PBFormat.bytes(s.trashedBytes), caption: String(localized: "dans la corbeille"), symbol: "trash", tint: Brand.indigo)
+                    StatTile(value: PBFormat.count(s.cleaned), caption: String(localized: "éléments nettoyés"), symbol: "sparkles", tint: Brand.cyan)
+                    StatTile(value: PBFormat.count(s.skipped + s.failed), caption: String(localized: "ignorés ou en échec"), symbol: "forward", tint: .orange)
                 }
                 if s.trashedBytes > 0 {
                     Text("L'espace mis à la corbeille sera libéré quand tu la videras (catégorie « Corbeille » ci-dessous).")
@@ -206,7 +206,7 @@ struct CleaningView: View {
     @ViewBuilder
     private var startupCard: some View {
         let items = store.startupItems
-        Card(title: "Démarrage et agents (\(items.count))", symbol: "power") {
+        Card(title: String(localized: "Démarrage et agents (\(items.count))"), symbol: "power") {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Programmes lancés à l'ouverture de session ou en arrière-plan, tels que les voit la surveillance des persistances.")
                     .font(.callout)
@@ -258,9 +258,9 @@ enum CleaningPalette {
 
     static func safety(_ s: CleanSafety) -> (String, Color) {
         switch s {
-        case .safe: return ("Sûr", .green)
-        case .moderate: return ("Retéléchargeable", .orange)
-        case .review: return ("À vérifier", .red)
+        case .safe: return (String(localized: "Sûr"), .green)
+        case .moderate: return (String(localized: "Retéléchargeable"), .orange)
+        case .review: return (String(localized: "À vérifier"), .red)
         }
     }
 }
@@ -370,7 +370,7 @@ private struct CleaningCategoryCard: View {
                 HStack(spacing: 6) {
                     Text(item.name).lineLimit(1).truncationMode(.middle)
                     if item.inUse {
-                        Pill(text: "Utilisé", color: .orange, symbol: "lock")
+                        Pill(text: String(localized: "Utilisé"), color: .orange, symbol: "lock")
                     } else if item.safety != category.safety {
                         let safety = CleaningPalette.safety(item.safety)
                         Pill(text: safety.0, color: safety.1)

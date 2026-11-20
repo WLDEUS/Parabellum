@@ -9,8 +9,8 @@ enum PermissionsTab: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .apps: return "Apps"
-        case .extensions: return "Extensions de navigateur"
+        case .apps: return String(localized: "Apps")
+        case .extensions: return String(localized: "Extensions de navigateur")
         }
     }
 }
@@ -23,9 +23,9 @@ enum RiskFilter: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .all: return "Tous les niveaux"
-        case .mediumUp: return "Moyen et plus"
-        case .high: return "Élevé seulement"
+        case .all: return String(localized: "Tous les niveaux")
+        case .mediumUp: return String(localized: "Moyen et plus")
+        case .high: return String(localized: "Élevé seulement")
         }
     }
 

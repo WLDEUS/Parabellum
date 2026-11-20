@@ -10,10 +10,10 @@ struct PrivacyView: View {
 
         var title: String {
             switch self {
-            case .removal: return "Effacement RGPD"
-            case .breaches: return "Fuites"
-            case .aliases: return "Alias e-mail"
-            case .tools: return "Outils"
+            case .removal: return String(localized: "Effacement RGPD")
+            case .breaches: return String(localized: "Fuites")
+            case .aliases: return String(localized: "Alias e-mail")
+            case .tools: return String(localized: "Outils")
             }
         }
     }
@@ -159,10 +159,10 @@ private struct PrivacySearchRow: View {
     private var kind: PrivacySearch.Kind? { PrivacySearch.Kind(rawValue: hit.document.kind) }
 
     private static let fieldLabels: [String: String] = [
-        "courtier": "Courtier", "statut": "Statut", "ref": "Référence", "email": "E-mail", "note": "Note",
-        "erreur": "Erreur", "formulaire": "Formulaire", "reponse": "Réponse", "categorie": "Catégorie",
-        "region": "Région", "source": "Source", "site": "Site", "donnees": "Données exposées", "date": "Date",
-        "etat": "État", "libelle": "Libellé", "fournisseur": "Fournisseur",
+        "courtier": "Courtier", "statut": "Statut", "ref": String(localized: "Référence"), "email": "E-mail", "note": "Note",
+        "erreur": "Erreur", "formulaire": "Formulaire", "reponse": String(localized: "Réponse"), "categorie": String(localized: "Catégorie"),
+        "region": String(localized: "Région"), "source": "Source", "site": "Site", "donnees": String(localized: "Données exposées"), "date": "Date",
+        "etat": String(localized: "État"), "libelle": String(localized: "Libellé"), "fournisseur": "Fournisseur",
     ]
 
     var body: some View {
@@ -245,7 +245,7 @@ private struct RemovalTab: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             if model.config?.dataRemoval.enabled != true {
-                Card(title: "Effacement auprès des courtiers en données", symbol: "hand.raised") {
+                Card(title: String(localized: "Effacement auprès des courtiers en données"), symbol: "hand.raised") {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Comme Incogni, en open source : Parabellum envoie en ton nom des demandes d'effacement (article 17 du RGPD) aux courtiers en données, suit le délai légal d'un mois, relance, puis prépare une plainte CNIL si l'organisme ne répond pas. Les listes de courtiers (Datenanfragen, Eraser) arrivent avec la base signée.")
                             .fixedSize(horizontal: false, vertical: true)
@@ -270,16 +270,16 @@ private struct IdentityCard: View {
     @State private var editing: EditableIdentity?
 
     var body: some View {
-        Card(title: "Identité à effacer", symbol: "person.text.rectangle") {
+        Card(title: String(localized: "Identité à effacer"), symbol: "person.text.rectangle") {
             VStack(alignment: .leading, spacing: 6) {
                 if let identity = model.identity, identity.isComplete {
-                    InfoRow(label: "Nom", value: identity.fullName)
-                    InfoRow(label: "E-mails", value: identity.emails.joined(separator: ", "))
+                    InfoRow(label: String(localized: "Nom"), value: identity.fullName)
+                    InfoRow(label: String(localized: "E-mails"), value: identity.emails.joined(separator: ", "))
                     if !identity.phones.isEmpty {
-                        InfoRow(label: "Téléphones", value: identity.phones.joined(separator: ", "))
+                        InfoRow(label: String(localized: "Téléphones"), value: identity.phones.joined(separator: ", "))
                     }
                     if !identity.country.isEmpty {
-                        InfoRow(label: "Pays", value: identity.country)
+                        InfoRow(label: String(localized: "Pays"), value: identity.country)
                     }
                 } else {
                     Text("Renseigne ton nom et les adresses e-mail que les courtiers peuvent connaître (plus ton téléphone et ton adresse postale si tu veux qu'ils les effacent aussi).")
@@ -347,15 +347,15 @@ private struct IdentityEditor: View {
             Form {
                 Section {
                     TextField("Nom complet", text: $draft.fullName)
-                    StringListEditor(title: "Adresses e-mail (la première sert de contact)", placeholder: "prenom.nom@exemple.fr", items: $draft.emails)
-                    StringListEditor(title: "Téléphones", placeholder: "+33 6 …", items: $draft.phones)
+                    StringListEditor(title: String(localized: "Adresses e-mail (la première sert de contact)"), placeholder: "prenom.nom@exemple.fr", items: $draft.emails)
+                    StringListEditor(title: String(localized: "Téléphones"), placeholder: "+33 6 …", items: $draft.phones)
                 } header: {
                     Text("Identité")
                 }
                 Section {
                     TextEditor(text: $draft.postalAddress)
                         .frame(minHeight: 60)
-                    StringListEditor(title: "Anciennes adresses", placeholder: "Adresse sur une ligne", items: $draft.previousAddresses)
+                    StringListEditor(title: String(localized: "Anciennes adresses"), placeholder: String(localized: "Adresse sur une ligne"), items: $draft.previousAddresses)
                     TextField("Date de naissance (AAAA-MM-JJ, facultatif)", text: $draft.birthDate)
                     TextField("Pays de résidence (code ISO, ex. FR)", text: $draft.country)
                 } header: {
@@ -408,16 +408,16 @@ private struct CampaignCard: View {
     @State private var confirmStart = false
 
     var body: some View {
-        Card(title: "Campagne d'effacement", symbol: "paperplane") {
+        Card(title: String(localized: "Campagne d'effacement"), symbol: "paperplane") {
             VStack(alignment: .leading, spacing: 10) {
                 if let summary = model.removalSummary {
                     HStack(spacing: 18) {
                         counter("Demandes", summary.total)
-                        counter("En file", summary.queued)
-                        counter("En attente de réponse", summary.waitingAnswer)
-                        counter("En retard", summary.overdue, warn: summary.overdue > 0)
-                        counter("Effacées", summary.completed)
-                        counter("À traiter", summary.needsAction, warn: summary.needsAction > 0)
+                        counter(String(localized: "En file"), summary.queued)
+                        counter(String(localized: "En attente de réponse"), summary.waitingAnswer)
+                        counter(String(localized: "En retard"), summary.overdue, warn: summary.overdue > 0)
+                        counter(String(localized: "Effacées"), summary.completed)
+                        counter(String(localized: "À traiter"), summary.needsAction, warn: summary.needsAction > 0)
                     }
                     if let next = summary.nextSendAt {
                         Text("Prochain envoi : \(PBFormat.dateTime(unixSeconds: next))")
@@ -475,9 +475,9 @@ private struct CampaignCard: View {
     private var startMessage: String {
         if model.config?.dataRemoval.sendMode == .smtp {
             let perDay = model.config?.dataRemoval.maxEmailsPerDay ?? 20
-            return "Les e-mails partiront de ton compte SMTP, au plus \(perDay) par jour. Chacun contient ton identité."
+            return String(localized: "Les e-mails partiront de ton compte SMTP, au plus \(perDay) par jour. Chacun contient ton identité.")
         }
-        return "Les e-mails seront préparés comme brouillons à envoyer depuis Mail. Chacun contient ton identité."
+        return String(localized: "Les e-mails seront préparés comme brouillons à envoyer depuis Mail. Chacun contient ton identité.")
     }
 
     private func counter(_ title: String, _ value: Int, warn: Bool = false) -> some View {
@@ -497,10 +497,10 @@ private struct RequestsCard: View {
 
         var title: String {
             switch self {
-            case .todo: return "À traiter"
-            case .waiting: return "En attente"
-            case .closed: return "Terminées"
-            case .all: return "Toutes"
+            case .todo: return String(localized: "À traiter")
+            case .waiting: return String(localized: "En attente")
+            case .closed: return String(localized: "Terminées")
+            case .all: return String(localized: "Toutes")
             }
         }
     }
@@ -533,7 +533,7 @@ private struct RequestsCard: View {
 
     var body: some View {
         let list = filtered
-        Card(title: "Demandes", symbol: "list.bullet.rectangle") {
+        Card(title: String(localized: "Demandes"), symbol: "list.bullet.rectangle") {
             VStack(alignment: .leading, spacing: 8) {
                 Picker("Filtre", selection: $filter) {
                     ForEach(Filter.allCases) { filter in
@@ -594,7 +594,7 @@ private struct MailAgentCard: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        Card(title: "Agent courrier", symbol: "envelope.badge") {
+        Card(title: String(localized: "Agent courrier"), symbol: "envelope.badge") {
             VStack(alignment: .leading, spacing: 8) {
                 if let s = model.mailAgent {
                     HStack(spacing: 6) {
@@ -671,7 +671,7 @@ private struct RequestRow: View {
                     Text(request.brokerName).fontWeight(.semibold)
                     Pill(text: request.status.label, color: request.status.color)
                     if request.isOverdue() {
-                        Pill(text: "Délai dépassé", color: .orange)
+                        Pill(text: String(localized: "Délai dépassé"), color: .orange)
                     }
                 }
                 Text(subtitle)
@@ -702,10 +702,10 @@ private struct RequestRow: View {
             parts.append(email)
         }
         if let sent = request.sentDate {
-            parts.append("envoyée \(PBFormat.day(sent))")
+            parts.append(String(localized: "envoyée \(PBFormat.day(sent))"))
         }
         if let due = request.dueDate, !request.status.isClosed {
-            parts.append("réponse due le \(PBFormat.day(due))")
+            parts.append(String(localized: "réponse due le \(PBFormat.day(due))"))
         }
         return parts.joined(separator: " · ")
     }

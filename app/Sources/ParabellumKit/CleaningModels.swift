@@ -207,7 +207,7 @@ extension ParabellumCLI {
         let url = dir.appendingPathComponent("parabellum-clean-\(UUID().uuidString).json")
         let data = try JSONEncoder().encode(plan)
         guard FileManager.default.createFile(atPath: url.path, contents: data, attributes: [.posixPermissions: 0o600]) else {
-            throw Failure.failed("plan de nettoyage impossible à écrire")
+            throw Failure.failed(String(localized: "plan de nettoyage impossible à écrire"))
         }
         defer { try? FileManager.default.removeItem(at: url) }
         var args = ["clean", "apply", "--plan", url.path]

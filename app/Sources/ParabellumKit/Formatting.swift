@@ -1,8 +1,9 @@
 import Foundation
 
-/// French formatting helpers (`fr_FR`), independent of the system language.
+/// Formatting helpers in the interface language (`AppLanguage`: French by default, English when chosen).
 public enum PBFormat {
-    public static let locale = Locale(identifier: "fr_FR")
+    public static let locale = AppLanguage.locale
+    private static let english = AppLanguage.isEnglish
 
     private static let decimalFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
@@ -58,10 +59,13 @@ public enum PBFormat {
         integerFormatter.string(from: NSNumber(value: value)) ?? String(value)
     }
 
-    /// Decimal (SI) byte count: "68 octets", "987,7 Mo", "1,2 Go".
+    /// Decimal (SI) byte count: "68 octets", "987,7 Mo", "1,2 Go" ("68 bytes", "987.7 MB" in English).
     public static func bytes(_ value: Int) -> String {
-        let units = ["octets", "Ko", "Mo", "Go", "To", "Po"]
+        let units = english ? ["bytes", "kB", "MB", "GB", "TB", "PB"] : ["octets", "Ko", "Mo", "Go", "To", "Po"]
         if value < 1000 {
+            if english {
+                return "\(value) \(value == 1 ? "byte" : "bytes")"
+            }
             return "\(value) \(value <= 1 ? "octet" : "octets")"
         }
         var amount = Double(value)
@@ -81,8 +85,9 @@ public enum PBFormat {
         let hours = (total % 86_400) / 3600
         let minutes = (total % 3600) / 60
         let secs = total % 60
+        let d = english ? "d" : "j"
         if days > 0 {
-            return hours > 0 ? "\(days) j \(hours) h" : "\(days) j"
+            return hours > 0 ? "\(days) \(d) \(hours) h" : "\(days) \(d)"
         }
         if hours > 0 {
             return minutes > 0 ? "\(hours) h \(twoDigits(minutes)) min" : "\(hours) h"
@@ -120,7 +125,7 @@ public enum PBFormat {
     /// "95 %"
     public static func percent(_ fraction: Double) -> String {
         let value = Int((fraction * 100).rounded())
-        return "\(value) %"
+        return english ? "\(value)%" : "\(value) %"
     }
 
     /// Shortened SHA-256 for lists: "aaaaaaaa…aaaa".

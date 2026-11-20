@@ -220,8 +220,8 @@ final class CleaningStore: ObservableObject {
         guard let reclaimable = scan.map({ _ in selectedSize }), reclaimable >= Self.reminderMinimum else { return }
         await model.notifications.postReminder(
             identifier: "pb.cleaning.monthly",
-            title: "\(PBFormat.bytes(reclaimable)) récupérables",
-            body: "Caches, journaux et restes d'applications peuvent être nettoyés. Rien n'est supprimé sans ton accord.",
+            title: String(localized: "\(PBFormat.bytes(reclaimable)) récupérables"),
+            body: String(localized: "Caches, journaux et restes d'applications peuvent être nettoyés. Rien n'est supprimé sans ton accord."),
             section: SidebarSection.cleaning.rawValue
         )
     }

@@ -200,7 +200,7 @@ final class VaultStore: ObservableObject {
             recoveryKeyToShow = password
         } else {
             model.banner = Banner(
-                message: "Coffre créé et ouvert. Votre mot de passe est la seule clé : sans lui, le contenu est irrécupérable.",
+                message: String(localized: "Coffre créé et ouvert. Votre mot de passe est la seule clé : sans lui, le contenu est irrécupérable."),
                 isError: false
             )
         }
@@ -215,7 +215,7 @@ final class VaultStore: ObservableObject {
         await model.perform("vault-unlock") {
             let password: String
             do {
-                password = try await VaultKeychain.read(reason: "ouvrir le coffre")
+                password = try await VaultKeychain.read(reason: String(localized: "ouvrir le coffre"))
             } catch VaultKeychain.Failure.cancelled {
                 return
             } catch VaultKeychain.Failure.notFound {
@@ -238,8 +238,8 @@ final class VaultStore: ObservableObject {
             passwordPrompt = PasswordPrompt(
                 purpose: .unlock,
                 message: remember
-                    ? "Mot de passe refusé. Réessayez (la clé de récupération fonctionne aussi)."
-                    : "Le mot de passe du trousseau ne correspond plus au coffre : saisissez-le (ou la clé de récupération)."
+                    ? String(localized: "Mot de passe refusé. Réessayez (la clé de récupération fonctionne aussi).")
+                    : String(localized: "Le mot de passe du trousseau ne correspond plus au coffre : saisissez-le (ou la clé de récupération).")
             )
         }
     }
@@ -272,10 +272,10 @@ final class VaultStore: ObservableObject {
         }
         let names = Set(holders.map(\.command)).sorted().joined(separator: ", ")
         notify(
-            title: "Coffre resté ouvert",
+            title: String(localized: "Coffre resté ouvert"),
             body: names.isEmpty
-                ? "Des fichiers du coffre sont ouverts : fermez-les pour qu'il se verrouille."
-                : "Fichiers ouverts par \(names) : fermez-les pour qu'il se verrouille."
+                ? String(localized: "Des fichiers du coffre sont ouverts : fermez-les pour qu'il se verrouille.")
+                : String(localized: "Fichiers ouverts par \(names) : fermez-les pour qu'il se verrouille.")
         )
     }
 
@@ -288,7 +288,7 @@ final class VaultStore: ObservableObject {
         let minutes = autoLockMinutes
         Task {
             if await lock(quietBusy: true) {
-                notify(title: "Coffre verrouillé", body: "Aucune activité depuis \(minutes) min.")
+                notify(title: String(localized: "Coffre verrouillé"), body: String(localized: "Aucune activité depuis \(minutes) min."))
             }
         }
     }
@@ -301,11 +301,11 @@ final class VaultStore: ObservableObject {
         }
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "Le coffre est encore utilisé"
+        alert.messageText = String(localized: "Le coffre est encore utilisé")
         let names = Set(holders.map(\.command)).sorted().joined(separator: ", ")
-        alert.informativeText = "Des fichiers du coffre sont ouverts\(names.isEmpty ? "" : " par \(names)"). Forcer le verrouillage peut faire perdre les modifications non enregistrées dans ces apps."
+        alert.informativeText = String(localized: "Des fichiers du coffre sont ouverts\(names.isEmpty ? "" : " par \(names)"). Forcer le verrouillage peut faire perdre les modifications non enregistrées dans ces apps.")
         alert.addButton(withTitle: "Laisser ouvert")
-        alert.addButton(withTitle: "Forcer le verrouillage")
+        alert.addButton(withTitle: String(localized: "Forcer le verrouillage"))
         NSApp.activate()
         if alert.runModal() == .alertSecondButtonReturn {
             await lock(force: true, quietBusy: true)
@@ -360,7 +360,7 @@ final class VaultStore: ObservableObject {
 
     private func promptOnBadPassword(_ error: Error, purpose: PasswordPrompt.Purpose) throws {
         if let cliError = error as? VaultCLIError, cliError.isBadPassword {
-            passwordPrompt = PasswordPrompt(purpose: purpose, message: "Mot de passe refusé : saisissez le mot de passe actuel (ou la clé de récupération).")
+            passwordPrompt = PasswordPrompt(purpose: purpose, message: String(localized: "Mot de passe refusé : saisissez le mot de passe actuel (ou la clé de récupération)."))
             return
         }
         throw error
@@ -375,7 +375,7 @@ final class VaultStore: ObservableObject {
         await model.perform("vault-chpass") {
             var current = oldPassword
             if current == nil {
-                current = try await self.keychainPassword(reason: "changer le mot de passe du coffre", purpose: purpose)
+                current = try await self.keychainPassword(reason: String(localized: "changer le mot de passe du coffre"), purpose: purpose)
             }
             guard let old = current else { return }
             do {
@@ -391,7 +391,7 @@ final class VaultStore: ObservableObject {
             }
             self.keychainBackend = try VaultKeychain.save(new)
             if newPassword != nil {
-                self.model.banner = Banner(message: "Mot de passe du coffre changé.", isError: false)
+                self.model.banner = Banner(message: String(localized: "Mot de passe du coffre changé."), isError: false)
             }
         }
     }
@@ -401,13 +401,13 @@ final class VaultStore: ObservableObject {
         await model.perform("vault-resize") {
             var typed = password
             if typed == nil {
-                typed = try await self.keychainPassword(reason: "redimensionner le coffre", purpose: purpose)
+                typed = try await self.keychainPassword(reason: String(localized: "redimensionner le coffre"), purpose: purpose)
             }
             guard let pass = typed else { return }
             do {
                 let s = try await VaultCLI.resize(self.location, size: "\(sizeGB)g", password: pass)
                 self.apply(s)
-                self.model.banner = Banner(message: "Taille maximale du coffre : \(sizeGB) Go.", isError: false)
+                self.model.banner = Banner(message: String(localized: "Taille maximale du coffre : \(sizeGB) Go."), isError: false)
             } catch {
                 try self.promptOnBadPassword(error, purpose: purpose)
             }
@@ -418,7 +418,7 @@ final class VaultStore: ObservableObject {
         await model.perform("vault-compact") {
             var typed = password
             if typed == nil {
-                typed = try await self.keychainPassword(reason: "récupérer l'espace du coffre", purpose: .compact)
+                typed = try await self.keychainPassword(reason: String(localized: "récupérer l'espace du coffre"), purpose: .compact)
             }
             guard let pass = typed else { return }
             let before = self.status?.allocatedBytes ?? 0
@@ -426,7 +426,7 @@ final class VaultStore: ObservableObject {
                 let s = try await VaultCLI.compact(self.location, password: pass)
                 self.apply(s)
                 let freed = max(0, before - (s.allocatedBytes ?? before))
-                self.model.banner = Banner(message: "Espace récupéré : \(PBFormat.bytes(freed)).", isError: false)
+                self.model.banner = Banner(message: String(localized: "Espace récupéré : \(PBFormat.bytes(freed))."), isError: false)
             } catch {
                 try self.promptOnBadPassword(error, purpose: .compact)
             }
@@ -451,7 +451,7 @@ final class VaultStore: ObservableObject {
         }
         if done == true {
             model.banner = Banner(
-                message: "Coffre détruit : son contenu est irrécupérable. Détruisez aussi la clé de récupération imprimée ou notée.",
+                message: String(localized: "Coffre détruit : son contenu est irrécupérable. Détruisez aussi la clé de récupération imprimée ou notée."),
                 isError: false
             )
         }
@@ -480,7 +480,7 @@ final class VaultStore: ObservableObject {
         guard let copied = result else { return }
         activity.touch()
         await refresh()
-        model.banner = Banner(message: "\(copied.count) élément(s) copié(s) dans le coffre.", isError: false)
+        model.banner = Banner(message: String(localized: "\(copied.count) élément(s) copié(s) dans le coffre."), isError: false)
         if removeOriginals && !copied.isEmpty {
             await prepareShred(urls: copied, source: .originals)
         }
@@ -547,7 +547,7 @@ final class VaultStore: ObservableObject {
         }
         guard let reports = result else { return }
         if reports.isEmpty {
-            model.banner = Banner(message: "La Corbeille est déjà vide.", isError: false)
+            model.banner = Banner(message: String(localized: "La Corbeille est déjà vide."), isError: false)
         } else {
             shredPlan = ShredPlan(source: .trash, reports: reports)
         }
@@ -568,8 +568,8 @@ final class VaultStore: ObservableObject {
         let written = deleted.reduce(0) { $0 + $1.overwrittenBytes }
         model.banner = Banner(
             message: failed == 0
-                ? "\(deleted.count) élément(s) supprimé(s) définitivement (\(PBFormat.bytes(written)) réécrits)."
-                : "\(deleted.count) élément(s) supprimé(s), \(failed) en échec : voir le détail dans Coffre.",
+                ? String(localized: "\(deleted.count) élément(s) supprimé(s) définitivement (\(PBFormat.bytes(written)) réécrits).")
+                : String(localized: "\(deleted.count) élément(s) supprimé(s), \(failed) en échec : voir le détail dans Coffre."),
             isError: failed > 0
         )
         if reports.contains(where: { $0.zone == .vault }) {
@@ -587,7 +587,7 @@ final class VaultStore: ObservableObject {
         panel.allowsMultipleSelection = false
         panel.canCreateDirectories = true
         panel.prompt = "Choisir"
-        panel.message = "Dossier du nouveau coffre, ou coffre existant (.sparsebundle). Évitez les dossiers synchronisés (iCloud Drive, Dropbox)."
+        panel.message = String(localized: "Dossier du nouveau coffre, ou coffre existant (.sparsebundle). Évitez les dossiers synchronisés (iCloud Drive, Dropbox).")
         NSApp.activate()
         guard panel.runModal() == .OK, let url = panel.url else { return }
         bundlePath = url.pathExtension == "sparsebundle" ? url.path : url.appendingPathComponent("Coffre.sparsebundle").path
@@ -623,7 +623,7 @@ final class VaultStore: ObservableObject {
     /// Print dialog (its PDF menu saves a copy): a plain text page, nothing kept by the app.
     func printRecoveryKey(_ key: String) {
         let text = NSMutableAttributedString(
-            string: "Parabellum — clé de récupération du coffre\n\n",
+            string: String(localized: "Parabellum — clé de récupération du coffre\n\n"),
             attributes: [.font: NSFont.systemFont(ofSize: 18, weight: .semibold)]
         )
         text.append(NSAttributedString(

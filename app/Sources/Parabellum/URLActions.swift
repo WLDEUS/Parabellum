@@ -12,12 +12,12 @@ enum URLActionRunner {
     static func handle(_ url: URL, model: AppModel) async {
         switch ParabellumURL.parse(url) {
         case .failure(let error):
-            model.banner = Banner(message: "Lien Parabellum refusé : \(error.message)", isError: true)
+            model.banner = Banner(message: String(localized: "Lien Parabellum refusé : \(error.message)"), isError: true)
             model.showMainWindow()
         case .success(let action):
             let policy = action.policy
             if policy.requiresConfirmation && !confirm(policy) {
-                model.banner = Banner(message: "Action du lien annulée.", isError: false)
+                model.banner = Banner(message: String(localized: "Action du lien annulée."), isError: false)
                 return
             }
             await model.runURLAction(policy: policy) {
@@ -31,9 +31,9 @@ enum URLActionRunner {
         NSApp.activate()
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = policy.confirmationTitle ?? "Un lien demande de réduire la protection."
-        alert.informativeText = "N'importe quelle app ou page web peut ouvrir un lien parabellum://. "
-            + "Ne continuez que si c'est vous qui l'avez lancé (raccourci, Raycast, Alfred…)."
+        alert.messageText = policy.confirmationTitle ?? String(localized: "Un lien demande de réduire la protection.")
+        alert.informativeText = String(localized: "N'importe quelle app ou page web peut ouvrir un lien parabellum://. ")
+            + String(localized: "Ne continuez que si c'est vous qui l'avez lancé (raccourci, Raycast, Alfred…).")
         alert.addButton(withTitle: "Annuler")
         alert.addButton(withTitle: "Continuer")
         return alert.runModal() == .alertSecondButtonReturn
@@ -44,7 +44,7 @@ enum URLActionRunner {
         case .scan(let paths):
             let missing = paths.filter { !FileManager.default.fileExists(atPath: $0) }
             if let first = missing.first {
-                model.banner = Banner(message: "Introuvable : \(first)", isError: true)
+                model.banner = Banner(message: String(localized: "Introuvable : \(first)"), isError: true)
                 model.showMainWindow(section: .scan)
                 return
             }
@@ -76,7 +76,7 @@ enum URLActionRunner {
                 return
             }
             guard let section = SidebarSection(rawValue: name) else {
-                model.banner = Banner(message: "Section inconnue : \(name)", isError: true)
+                model.banner = Banner(message: String(localized: "Section inconnue : \(name)"), isError: true)
                 model.showMainWindow()
                 return
             }

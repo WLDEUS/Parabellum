@@ -231,9 +231,9 @@ private struct JobRow: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if job.threats > 0 {
-                Pill(text: "\(job.threats) menace(s)", color: .red)
+                Pill(text: String(localized: "\(job.threats) menace(s)"), color: .red)
             } else if !job.state.isActive {
-                Pill(text: "Rien trouvé", color: .green)
+                Pill(text: String(localized: "Rien trouvé"), color: .green)
             }
         }
         .padding(.vertical, 2)

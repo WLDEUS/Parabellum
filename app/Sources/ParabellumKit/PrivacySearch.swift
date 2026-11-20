@@ -10,19 +10,19 @@ public enum PrivacySearch {
 
         public var label: String {
             switch self {
-            case .request: return "Demande RGPD"
-            case .broker: return "Courtier"
-            case .breach: return "Fuite"
-            case .alias: return "Alias"
+            case .request: return String(localized: "Demande RGPD")
+            case .broker: return String(localized: "Courtier")
+            case .breach: return String(localized: "Fuite")
+            case .alias: return String(localized: "Alias")
             }
         }
 
         public var pluralLabel: String {
             switch self {
-            case .request: return "Demandes"
-            case .broker: return "Courtiers"
-            case .breach: return "Fuites"
-            case .alias: return "Alias"
+            case .request: return String(localized: "Demandes")
+            case .broker: return String(localized: "Courtiers")
+            case .breach: return String(localized: "Fuites")
+            case .alias: return String(localized: "Alias")
             }
         }
 
@@ -113,7 +113,7 @@ public enum PrivacySearch {
                 fields: [
                     "libelle": a.label,
                     "fournisseur": a.provider.label,
-                    "etat": a.active ? "actif" : "désactivé",
+                    "etat": a.active ? "actif" : String(localized: "désactivé"),
                 ]
             ))
         }

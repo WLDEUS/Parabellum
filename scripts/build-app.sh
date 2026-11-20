@@ -104,6 +104,13 @@ for b in ${bundles[@]+"${bundles[@]}"}; do
     /usr/bin/ditto "$b" "$app/Contents/Resources/$(basename "$b")"
 done
 
+# Interface languages (French source, English table): Contents/Resources/<lang>.lproj, read through
+# Bundle.main by SwiftUI and String(localized:). The widget gets the same tables (build-widget.sh).
+for lproj in "$PB_REPO_ROOT"/app/Localization/*.lproj; do
+    /usr/bin/ditto "$lproj" "$app/Contents/Resources/$(basename "$lproj")"
+done
+/usr/bin/plutil -lint "$app"/Contents/Resources/*.lproj/Localizable.strings >/dev/null
+
 # Icon (best effort).
 make_icon() {
     local png="$work/icon_1024.png" iconset="$work/AppIcon.iconset" s d
