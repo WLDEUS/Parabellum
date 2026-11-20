@@ -277,8 +277,11 @@ def main() -> int:
     en = read_strings(EN_STRINGS)
     errors = 0
 
+    # Every key with words needs an entry, even when English is the same ("ClamAV" = "ClamAV"): single
+    # French words ("Faible", "Critique") do not look French to a heuristic, the table is the only proof.
     french_keys = {k for k in keys if is_french(k.replace("%", " "))}
-    missing = sorted(k for k in french_keys if k not in en)
+    worded = {k for k in keys if re.search(r"[A-Za-zÀ-ÿ]", FORMAT_SPEC.sub("", k))}
+    missing = sorted(k for k in worded if k not in en)
     for k in missing:
         print(
             f"MISSING\t{json.dumps(k, ensure_ascii=False)}\t{','.join(sorted(keys[k]))}"
@@ -302,7 +305,7 @@ def main() -> int:
 
     unused = sorted(set(en) - set(keys))
     print(
-        f"{len(keys)} clés extraites, {len(french_keys)} en français, {len(missing)} sans traduction, "
+        f"{len(keys)} clés extraites ({len(french_keys)} visiblement en français), {len(missing)} sans traduction, "
         f"{len(unused)} traductions inutilisées, {errors} problème(s)"
     )
     return 1 if errors else 0

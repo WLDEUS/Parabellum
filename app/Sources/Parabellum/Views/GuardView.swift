@@ -88,7 +88,7 @@ private struct GuardStatusCard: View {
                 .font(.title3)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.headline)
-                Text(on ? detail : "Désactivé dans les réglages.")
+                Text(on ? detail : String(localized: "Désactivé dans les réglages."))
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

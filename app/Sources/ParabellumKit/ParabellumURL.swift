@@ -146,14 +146,14 @@ public enum ParabellumURL {
     /// Absolute, normalized, printable path (no `..`, `.`, `//`, NUL or control characters).
     static func validatePath(_ p: String) -> ParabellumURLError? {
         guard p.hasPrefix("/"), p.utf8.count <= maxPathLength else {
-            return ParabellumURLError("Chemin absolu requis : \(p.prefix(200))")
+            return ParabellumURLError(String(localized: "Chemin absolu requis : \(String(p.prefix(200)))"))
         }
         if p.unicodeScalars.contains(where: { $0.properties.generalCategory == .control }) {
             return ParabellumURLError(String(localized: "Chemin invalide (caractère de contrôle)."))
         }
         let parts = p.split(separator: "/", omittingEmptySubsequences: false).dropFirst()
         if p != "/" && parts.contains(where: { $0.isEmpty || $0 == "." || $0 == ".." }) {
-            return ParabellumURLError(String(localized: "Chemin non normalisé refusé : \(p.prefix(200))"))
+            return ParabellumURLError(String(localized: "Chemin non normalisé refusé : \(String(p.prefix(200)))"))
         }
         return nil
     }

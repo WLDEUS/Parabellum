@@ -631,17 +631,17 @@ final class VaultStore: ObservableObject {
             attributes: [.font: NSFont.monospacedSystemFont(ofSize: 20, weight: .medium)]
         ))
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "fr_FR")
+        formatter.locale = PBFormat.locale
         formatter.dateStyle = .long
         formatter.timeStyle = .short
         text.append(NSAttributedString(
-            string: """
+            string: String(localized: """
             Créée le \(formatter.string(from: Date())).
 
             Cette clé ouvre le coffre si le trousseau est perdu (nouveau Mac, réinstallation). \
             Quiconque la possède avec l'image du coffre peut le lire : rangez cette feuille en lieu sûr, \
             hors de l'ordinateur, et ne la photographiez pas.
-            """,
+            """),
             attributes: [.font: NSFont.systemFont(ofSize: 12)]
         ))
         let view = NSTextView(frame: NSRect(x: 0, y: 0, width: 480, height: 640))

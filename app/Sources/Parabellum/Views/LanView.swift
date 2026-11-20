@@ -44,7 +44,7 @@ struct LanView: View {
                     ContentUnavailableView(
                         "Aucun réseau local",
                         systemImage: "wifi.slash",
-                        description: Text(store.status?.message ?? "Connecte ce Mac à un réseau pour voir ses appareils.")
+                        description: Text(store.status?.message ?? String(localized: "Connecte ce Mac à un réseau pour voir ses appareils."))
                     )
                     .padding(.top, 40)
                 }
@@ -217,7 +217,7 @@ private struct LanHeaderCard: View {
                 VStack(alignment: .leading, spacing: 6) {
                     ProgressView(value: store.status?.progress ?? 0)
                         .tint(Brand.indigo)
-                    Text(store.status?.phase ?? "Analyse en cours…")
+                    Text(store.status?.phase ?? String(localized: "Analyse en cours…"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -406,7 +406,7 @@ private struct LanDeviceSheet: View {
                 Form {
                     Section("Nom") {
                         HStack {
-                            TextField("Nom affiché", text: $name, prompt: Text(device.mdnsName ?? device.hostname ?? "Ex. iPhone de Camille"))
+                            TextField("Nom affiché", text: $name, prompt: Text(device.mdnsName ?? device.hostname ?? String(localized: "Ex. iPhone de Camille")))
                             Button("Enregistrer") { Task { await store.rename(device, to: name) } }
                                 .disabled(model.isBusy("lan.device.\(mac)") || name == (device.name ?? ""))
                         }

@@ -156,7 +156,7 @@ enum ResponseDecoding {
             if let untyped = try? decoder.decode(UntypedResponse.self, from: line), !untyped.ok {
                 throw DaemonClientError.daemon(untyped.error ?? IpcError(code: .unknown, message: String(localized: "Erreur inconnue du service")))
             }
-            throw DaemonClientError.protocolError(String(localized: "Réponse illisible (\(T.self)) : \(error)"))
+            throw DaemonClientError.protocolError(String(localized: "Réponse illisible (\(String(describing: T.self))) : \(error.localizedDescription)"))
         }
         guard typed.ok else {
             throw DaemonClientError.daemon(typed.error ?? IpcError(code: .unknown, message: String(localized: "Erreur inconnue du service")))
@@ -167,7 +167,7 @@ enum ResponseDecoding {
         if let empty = JSONValue.null as? T {
             return empty
         }
-        throw DaemonClientError.protocolError(String(localized: "Réponse sans données pour \(T.self)"))
+        throw DaemonClientError.protocolError(String(localized: "Réponse sans données pour \(String(describing: T.self))"))
     }
 
     static func check(_ line: Data) throws {
@@ -175,7 +175,7 @@ enum ResponseDecoding {
         do {
             untyped = try JSONDecoder().decode(UntypedResponse.self, from: line)
         } catch {
-            throw DaemonClientError.protocolError(String(localized: "Réponse illisible : \(error)"))
+            throw DaemonClientError.protocolError(String(localized: "Réponse illisible : \(error.localizedDescription)"))
         }
         guard untyped.ok else {
             throw DaemonClientError.daemon(untyped.error ?? IpcError(code: .unknown, message: String(localized: "Erreur inconnue du service")))
