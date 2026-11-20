@@ -472,6 +472,7 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
         ),
         Request::MailAgentStatus => json(&crate::mailagent::status(ctx).await?),
         Request::MailAgentRun => json(&crate::mailagent::request_run(ctx).await?),
+        Request::MailAgentRunNow => json(&crate::mailagent::request_run_now(ctx).await?),
         Request::PrivacyComplaint { request_id } => json(
             &crate::privacy::service(ctx)?
                 .complaint(&ctx.config(), &request_id)

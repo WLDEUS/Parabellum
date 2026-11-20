@@ -66,6 +66,7 @@ final class ProtocolTests: XCTestCase {
             .privacyComplaint(requestId: "r"),
             .mailAgentStatus,
             .mailAgentRun,
+            .mailAgentRunNow,
             .breachList,
             .breachCheckNow,
             .aliasList,

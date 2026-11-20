@@ -256,6 +256,30 @@ extension AppModel {
         }
     }
 
+    /// Run the mail agent right away (Mac in use, battery included), then follow the run until it ends.
+    func runMailAgentImmediately() async {
+        let value = await perform("mail-agent-run-now") {
+            try await self.call(.mailAgentRunNow, as: MailAgentStatus.self)
+        }
+        guard let value else { return }
+        mailAgent = value
+        banner = Banner(
+            message: "L'agent lit la boîte RGPD maintenant. Au premier passage, Ollama et le modèle (≈ 2,5 Go) sont téléchargés.",
+            isError: false
+        )
+        // Follow the run: status every 5 s while it runs (at most 30 min).
+        for _ in 0 ..< 360 {
+            try? await Task.sleep(nanoseconds: 5 * 1_000_000_000)
+            await fetch("mail-agent", .mailAgentStatus, as: MailAgentStatus.self) { value in
+                if self.mailAgent != value {
+                    self.mailAgent = value
+                }
+            }
+            if mailAgent?.state != .running { break }
+        }
+        await refresh(section: .privacy, force: true)
+    }
+
     /// Folder of the Obsidian notes (`~/…` expanded for the current user), if configured.
     var mailAgentNotesFolder: URL? {
         guard let dir = config?.mailAgent.notesDir, dir.hasPrefix("~/") else { return nil }

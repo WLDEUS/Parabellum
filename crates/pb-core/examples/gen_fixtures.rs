@@ -1336,6 +1336,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         Request::MailAgentStatus,
         Request::MailAgentRun,
+        Request::MailAgentRunNow,
         Request::BreachList,
         Request::BreachCheckNow,
         Request::AliasList,

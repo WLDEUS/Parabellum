@@ -510,6 +510,10 @@ private struct RequestsCard: View {
     @EnvironmentObject private var model: AppModel
     @State private var filter: Filter = .todo
     @State private var complaint: ComplaintItem?
+    /// Rows rendered: hundreds of requests (each with a menu and buttons) in one glass card made the tab
+    /// scroll slowly. The search bar finds any organisation directly.
+    @State private var shown = Self.pageSize
+    private static let pageSize = 60
 
     private var filtered: [RemovalRequest] {
         let now = Date()
@@ -528,6 +532,7 @@ private struct RequestsCard: View {
     }
 
     var body: some View {
+        let list = filtered
         Card(title: "Demandes", symbol: "list.bullet.rectangle") {
             VStack(alignment: .leading, spacing: 8) {
                 Picker("Filtre", selection: $filter) {
@@ -538,19 +543,38 @@ private struct RequestsCard: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .fixedSize()
-                if filtered.isEmpty {
+                if list.isEmpty {
                     Text("Aucune demande dans cette catégorie.").foregroundStyle(.secondary)
                 } else {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(filtered) { request in
+                        ForEach(list.prefix(shown)) { request in
                             RequestRow(request: request) { draft in
                                 complaint = ComplaintItem(draft: draft)
                             }
                             Divider()
                         }
                     }
+                    if list.count > shown {
+                        HStack(spacing: 12) {
+                            Button("Afficher \(min(Self.pageSize, list.count - shown)) de plus") {
+                                shown += Self.pageSize
+                            }
+                            Button("Tout afficher (\(list.count))") {
+                                shown = list.count
+                            }
+                            .buttonStyle(.link)
+                            Spacer()
+                            Text("\(shown) sur \(list.count) · la recherche trouve un organisme directement")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.top, 4)
+                    }
                 }
             }
+        }
+        .onChange(of: filter) { _, _ in
+            shown = Self.pageSize
         }
         .sheet(item: $complaint) { item in
             ComplaintSheet(draft: item.draft) {
@@ -604,10 +628,26 @@ private struct MailAgentCard: View {
                         .foregroundStyle(.secondary)
                 }
                 HStack {
-                    Button("Lire la boîte au prochain moment d'inactivité") {
+                    let running = model.mailAgent?.state == .running
+                    Button {
+                        Task { await model.runMailAgentImmediately() }
+                    } label: {
+                        if running || model.isBusy("mail-agent-run-now") {
+                            HStack(spacing: 6) {
+                                ProgressView().controlSize(.small)
+                                Text("Lecture en cours…")
+                            }
+                        } else {
+                            Label("Lancer maintenant", systemImage: "play.fill")
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(running || model.isBusy("mail-agent-run-now"))
+                    .help("Lit la boîte tout de suite, même si tu utilises le Mac ou qu'il est sur batterie.")
+                    Button("Au prochain moment d'inactivité") {
                         Task { await model.runMailAgentNow() }
                     }
-                    .disabled(model.isBusy("mail-agent-run"))
+                    .disabled(running || model.isBusy("mail-agent-run"))
                     if let folder = model.mailAgentNotesFolder {
                         Button("Ouvrir les notes") {
                             NSWorkspace.shared.open(folder)

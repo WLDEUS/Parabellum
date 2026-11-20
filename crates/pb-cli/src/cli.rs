@@ -585,8 +585,12 @@ pub enum PrivacyCmd {
 pub enum AgentCmd {
     /// État, dernière passe et réponses lues (défaut).
     Status,
-    /// Passer au prochain moment d'inactivité sans attendre l'intervalle.
-    Run,
+    /// Passer au prochain moment d'inactivité sans attendre l'intervalle (--now : tout de suite).
+    Run {
+        /// Lancer immédiatement, même pendant que le Mac est utilisé ou sur batterie.
+        #[arg(long)]
+        now: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]

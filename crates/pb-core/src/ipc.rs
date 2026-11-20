@@ -251,6 +251,9 @@ pub enum Request {
     /// Run the mail agent now (still only while the Mac is idle and, if configured, on mains power: the
     /// run starts at the next idle moment). -> [`MailAgentStatus`]
     MailAgentRun,
+    /// Run the mail agent right away, while you use the Mac and on battery too (Ollama and the model run
+    /// in the foreground until the run ends). -> [`MailAgentStatus`]
+    MailAgentRunNow,
     /// -> `Vec<BreachFinding>`
     BreachList,
     /// Check `breach.emails` now. -> `Vec<BreachFinding>`
