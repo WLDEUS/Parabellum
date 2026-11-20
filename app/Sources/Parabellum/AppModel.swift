@@ -837,6 +837,41 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Same action on several alerts, one after the other (an administrator approval is asked once and
+    /// reused). Stops at the first cancelled approval; other failures are counted and reported at the end.
+    func resolveMany(_ ids: [Int64], action: AlertAction) async {
+        guard !ids.isEmpty else { return }
+        var done = 0
+        var failed = 0
+        let finished: Void? = await perform("resolve-bulk") {
+            for id in ids {
+                do {
+                    let updated = try await self.call(.resolveAlert(alertId: id, action: action), as: SecurityAlert.self)
+                    if updated.status == .open || self.includeResolvedAlerts {
+                        self.upsert(updated, into: &self.alerts)
+                    } else {
+                        self.alerts.removeAll { $0.id == updated.id }
+                    }
+                    done += 1
+                } catch let error as AdminAuthorizationError {
+                    throw error
+                } catch {
+                    failed += 1
+                }
+            }
+        }
+        await refreshStatus()
+        if finished != nil || done > 0 {
+            let plural = done > 1 ? "s" : ""
+            banner = Banner(
+                message: failed == 0
+                    ? "\(action.label) : \(done) alerte\(plural) traitée\(plural)."
+                    : "\(action.label) : \(done) traitée\(plural), \(failed) en échec.",
+                isError: failed > 0
+            )
+        }
+    }
+
     // MARK: - Quarantine & false positives
 
     func restore(_ entry: QuarantineEntry, allow: Bool) async {

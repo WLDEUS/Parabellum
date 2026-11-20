@@ -139,6 +139,34 @@ struct LanView: View {
 
 // MARK: - Header
 
+/// Opens the router's administration page in the browser (Freebox OS for a Freebox). On a network not
+/// marked trusted, asks first: there the page could be imitated by another device.
+private struct RouterAdminButton: View {
+    let admin: RouterAdmin
+    let networkTrusted: Bool
+    @State private var confirm = false
+
+    var body: some View {
+        Button {
+            if networkTrusted { NSWorkspace.shared.open(admin.url) } else { confirm = true }
+        } label: {
+            Label(admin.title, systemImage: admin.isFreebox ? "server.rack" : "slider.horizontal.3")
+        }
+        .controlSize(.small)
+        .help(admin.url.absoluteString)
+        .confirmationDialog(
+            "Ouvrir l'administration du routeur sur un réseau non fiable ?",
+            isPresented: $confirm,
+            titleVisibility: .visible
+        ) {
+            Button("Ouvrir \(admin.url.host ?? "la page")") { NSWorkspace.shared.open(admin.url) }
+            Button("Annuler", role: .cancel) {}
+        } message: {
+            Text("Ce réseau n'est pas marqué de confiance : un autre appareil pourrait imiter la page de la box. N'y saisis pas de mot de passe si tu n'es pas sûr d'être chez toi.")
+        }
+    }
+}
+
 private struct LanHeaderCard: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject var store: LanStore
@@ -176,6 +204,12 @@ private struct LanHeaderCard: View {
                     Text(lastScanText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    if network.current,
+                       let gateway = network.devices.first(where: { $0.isGateway }),
+                       let admin = RouterAdmin.forGateway(gateway) {
+                        RouterAdminButton(admin: admin, networkTrusted: network.trusted)
+                            .padding(.top, 2)
+                    }
                 }
                 Spacer(minLength: 0)
                 scanControls
