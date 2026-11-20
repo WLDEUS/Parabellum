@@ -43,40 +43,42 @@ struct AlertsView: View {
     var body: some View {
         let base = kindFiltered
         let visible = ordered(base.filter { severities.contains($0.severity) || !Severity.known.contains($0.severity) })
-        return HSplitView {
-            VStack(spacing: 0) {
-                filterBar(base)
-                Divider()
-                if visible.isEmpty && model.isFirstLoad("alerts") {
-                    ProgressView("Chargement des alertes…")
+        return Group {
+            if visible.isEmpty {
+                // Nothing to list: one full-width pane, filters pinned on top, no detail column.
+                VStack(spacing: 0) {
+                    filterBar(base)
+                    Divider()
+                    emptyState(hidden: model.alerts.count)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if visible.isEmpty {
-                    ContentUnavailableView(
-                        model.includeResolvedAlerts ? "Aucune alerte" : "Aucune alerte ouverte",
-                        systemImage: "checkmark.shield",
-                        description: Text("Parabellum n'a rien signalé pour ces filtres.")
-                    )
-                } else {
-                    alertList(visible)
                 }
-            }
-            .frame(minWidth: 340, idealWidth: 420)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            } else {
+                HSplitView {
+                    VStack(spacing: 0) {
+                        filterBar(base)
+                        Divider()
+                        alertList(visible)
+                    }
+                    .frame(minWidth: 340, idealWidth: 420, maxHeight: .infinity, alignment: .top)
 
-            Group {
-                let picked = selectedAlerts
-                if picked.count > 1 {
-                    BulkAlertsView(alerts: picked) { selection = [] }
-                } else if let alert = picked.first {
-                    AlertDetailView(alert: alert)
-                } else {
-                    ContentUnavailableView(
-                        "Sélectionne une alerte",
-                        systemImage: "bell",
-                        description: Text("⌘-clic ou ⇧-clic pour en sélectionner plusieurs, ⌘A pour toutes.")
-                    )
+                    Group {
+                        let picked = selectedAlerts
+                        if picked.count > 1 {
+                            BulkAlertsView(alerts: picked) { selection = [] }
+                        } else if let alert = picked.first {
+                            AlertDetailView(alert: alert)
+                        } else {
+                            ContentUnavailableView(
+                                "Sélectionne une alerte",
+                                systemImage: "bell",
+                                description: Text("⌘-clic ou ⇧-clic pour en sélectionner plusieurs, ⌘A pour toutes.")
+                            )
+                        }
+                    }
+                    .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-            .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
         }
         .navigationTitle("Alertes")
         .toolbar {
@@ -104,6 +106,33 @@ struct AlertsView: View {
         }
         .onChange(of: model.includeResolvedAlerts) { _, _ in
             Task { await model.loadAlerts() }
+        }
+    }
+
+    /// `hidden`: alerts loaded but filtered out.
+    @ViewBuilder
+    private func emptyState(hidden: Int) -> some View {
+        if model.isFirstLoad("alerts") {
+            ProgressView("Chargement des alertes…")
+        } else if hidden > 0 {
+            ContentUnavailableView {
+                Label("Aucune alerte pour ces filtres", systemImage: "line.3.horizontal.decrease.circle")
+            } description: {
+                Text(hidden == 1 ? "1 alerte est masquée par les filtres." : "\(hidden) alertes sont masquées par les filtres.")
+            } actions: {
+                Button("Réinitialiser les filtres") {
+                    kindFilter = nil
+                    severities = Set(Severity.known)
+                }
+            }
+        } else {
+            ContentUnavailableView(
+                model.includeResolvedAlerts ? "Aucune alerte" : "Aucune alerte ouverte",
+                systemImage: "checkmark.shield",
+                description: Text(model.includeResolvedAlerts
+                    ? "Parabellum n'a encore rien signalé."
+                    : "Tout est traité. « Toutes » affiche aussi les alertes vues et résolues.")
+            )
         }
     }
 

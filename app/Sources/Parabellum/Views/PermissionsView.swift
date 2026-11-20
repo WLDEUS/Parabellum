@@ -20,7 +20,6 @@ struct PermissionsView: View {
             }
             .padding(20)
         }
-        .auroraBackground()
         .navigationTitle("Permissions")
         .toolbar {
             ToolbarItem {

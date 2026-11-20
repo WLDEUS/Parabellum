@@ -89,6 +89,8 @@ pub async fn run(ctx: Arc<Ctx>) {
     let mut hour = ctx.config().updates.daily_hour;
     let mut next = next_daily(&Local::now(), hour, jitter(20 * 60));
     let mut last_attempt = 0i64;
+    // Light DB-only checks between daily runs (0: first one ~10 min after startup).
+    let mut last_db_check = 0i64;
     loop {
         // Tokio timers stop while the Mac sleeps (monotonic uptime clock): never sleep longer than
         // `WALL_CLOCK_CHECK`, and decide against the wall clock, so a laptop asleep at 03:00 updates soon
@@ -117,10 +119,18 @@ pub async fn run(ctx: Arc<Ctx>) {
                     db_update_overdue(now.timestamp(), last_ok, last_attempt)
                 };
                 if !due && !stale {
+                    if db_recheck_due(now.timestamp(), last_db_check) && !ctx.should_defer_heavy_work() {
+                        last_db_check = now.timestamp();
+                        // Only the manifest is fetched when nothing new was published.
+                        if let Err(e) = run_updates(&ctx, UpdateTarget::Db).await {
+                            tracing::debug!(error = %e.message, "DB recheck skipped");
+                        }
+                    }
                     continue;
                 }
                 catch_up = false;
                 last_attempt = now.timestamp();
+                last_db_check = now.timestamp();
                 daily_run(&ctx).await;
                 next = next_daily(&Local::now(), ctx.config().updates.daily_hour, jitter(20 * 60));
             }
@@ -137,6 +147,15 @@ pub async fn run(ctx: Arc<Ctx>) {
             }
         }
     }
+}
+
+/// Between daily runs, check the threat DB this often. The nightly CI publishes at a variable time (GitHub
+/// delays scheduled jobs by hours): a single check at 03:00 can miss that night's bundle by minutes and
+/// keep yesterday's for a whole day.
+pub const DB_RECHECK_SECS: i64 = 6 * 3600;
+
+pub fn db_recheck_due(now: i64, last_check: i64) -> bool {
+    now - last_check >= DB_RECHECK_SECS
 }
 
 /// Longest single sleep of the scheduler, so the wall clock is re-read after the Mac wakes.
@@ -733,6 +752,14 @@ mod tests {
             next_daily(&now, 0, 0).unwrap(),
             Utc.with_ymd_and_hms(2026, 10, 26, 0, 0, 0).unwrap()
         );
+    }
+
+    #[test]
+    fn db_recheck_every_six_hours() {
+        let h = 3600;
+        assert!(db_recheck_due(100 * h, 0), "first check soon after startup");
+        assert!(!db_recheck_due(100 * h, 95 * h));
+        assert!(db_recheck_due(100 * h, 94 * h));
     }
 
     #[test]

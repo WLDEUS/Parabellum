@@ -51,7 +51,6 @@ struct LanView: View {
             }
             .padding(20)
         }
-        .auroraBackground()
         .navigationTitle("Réseau local")
         .toolbar {
             ToolbarItem {
