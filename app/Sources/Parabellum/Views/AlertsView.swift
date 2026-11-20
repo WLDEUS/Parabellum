@@ -435,7 +435,7 @@ private struct AlertDetailView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .confirmationDialog(
-            pendingAction.map { "\($0.label) ?" } ?? "",
+            pendingAction.map { String(localized: "\($0.label) ?") } ?? "",
             isPresented: Binding(
                 get: { pendingAction != nil },
                 set: { if !$0 { pendingAction = nil } }

@@ -164,12 +164,12 @@ final class CleaningStore: ObservableObject {
                 for result in r.results {
                     if let message = result.message, summary.messages.count < 50 {
                         let name = (result.path as NSString).lastPathComponent
-                        summary.messages.append("\(name) : \(message)")
+                        summary.messages.append(String(localized: "\(name) : \(message)"))
                     }
                 }
             } catch {
                 summary.failed += entry.1.items.count
-                summary.messages.append("\(entry.0.title) : \(error.localizedDescription)")
+                summary.messages.append(String(localized: "\(entry.0.title) : \(error.localizedDescription)"))
             }
             progress = Double(index + 1) / Double(plans.count)
         }

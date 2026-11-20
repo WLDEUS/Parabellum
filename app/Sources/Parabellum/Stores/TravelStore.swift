@@ -147,7 +147,7 @@ final class TravelStore: ObservableObject {
                 applied.bluetoothOn = current.bluetoothOn
             }
             savedSnapshot = TravelLocalSnapshot(session: session, before: current, applied: applied)
-            localMessage = failures.isEmpty ? nil : failures.joined(separator: " ; ")
+            localMessage = failures.isEmpty ? nil : failures.joined(separator: String(localized: " ; ", comment: "List separator"))
         } else if let saved = savedSnapshot {
             let current = TravelLocal.read(includeBluetooth: saved.before.bluetoothOn != saved.applied.bluetoothOn)
             let plan = TravelLocalPlan.restore(before: saved.before, applied: saved.applied, current: current)

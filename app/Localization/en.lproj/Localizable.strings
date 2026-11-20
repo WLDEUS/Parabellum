@@ -1,9 +1,13 @@
 /* English translation. Keys are the French source texts (scripts/check_localization.py). */
 
+" ; " = "; ";
 "%@ (introuvable)" = "%@ (not found)";
 "%@ (non fiable)" = "%@ (untrusted)";
+"%@ : " = "%@: ";
+"%@ : %@" = "%@: %@";
 "%@ : %lld alerte(s) traitée(s)." = "%@: %lld alert(s) handled.";
 "%@ : %lld traitée(s), %lld en échec." = "%@: %lld handled, %lld failed.";
+"%@ ?" = "%@?";
 "%@ cochés" = "%@ checked";
 "%@ est autorisé : le modèle ne le signalera plus." = "%@ is allowed: the model will no longer flag it.";
 "%@ fichiers" = "%@ files";
@@ -14,6 +18,7 @@
 "%@ réécrits" = "%@ overwritten";
 "%@ sur %lld alertes ?" = "%@ on %lld alerts?";
 "%@ · %@ sur %@ · pensez à le verrouiller après usage" = "%@ · %@ of %@ · remember to lock it after use";
+"%@ · %@ — %@ : %@" = "%@ · %@ — %@: %@";
 "%@ · box %@ · vu %@" = "%@ · router %@ · seen %@";
 "%@ · gravité %@" = "%@ · severity %@";
 "%@ · Ollama %@" = "%@ · Ollama %@";
