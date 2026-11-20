@@ -12,9 +12,9 @@ enum AdminAuthorizationError: Error, Equatable, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .cancelled:
-            return "Action annulée : autorisation administrateur non accordée."
+            return String(localized: "Action annulée : autorisation administrateur non accordée.")
         case .denied:
-            return "Autorisation administrateur refusée."
+            return String(localized: "Autorisation administrateur refusée.")
         case .failed(let status):
             return "Impossible d'obtenir l'autorisation administrateur (erreur \(status))."
         }
@@ -28,7 +28,7 @@ enum AdminAuthorizationError: Error, Equatable, LocalizedError {
 /// The `AuthorizationRef` is kept ~5 minutes and reused: the right is not shared, so the daemon still
 /// re-checks it on every request. All Security calls run on one serial queue (the prompt blocks).
 final class AdminAuthorizer: @unchecked Sendable {
-    static let defaultPrompt = "Parabellum a besoin de votre autorisation pour réduire la protection."
+    static let defaultPrompt = String(localized: "Parabellum a besoin de votre autorisation pour réduire la protection.")
     /// How long an obtained authorization is reused before asking again.
     let lifetime: TimeInterval
 
@@ -148,41 +148,41 @@ extension Request {
     /// French end of "Parabellum a besoin de votre autorisation pour …" shown in the system prompt.
     var adminPromptReason: String {
         switch self {
-        case .restore: return "restaurer un fichier mis en quarantaine"
-        case .deleteQuarantined: return "supprimer définitivement un fichier en quarantaine"
-        case .reportFalsePositive: return "autoriser un fichier signalé comme faux positif"
-        case .setConfig: return "modifier les réglages de protection"
-        case .getConfig: return "afficher les secrets des réglages"
-        case .quarantinePath: return "mettre un fichier en quarantaine"
-        case .setPersistenceStatus: return "modifier un élément de persistance"
-        case .setDns: return "désactiver le blocage DNS"
-        case .setProtection: return "mettre la protection en pause"
-        case .setDeviceTrust: return "faire confiance à un périphérique"
-        case .setComponentAutoUpdate: return "désactiver la mise à jour automatique d'un composant"
-        case .resolveAlert: return "appliquer cette action sur l'alerte"
-        case .vpnDisconnect: return "couper le VPN"
-        case .vpnImportProfile: return "changer le serveur VPN (tout le trafic passera par lui)"
-        case .vpnRemoveProfile: return "supprimer le profil VPN"
-        case .setNetworkTrust: return "faire confiance à ce réseau (le VPN automatique ne s'y activera plus)"
-        case .restoreFromSnapshot: return "restaurer un fichier depuis un instantané"
-        case .privacyGetProfile: return "afficher ton identité enregistrée"
-        case .privacySetProfile: return "modifier l'identité utilisée pour les demandes RGPD"
-        case .privacyStartRemoval: return "envoyer des demandes d'effacement en ton nom"
-        case .privacyDraft: return "préparer un e-mail de demande d'effacement (il contient ton identité)"
-        case .privacyComplaint: return "préparer une plainte CNIL (elle contient ton identité)"
+        case .restore: return String(localized: "restaurer un fichier mis en quarantaine")
+        case .deleteQuarantined: return String(localized: "supprimer définitivement un fichier en quarantaine")
+        case .reportFalsePositive: return String(localized: "autoriser un fichier signalé comme faux positif")
+        case .setConfig: return String(localized: "modifier les réglages de protection")
+        case .getConfig: return String(localized: "afficher les secrets des réglages")
+        case .quarantinePath: return String(localized: "mettre un fichier en quarantaine")
+        case .setPersistenceStatus: return String(localized: "modifier un élément de persistance")
+        case .setDns: return String(localized: "désactiver le blocage DNS")
+        case .setProtection: return String(localized: "mettre la protection en pause")
+        case .setDeviceTrust: return String(localized: "faire confiance à un périphérique")
+        case .setComponentAutoUpdate: return String(localized: "désactiver la mise à jour automatique d'un composant")
+        case .resolveAlert: return String(localized: "appliquer cette action sur l'alerte")
+        case .vpnDisconnect: return String(localized: "couper le VPN")
+        case .vpnImportProfile: return String(localized: "changer le serveur VPN (tout le trafic passera par lui)")
+        case .vpnRemoveProfile: return String(localized: "supprimer le profil VPN")
+        case .setNetworkTrust: return String(localized: "faire confiance à ce réseau (le VPN automatique ne s'y activera plus)")
+        case .restoreFromSnapshot: return String(localized: "restaurer un fichier depuis un instantané")
+        case .privacyGetProfile: return String(localized: "afficher ton identité enregistrée")
+        case .privacySetProfile: return String(localized: "modifier l'identité utilisée pour les demandes RGPD")
+        case .privacyStartRemoval: return String(localized: "envoyer des demandes d'effacement en ton nom")
+        case .privacyDraft: return String(localized: "préparer un e-mail de demande d'effacement (il contient ton identité)")
+        case .privacyComplaint: return String(localized: "préparer une plainte CNIL (elle contient ton identité)")
         // Intelligence
-        case .intelAllowDomain: return "autoriser ce domaine (le modèle ne le signalera plus)"
-        case .intelMarkNormal: return "ajouter ce comportement à la référence"
-        case .intelResetBaseline: return "effacer la référence comportementale"
+        case .intelAllowDomain: return String(localized: "autoriser ce domaine (le modèle ne le signalera plus)")
+        case .intelMarkNormal: return String(localized: "ajouter ce comportement à la référence")
+        case .intelResetBaseline: return String(localized: "effacer la référence comportementale")
         // Rust-review fixes: scans outside the user's own folders need approval (daemon answers auth_required).
-        case .scan: return "analyser un dossier système, protégé ou d'un autre utilisateur"
+        case .scan: return String(localized: "analyser un dossier système, protégé ou d'un autre utilisateur")
         // Travel mode
-        case .travelDisable: return "désactiver le mode Voyage et rétablir les réglages d'avant"
-        default: return "réduire la protection"
+        case .travelDisable: return String(localized: "désactiver le mode Voyage et rétablir les réglages d'avant")
+        default: return String(localized: "réduire la protection")
         }
     }
 
     var adminPrompt: String {
-        "Parabellum a besoin de votre autorisation pour \(adminPromptReason)."
+        String(localized: "Parabellum a besoin de votre autorisation pour \(adminPromptReason).")
     }
 }

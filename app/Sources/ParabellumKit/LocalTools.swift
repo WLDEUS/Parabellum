@@ -56,7 +56,7 @@ public enum ParabellumCLI {
         public var errorDescription: String? {
             switch self {
             case .notInstalled:
-                return "L'outil en ligne de commande Parabellum est introuvable (\(ParabellumCLI.path))."
+                return String(localized: "L'outil en ligne de commande Parabellum est introuvable (\(ParabellumCLI.path)).")
             case .failed(let message):
                 return message
             }
@@ -106,7 +106,7 @@ public enum ParabellumCLI {
                     continuation.resume(returning: outData)
                 } else {
                     let message = String(decoding: errData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-                    continuation.resume(throwing: Failure.failed(message.isEmpty ? "échec (code \(process.terminationStatus))" : message))
+                    continuation.resume(throwing: Failure.failed(message.isEmpty ? String(localized: "échec (code \(process.terminationStatus))") : message))
                 }
             }
         }

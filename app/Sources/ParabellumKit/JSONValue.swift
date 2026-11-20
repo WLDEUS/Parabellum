@@ -32,7 +32,7 @@ extension JSONValue: Codable {
         } else if let value = try? container.decode([String: JSONValue].self) {
             self = .object(value)
         } else {
-            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Valeur JSON non reconnue")
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: String(localized: "Valeur JSON non reconnue"))
         }
     }
 

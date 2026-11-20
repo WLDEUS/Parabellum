@@ -41,24 +41,24 @@ enum SidebarSection: String, CaseIterable, Identifiable, Hashable {
 
     var title: String {
         switch self {
-        case .dashboard: return "Tableau de bord"
-        case .scan: return "Analyse"
-        case .alerts: return "Alertes"
-        case .quarantine: return "Quarantaine"
-        case .persistence: return "Persistance"
-        case .devices: return "Périphériques"
-        case .network: return "Réseau & pubs"
-        case .vpn: return "VPN"
-        case .behavior: return "Vols & rançongiciels"
-        case .privacy: return "Vie privée"
-        case .components: return "Composants"
-        case .report: return "Rapport"
-        case .settings: return "Réglages"
-        case .intelligence: return "Intelligence"
-        case .lan: return "Réseau local"
-        case .permissions: return "Permissions"
-        case .cleaning: return "Nettoyage"
-        case .vault: return "Coffre"
+        case .dashboard: return String(localized: "Tableau de bord")
+        case .scan: return String(localized: "Analyse")
+        case .alerts: return String(localized: "Alertes")
+        case .quarantine: return String(localized: "Quarantaine")
+        case .persistence: return String(localized: "Persistance")
+        case .devices: return String(localized: "Périphériques")
+        case .network: return String(localized: "Réseau & pubs")
+        case .vpn: return String(localized: "VPN")
+        case .behavior: return String(localized: "Vols & rançongiciels")
+        case .privacy: return String(localized: "Vie privée")
+        case .components: return String(localized: "Composants")
+        case .report: return String(localized: "Rapport")
+        case .settings: return String(localized: "Réglages")
+        case .intelligence: return String(localized: "Intelligence")
+        case .lan: return String(localized: "Réseau local")
+        case .permissions: return String(localized: "Permissions")
+        case .cleaning: return String(localized: "Nettoyage")
+        case .vault: return String(localized: "Coffre")
         }
     }
 
@@ -93,11 +93,11 @@ enum SidebarGroup: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .protection: return "Protection"
-        case .network: return "Réseau"
-        case .system: return "Système"
-        case .privacy: return "Vie privée"
-        case .maintenance: return "Maintenance"
+        case .protection: return String(localized: "Protection")
+        case .network: return String(localized: "Réseau")
+        case .system: return String(localized: "Système")
+        case .privacy: return String(localized: "Vie privée")
+        case .maintenance: return String(localized: "Maintenance")
         }
     }
 
@@ -436,14 +436,14 @@ final class AppModel: ObservableObject {
             }
             if result.ok {
                 let version = result.newDbVersion.map { " — base \($0)" } ?? ""
-                banner = Banner(message: "Mise à jour terminée\(version).", isError: false)
+                banner = Banner(message: String(localized: "Mise à jour terminée\(version)."), isError: false)
             } else {
                 // Every step reports a line ("ClamAV à jour", "Base : erreur…"): show them all, the failing
                 // step is rarely the last one.
                 let detail = result.messages.isEmpty
-                    ? "voir le journal du service"
+                    ? String(localized: "voir le journal du service")
                     : result.messages.joined(separator: " · ")
-                banner = Banner(message: "Échec de la mise à jour : \(detail)", isError: true)
+                banner = Banner(message: String(localized: "Échec de la mise à jour : \(detail)"), isError: true)
             }
             Task { await refreshStatus() }
         case .component(let component):
@@ -625,12 +625,12 @@ final class AppModel: ObservableObject {
         }
         if let authError = error as? AdminAuthorizationError {
             // Cancelling the password prompt is a normal choice: discreet, not an error.
-            return (authError.errorDescription ?? "Action annulée.", authError != .cancelled)
+            return (authError.errorDescription ?? String(localized: "Action annulée."), authError != .cancelled)
         }
         if let clientError = error as? DaemonClientError {
             if case .daemon(let ipcError) = clientError, ipcError.code == .permissionDenied {
                 return (
-                    "\(ipcError.message) — les commandes qui modifient l'état ne sont acceptées que depuis l'app installée dans /Applications.",
+                    String(localized: "\(ipcError.message) — les commandes qui modifient l'état ne sont acceptées que depuis l'app installée dans /Applications."),
                     true
                 )
             }
@@ -785,7 +785,7 @@ final class AppModel: ObservableObject {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = true
         panel.prompt = "Analyser"
-        panel.message = "Choisis les fichiers ou dossiers à analyser"
+        panel.message = String(localized: "Choisis les fichiers ou dossiers à analyser")
         NSApp.activate()
         guard panel.runModal() == .OK else { return }
         let paths = panel.urls.map { $0.path }
@@ -862,11 +862,10 @@ final class AppModel: ObservableObject {
         }
         await refreshStatus()
         if finished != nil || done > 0 {
-            let plural = done > 1 ? "s" : ""
             banner = Banner(
                 message: failed == 0
-                    ? "\(action.label) : \(done) alerte\(plural) traitée\(plural)."
-                    : "\(action.label) : \(done) traitée\(plural), \(failed) en échec.",
+                    ? String(localized: "\(action.label) : \(done) alerte(s) traitée(s).")
+                    : String(localized: "\(action.label) : \(done) traitée(s), \(failed) en échec."),
                 isError: failed > 0
             )
         }
@@ -880,7 +879,7 @@ final class AppModel: ObservableObject {
         }
         if let restored {
             quarantine.removeAll { $0.id == entry.id }
-            banner = Banner(message: "Fichier restauré : \(restored.restoredPath)", isError: false)
+            banner = Banner(message: String(localized: "Fichier restauré : \(restored.restoredPath)"), isError: false)
             await refreshStatus()
         }
     }
@@ -901,7 +900,7 @@ final class AppModel: ObservableObject {
         }
         if let entry {
             upsert(entry, into: &quarantine)
-            banner = Banner(message: "Mis en quarantaine : \(entry.fileName)", isError: false)
+            banner = Banner(message: String(localized: "Mis en quarantaine : \(entry.fileName)"), isError: false)
             await refreshStatus()
         }
     }
@@ -911,7 +910,7 @@ final class AppModel: ObservableObject {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        panel.prompt = "Mettre en quarantaine"
+        panel.prompt = String(localized: "Mettre en quarantaine")
         NSApp.activate()
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task { await quarantineFile(path: url.path) }
@@ -922,7 +921,7 @@ final class AppModel: ObservableObject {
             try await self.callVoid(.reportFalsePositive(sha256: sha256, path: path, note: nil))
         }
         if done != nil {
-            banner = Banner(message: "Faux positif signalé : ce fichier est désormais autorisé.", isError: false)
+            banner = Banner(message: String(localized: "Faux positif signalé : ce fichier est désormais autorisé."), isError: false)
         }
     }
 
@@ -954,11 +953,11 @@ final class AppModel: ObservableObject {
             do {
                 return try await self.call(.setDeviceTrust(deviceId: deviceId, trust: trust), as: DeviceInfo.self)
             } catch {
-                failure = self.describe(error)?.message ?? "Action annulée."
+                failure = self.describe(error)?.message ?? String(localized: "Action annulée.")
                 throw error
             }
         }
-        guard let updated else { return failure ?? "Échec de l'opération." }
+        guard let updated else { return failure ?? String(localized: "Échec de l'opération.") }
         upsert(updated, into: &devices, atTop: false)
         return nil
     }
@@ -1003,7 +1002,7 @@ final class AppModel: ObservableObject {
             return
         }
         if updateInProgress && requestedUpdateTarget == target {
-            banner = Banner(message: "Mise à jour lancée (\(target.label.lowercased()))…", isError: false)
+            banner = Banner(message: String(localized: "Mise à jour lancée (\(target.label.lowercased()))…"), isError: false)
         }
     }
 
@@ -1014,7 +1013,7 @@ final class AppModel: ObservableObject {
         if let started {
             activeScanJobId = started.jobId
             selectedJobId = started.jobId
-            banner = Banner(message: "Rétro-chasse lancée sur les fichiers des \(days) derniers jours.", isError: false)
+            banner = Banner(message: String(localized: "Rétro-chasse lancée sur les fichiers des \(days) derniers jours."), isError: false)
         }
     }
 
@@ -1027,7 +1026,7 @@ final class AppModel: ObservableObject {
             activeScanJobId = started.jobId
             selectedJobId = started.jobId
             banner = Banner(
-                message: "Analyse anti-spyware lancée (Zero Breach Toolkit, jusqu'à 30 minutes). Les résultats arrivent dans les alertes.",
+                message: String(localized: "Analyse anti-spyware lancée (Zero Breach Toolkit, jusqu'à 30 minutes). Les résultats arrivent dans les alertes."),
                 isError: false
             )
         }
@@ -1080,7 +1079,7 @@ final class AppModel: ObservableObject {
             self.freshness.markFresh("config")
         }
         if saved != nil {
-            banner = Banner(message: "Réglages enregistrés.", isError: false)
+            banner = Banner(message: String(localized: "Réglages enregistrés."), isError: false)
             return true
         }
         return false

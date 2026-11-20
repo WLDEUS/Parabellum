@@ -109,11 +109,11 @@ private struct ReportPrintPages {
                     }
                 }
             }
-            PrintSection(title: "Activité quotidienne") {
+            PrintSection(title: String(localized: "Activité quotidienne")) {
                 DailyActivityChart(report: report)
             }
-            PrintSection(title: "Familles les plus détectées") {
-                TopListChart(items: Array(report.topDetections.prefix(8)), color: .red, empty: "Aucune détection sur cette période.")
+            PrintSection(title: String(localized: "Familles les plus détectées")) {
+                TopListChart(items: Array(report.topDetections.prefix(8)), color: .red, empty: String(localized: "Aucune détection sur cette période."))
             }
         }
     }
@@ -128,14 +128,14 @@ private struct ReportPrintPages {
 
     private var network: some View {
         VStack(alignment: .leading, spacing: 14) {
-            PrintSection(title: "Réseau & VPN") {
+            PrintSection(title: String(localized: "Réseau & VPN")) {
                 NetworkSummary(report: report)
             }
-            PrintSection(title: "Pubs et traqueurs bloqués") {
+            PrintSection(title: String(localized: "Pubs et traqueurs bloqués")) {
                 DnsBlockedChart(report: report)
-                TopListChart(items: Array(report.topBlockedDomains.prefix(8)), color: Brand.violet, empty: "Aucun domaine bloqué enregistré.")
+                TopListChart(items: Array(report.topBlockedDomains.prefix(8)), color: Brand.violet, empty: String(localized: "Aucun domaine bloqué enregistré."))
             }
-            PrintSection(title: "Alertes par type") {
+            PrintSection(title: String(localized: "Alertes par type")) {
                 AlertKindsChart(report: report)
             }
         }
@@ -143,10 +143,10 @@ private struct ReportPrintPages {
 
     private var privacyAndUpdates: some View {
         VStack(alignment: .leading, spacing: 14) {
-            PrintSection(title: "Vie privée") {
+            PrintSection(title: String(localized: "Vie privée")) {
                 PrivacySummaryView(report: report)
             }
-            PrintSection(title: "Système et mises à jour") {
+            PrintSection(title: String(localized: "Système et mises à jour")) {
                 Text("\(report.persistenceNew) nouvelle(s) persistance(s), \(report.devicesNew) nouveau(x) périphérique(s), \(report.dbUpdates) mise(s) à jour de la base\(report.dbVersion.map { " (version \($0))" } ?? "").")
                     .font(.system(size: 11))
                 ForEach(Array(report.componentUpdates.prefix(30)), id: \.self) { line in

@@ -10,7 +10,7 @@ struct NetworkView: View {
                 if let adblock = model.adblock {
                     dnsCard(adblock.dns)
                     extensionsCard(adblock)
-                    Card(title: "YouTube", symbol: "play.rectangle") {
+                    Card(title: String(localized: "YouTube"), symbol: "play.rectangle") {
                         Text("Le blocage des pubs YouTube est fait au mieux par uBlock Origin Lite (listes mises à jour par le Store). Le DNS seul ne suffit pas : pubs et vidéos partagent les mêmes domaines.")
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -37,7 +37,7 @@ struct NetworkView: View {
     }
 
     private func dnsCard(_ dns: DnsStatus) -> some View {
-        Card(title: "Blocage DNS global", symbol: "network.badge.shield.half.filled") {
+        Card(title: String(localized: "Blocage DNS global"), symbol: "network.badge.shield.half.filled") {
             VStack(alignment: .leading, spacing: 8) {
                 Toggle(isOn: Binding(
                     get: { dns.enabled },
@@ -58,16 +58,16 @@ struct NetworkView: View {
                         .foregroundStyle(dns.running ? Color.green : (dns.enabled ? Color.red : Color.secondary))
                     Text(dns.running ? "Résolveur local actif" : "Résolveur local arrêté")
                 }
-                InfoRow(label: "Écoute", value: dns.listen, monospaced: true)
-                InfoRow(label: "Domaines bloqués", value: PBFormat.count(dns.blockedDomains))
+                InfoRow(label: String(localized: "Écoute"), value: dns.listen, monospaced: true)
+                InfoRow(label: String(localized: "Domaines bloqués"), value: PBFormat.count(dns.blockedDomains))
                 if let blocked = dns.queriesBlocked24h {
-                    InfoRow(label: "Requêtes bloquées (24 h)", value: PBFormat.count(blocked))
+                    InfoRow(label: String(localized: "Requêtes bloquées (24 h)"), value: PBFormat.count(blocked))
                 }
                 if let version = dns.listVersion {
-                    InfoRow(label: "Version des listes", value: version)
+                    InfoRow(label: String(localized: "Version des listes"), value: version)
                 }
                 if !dns.managedServices.isEmpty {
-                    InfoRow(label: "Services réseau gérés", value: dns.managedServices.joined(separator: ", "))
+                    InfoRow(label: String(localized: "Services réseau gérés"), value: dns.managedServices.joined(separator: ", "))
                 }
                 if let message = dns.message, !message.isEmpty {
                     Label(message, systemImage: "info.circle")
@@ -79,12 +79,12 @@ struct NetworkView: View {
     }
 
     private func extensionsCard(_ adblock: AdblockStatus) -> some View {
-        Card(title: "uBlock Origin Lite dans les navigateurs", symbol: "puzzlepiece.extension") {
+        Card(title: String(localized: "uBlock Origin Lite dans les navigateurs"), symbol: "puzzlepiece.extension") {
             VStack(alignment: .leading, spacing: 12) {
                 extensionRow(
                     browser: "Google Chrome",
                     state: adblock.chromeUblock,
-                    help: "Installe l'extension depuis le Chrome Web Store, puis vérifie qu'elle est activée dans chrome://extensions."
+                    help: String(localized: "Installe l'extension depuis le Chrome Web Store, puis vérifie qu'elle est activée dans chrome://extensions.")
                 ) {
                     model.openInChrome(urlString: adblock.chromeStoreUrl)
                 }
@@ -92,7 +92,7 @@ struct NetworkView: View {
                 extensionRow(
                     browser: "Safari",
                     state: adblock.safariUblock,
-                    help: "Installe l'app depuis l'App Store, puis active l'extension dans Safari › Réglages › Extensions."
+                    help: String(localized: "Installe l'app depuis l'App Store, puis active l'extension dans Safari › Réglages › Extensions.")
                 ) {
                     model.openInAppStore(urlString: adblock.safariStoreUrl)
                 }

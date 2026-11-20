@@ -41,21 +41,21 @@ private struct GuardStatusCard: View {
     let status: GuardStatus
 
     var body: some View {
-        Card(title: "Détection comportementale", symbol: "eye.trianglebadge.exclamationmark") {
+        Card(title: String(localized: "Détection comportementale"), symbol: "eye.trianglebadge.exclamationmark") {
             VStack(alignment: .leading, spacing: 10) {
                 featureRow(
                     on: status.stealerDetection,
-                    title: "Vol de mots de passe et de cookies",
-                    detail: "Lecture des cookies et mots de passe des navigateurs, du Trousseau ou de portefeuilles crypto par un programme non approuvé, fausse fenêtre de mot de passe (osascript), vérification de mot de passe (dscl), exfiltration (curl). Le programme est arrêté sur une détection sûre."
+                    title: String(localized: "Vol de mots de passe et de cookies"),
+                    detail: String(localized: "Lecture des cookies et mots de passe des navigateurs, du Trousseau ou de portefeuilles crypto par un programme non approuvé, fausse fenêtre de mot de passe (osascript), vérification de mot de passe (dscl), exfiltration (curl). Le programme est arrêté sur une détection sûre.")
                 )
                 featureRow(
                     on: status.ransomwareDetection,
-                    title: "Rançongiciels",
-                    detail: "Fichiers leurres dans tes dossiers et détection des rafales de chiffrement / renommage. Le programme suspect est suspendu jusqu'à ta décision."
+                    title: String(localized: "Rançongiciels"),
+                    detail: String(localized: "Fichiers leurres dans tes dossiers et détection des rafales de chiffrement / renommage. Le programme suspect est suspendu jusqu'à ta décision.")
                 )
                 Divider()
-                InfoRow(label: "Détections (7 jours)", value: PBFormat.count(status.detections7d))
-                InfoRow(label: "Fichiers leurres", value: status.canaries.isEmpty ? "aucun" : "\(status.canaries.count) en place")
+                InfoRow(label: String(localized: "Détections (7 jours)"), value: PBFormat.count(status.detections7d))
+                InfoRow(label: String(localized: "Fichiers leurres"), value: status.canaries.isEmpty ? "aucun" : String(localized: "\(status.canaries.count) en place"))
                 if !status.canaries.isEmpty {
                     DisclosureGroup("Voir les leurres") {
                         VStack(alignment: .leading, spacing: 2) {
@@ -88,7 +88,7 @@ private struct GuardStatusCard: View {
                 .font(.title3)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.headline)
-                Text(on ? detail : "Désactivé dans les réglages.")
+                Text(on ? detail : String(localized: "Désactivé dans les réglages."))
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -103,7 +103,7 @@ private struct SuspendedCard: View {
     @State private var pendingKill: SuspendedProcess?
 
     var body: some View {
-        Card(title: "Processus suspendus", symbol: "pause.circle.fill") {
+        Card(title: String(localized: "Processus suspendus"), symbol: "pause.circle.fill") {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Parabellum a gelé ces programmes car ils se comportaient comme un rançongiciel. Arrête-les si tu ne les reconnais pas.")
                     .font(.callout)
@@ -171,7 +171,7 @@ private struct SnapshotsCard: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        Card(title: "Instantanés APFS", symbol: "clock.arrow.circlepath") {
+        Card(title: String(localized: "Instantanés APFS"), symbol: "clock.arrow.circlepath") {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Points de restauration locaux du disque (Time Machine local), créés régulièrement et purgés par macOS après environ 24 h. Si des fichiers sont chiffrés, récupère-les ici : la copie est écrite dans ~/Parabellum-Restauration, rien n'est écrasé.")
                     .font(.caption)
@@ -179,7 +179,7 @@ private struct SnapshotsCard: View {
                     .fixedSize(horizontal: false, vertical: true)
                 if let status = model.guardStatus {
                     if let last = status.lastSnapshotDate {
-                        InfoRow(label: "Dernier instantané", value: PBFormat.relative(last))
+                        InfoRow(label: String(localized: "Dernier instantané"), value: PBFormat.relative(last))
                     }
                     if !status.snapshotsEnabled {
                         Label("Instantanés automatiques désactivés dans les réglages.", systemImage: "info.circle")
@@ -232,7 +232,7 @@ private struct SnapshotRow: View {
                     .foregroundStyle(.secondary)
             }
             if snapshot.ours {
-                Pill(text: "Parabellum", color: .blue)
+                Pill(text: String(localized: "Parabellum"), color: .blue)
             }
             Spacer()
             Button {

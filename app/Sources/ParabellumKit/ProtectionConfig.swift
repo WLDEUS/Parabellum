@@ -334,26 +334,26 @@ public struct MailAgentConfig: Codable, Sendable, Hashable {
     public func validationErrors() -> [String] {
         var e: [String] = []
         if !(1...240).contains(idleMinutes) {
-            e.append("L'agent courrier : inactivité entre 1 et 240 minutes.")
+            e.append(String(localized: "L'agent courrier : inactivité entre 1 et 240 minutes."))
         }
         if !(1...168).contains(intervalHours) {
-            e.append("L'agent courrier : intervalle entre 1 et 168 heures.")
+            e.append(String(localized: "L'agent courrier : intervalle entre 1 et 168 heures."))
         }
         if !(1...500).contains(maxMessagesPerRun) {
-            e.append("L'agent courrier : entre 1 et 500 messages par passe.")
+            e.append(String(localized: "L'agent courrier : entre 1 et 500 messages par passe."))
         }
         if !notesDir.isEmpty && (!notesDir.hasPrefix("~/") || notesDir.split(separator: "/").contains("..")) {
-            e.append("Le dossier des notes doit être dans ton dossier personnel (~/…).")
+            e.append(String(localized: "Le dossier des notes doit être dans ton dossier personnel (~/…)."))
         }
         if enabled {
             if imapHost.trimmingCharacters(in: .whitespaces).isEmpty {
-                e.append("L'agent courrier a besoin du serveur IMAP de la boîte dédiée.")
+                e.append(String(localized: "L'agent courrier a besoin du serveur IMAP de la boîte dédiée."))
             }
             if !(1...65535).contains(imapPort) {
                 e.append("Port IMAP invalide.")
             }
             if imapUsername.trimmingCharacters(in: .whitespaces).isEmpty {
-                e.append("L'agent courrier a besoin de l'identifiant de la boîte dédiée.")
+                e.append(String(localized: "L'agent courrier a besoin de l'identifiant de la boîte dédiée."))
             }
         }
         return e
@@ -494,38 +494,38 @@ extension Config {
     public func protectionValidationErrors() -> [String] {
         var errors: [String] = []
         if vpn.leakTestIntervalMinutes < 0 || vpn.leakTestIntervalMinutes > 7 * 24 * 60 {
-            errors.append("L'intervalle du test de fuite doit être compris entre 0 et 10 080 minutes.")
+            errors.append(String(localized: "L'intervalle du test de fuite doit être compris entre 0 et 10 080 minutes."))
         }
         if let service = vpn.externalService {
             let trimmed = service.trimmingCharacters(in: .whitespaces)
             if trimmed.isEmpty || service.count > 128 || service.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) {
-                errors.append("Le nom du VPN macOS est invalide.")
+                errors.append(String(localized: "Le nom du VPN macOS est invalide."))
             }
         }
         for address in vpn.externalServerAddresses where !ConfigSyntax.isHostOrIp(address) {
             errors.append("Adresse de serveur VPN invalide : \(address)")
         }
         for id in vpn.trustedNetworks where !ConfigSyntax.isNetworkId(id) {
-            errors.append("Identifiant de réseau invalide : \(id)")
+            errors.append(String(localized: "Identifiant de réseau invalide : \(id)"))
         }
         if !(15...(24 * 60)).contains(behaviorGuard.snapshotIntervalMinutes) {
-            errors.append("L'intervalle des instantanés doit être compris entre 15 et 1 440 minutes.")
+            errors.append(String(localized: "L'intervalle des instantanés doit être compris entre 15 et 1 440 minutes."))
         }
         for team in behaviorGuard.trustedTeamIds where !ConfigSyntax.isTeamId(team) {
-            errors.append("Team ID invalide : \(team) (10 lettres majuscules ou chiffres)")
+            errors.append(String(localized: "Team ID invalide : \(team) (10 lettres majuscules ou chiffres)"))
         }
         if !(5...600).contains(networkGuard.pollSeconds) {
-            errors.append("La fréquence de surveillance du réseau doit être comprise entre 5 et 600 secondes.")
+            errors.append(String(localized: "La fréquence de surveillance du réseau doit être comprise entre 5 et 600 secondes."))
         }
         errors.append(contentsOf: dataRemovalErrors())
         for email in breach.emails where !ConfigSyntax.isEmail(email) {
-            errors.append("Adresse surveillée invalide : \(email)")
+            errors.append(String(localized: "Adresse surveillée invalide : \(email)"))
         }
         if !(1...(24 * 30)).contains(breach.checkIntervalHours) {
-            errors.append("L'intervalle de vérification des fuites doit être compris entre 1 et 720 heures.")
+            errors.append(String(localized: "L'intervalle de vérification des fuites doit être compris entre 1 et 720 heures."))
         }
         if !aliases.baseUrl.isEmpty && !aliases.baseUrl.hasPrefix("https://") {
-            errors.append("L'adresse du service d'alias doit commencer par https://")
+            errors.append(String(localized: "L'adresse du service d'alias doit commencer par https://"))
         }
         return errors
     }
@@ -534,33 +534,33 @@ extension Config {
         var errors: [String] = []
         let d = dataRemoval
         if !(1...200).contains(d.maxEmailsPerDay) {
-            errors.append("Le nombre d'e-mails par jour doit être compris entre 1 et 200.")
+            errors.append(String(localized: "Le nombre d'e-mails par jour doit être compris entre 1 et 200."))
         }
         if !(7...90).contains(d.reminderAfterDays) || !(7...90).contains(d.escalateAfterDays) {
-            errors.append("Les délais de relance et d'escalade doivent être compris entre 7 et 90 jours.")
+            errors.append(String(localized: "Les délais de relance et d'escalade doivent être compris entre 7 et 90 jours."))
         }
         if d.repeatEveryDays != 0 && !(30...730).contains(d.repeatEveryDays) {
-            errors.append("Le renouvellement des demandes doit être 0 (jamais) ou compris entre 30 et 730 jours.")
+            errors.append(String(localized: "Le renouvellement des demandes doit être 0 (jamais) ou compris entre 30 et 730 jours."))
         }
         for region in d.regions where !DataRemovalConfig.knownRegions.contains(region) {
-            errors.append("Région de courtiers inconnue : \(region)")
+            errors.append(String(localized: "Région de courtiers inconnue : \(region)"))
         }
         if d.language != "fr" && d.language != "en" {
-            errors.append("La langue des courriers doit être fr ou en.")
+            errors.append(String(localized: "La langue des courriers doit être fr ou en."))
         }
         if d.sendMode == .smtp {
             let host = d.smtpHost.trimmingCharacters(in: .whitespaces)
             if host.isEmpty || !ConfigSyntax.isHostOrIp(host) {
-                errors.append("Le serveur SMTP est requis en mode envoi automatique.")
+                errors.append(String(localized: "Le serveur SMTP est requis en mode envoi automatique."))
             }
             if d.smtpPort <= 0 || d.smtpPort > 65_535 {
-                errors.append("Le port SMTP doit être compris entre 1 et 65 535.")
+                errors.append(String(localized: "Le port SMTP doit être compris entre 1 et 65 535."))
             }
             if !ConfigSyntax.isEmail(d.fromAddress) {
-                errors.append("L'adresse d'expédition est requise en mode envoi automatique.")
+                errors.append(String(localized: "L'adresse d'expédition est requise en mode envoi automatique."))
             }
         } else if !d.fromAddress.isEmpty && !ConfigSyntax.isEmail(d.fromAddress) {
-            errors.append("L'adresse d'expédition est invalide.")
+            errors.append(String(localized: "L'adresse d'expédition est invalide."))
         }
         return errors
     }

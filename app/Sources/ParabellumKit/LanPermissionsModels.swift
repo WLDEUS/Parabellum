@@ -69,9 +69,9 @@ public struct LanDevice: Codable, Sendable, Hashable, Identifiable {
         if let name, !name.isEmpty { return name }
         if let mdnsName, !mdnsName.isEmpty { return mdnsName }
         if let hostname, !hostname.isEmpty { return hostname.replacingOccurrences(of: ".local", with: "") }
-        if isSelf { return "Ce Mac" }
-        if let vendor { return "Appareil \(vendor)" }
-        return privateMac ? "Appareil (adresse privée)" : mac
+        if isSelf { return String(localized: "Ce Mac") }
+        if let vendor { return String(localized: "Appareil \(vendor)") }
+        return privateMac ? String(localized: "Appareil (adresse privée)") : mac
     }
 
     enum CodingKeys: String, CodingKey {
@@ -385,18 +385,18 @@ public struct TccResetResult: Codable, Sendable, Hashable {
 extension LanDeviceType {
     public var label: String {
         switch self {
-        case .router: return "Routeur"
-        case .computer: return "Ordinateur"
-        case .phone: return "Téléphone"
-        case .tablet: return "Tablette"
-        case .tv: return "Téléviseur"
-        case .speaker: return "Enceinte"
-        case .printer: return "Imprimante"
-        case .camera: return "Caméra"
-        case .nas: return "Stockage réseau"
-        case .console: return "Console"
-        case .iot: return "Objet connecté"
-        case .unknown: return "Appareil"
+        case .router: return String(localized: "Routeur")
+        case .computer: return String(localized: "Ordinateur")
+        case .phone: return String(localized: "Téléphone")
+        case .tablet: return String(localized: "Tablette")
+        case .tv: return String(localized: "Téléviseur")
+        case .speaker: return String(localized: "Enceinte")
+        case .printer: return String(localized: "Imprimante")
+        case .camera: return String(localized: "Caméra")
+        case .nas: return String(localized: "Stockage réseau")
+        case .console: return String(localized: "Console")
+        case .iot: return String(localized: "Objet connecté")
+        case .unknown: return String(localized: "Appareil")
         }
     }
 
@@ -422,10 +422,10 @@ extension LanDeviceType {
 extension TccAuthValue {
     public var label: String {
         switch self {
-        case .denied: return "Refusé"
-        case .allowed: return "Autorisé"
-        case .limited: return "Limité"
-        case .unknown: return "Inconnu"
+        case .denied: return String(localized: "Refusé")
+        case .allowed: return String(localized: "Autorisé")
+        case .limited: return String(localized: "Limité")
+        case .unknown: return String(localized: "Inconnu")
         }
     }
 }

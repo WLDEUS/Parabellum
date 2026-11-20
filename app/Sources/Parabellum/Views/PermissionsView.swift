@@ -66,10 +66,10 @@ struct PermissionsView: View {
                 }
             }
             HStack(spacing: 12) {
-                StatTile(value: "\(store.count(risk: .high))", caption: "Risque élevé", symbol: "exclamationmark.triangle.fill", tint: .orange)
-                StatTile(value: "\(store.count(risk: .medium))", caption: "Accès puissants à vérifier", symbol: "eye", tint: .yellow)
-                StatTile(value: "\(store.staleCount)", caption: "Autorisations orphelines", symbol: "trash.slash", tint: Brand.cyan)
-                StatTile(value: "\(store.riskyExtensions)", caption: "Extensions à risque", symbol: "puzzlepiece.extension", tint: Brand.violet)
+                StatTile(value: "\(store.count(risk: .high))", caption: String(localized: "Risque élevé"), symbol: "exclamationmark.triangle.fill", tint: .orange)
+                StatTile(value: "\(store.count(risk: .medium))", caption: String(localized: "Accès puissants à vérifier"), symbol: "eye", tint: .yellow)
+                StatTile(value: "\(store.staleCount)", caption: String(localized: "Autorisations orphelines"), symbol: "trash.slash", tint: Brand.cyan)
+                StatTile(value: "\(store.riskyExtensions)", caption: String(localized: "Extensions à risque"), symbol: "puzzlepiece.extension", tint: Brand.violet)
             }
             if let report = store.report {
                 ForEach(report.errors, id: \.self) { e in
@@ -94,9 +94,9 @@ struct PermissionsView: View {
     }
 
     private var subtitle: String {
-        guard let r = store.report else { return "Lecture des autorisations de confidentialité…" }
-        return "\(r.grants.filter(\.isGranted).count) autorisations accordées · audit \(PBFormat.relative(r.generatedDate)) · bases lues : "
-            + [r.systemDbRead ? "système" : nil, r.userDbRead ? "utilisateur" : nil].compactMap { $0 }.joined(separator: " + ")
+        guard let r = store.report else { return String(localized: "Lecture des autorisations de confidentialité…") }
+        return String(localized: "\(r.grants.filter(\.isGranted).count) autorisations accordées · audit \(PBFormat.relative(r.generatedDate)) · bases lues : ")
+            + [r.systemDbRead ? String(localized: "système") : nil, r.userDbRead ? "utilisateur" : nil].compactMap { $0 }.joined(separator: " + ")
     }
 
     private var controls: some View {
@@ -253,12 +253,12 @@ private struct GrantRow: View {
                     SeverityBadge(severity: grant.risk)
                     signingPill
                     if grant.installed == false {
-                        Pill(text: "App absente", color: Brand.cyan, symbol: "trash.slash")
+                        Pill(text: String(localized: "App absente"), color: Brand.cyan, symbol: "trash.slash")
                     }
                     if grant.auth != .allowed {
                         Pill(text: grant.auth.label, color: .secondary)
                     }
-                    Pill(text: grant.systemWide ? "Système" : "Utilisateur", color: .secondary)
+                    Pill(text: grant.systemWide ? String(localized: "Système") : "Utilisateur", color: .secondary)
                 }
                 if let reason = grant.reasons.first, grant.risk >= .medium || grant.installed == false {
                     Text(grant.reasons.prefix(2).joined(separator: " · "))
@@ -292,15 +292,15 @@ private struct GrantRow: View {
     private var signingPill: some View {
         if let s = grant.signing {
             if s.apple {
-                Pill(text: "Apple", color: .green, symbol: "apple.logo")
+                Pill(text: String(localized: "Apple"), color: .green, symbol: "apple.logo")
             } else if !s.signed {
-                Pill(text: "Non signée", color: .red, symbol: "xmark.seal")
+                Pill(text: String(localized: "Non signée"), color: .red, symbol: "xmark.seal")
             } else if s.adhoc {
-                Pill(text: "Signature ad hoc", color: .orange, symbol: "seal")
+                Pill(text: String(localized: "Signature ad hoc"), color: .orange, symbol: "seal")
             } else if s.notarized == false {
-                Pill(text: "Non notarisée", color: .orange, symbol: "seal")
+                Pill(text: String(localized: "Non notarisée"), color: .orange, symbol: "seal")
             } else if let team = s.teamId {
-                Pill(text: "Développeur \(team)", color: .green, symbol: "checkmark.seal")
+                Pill(text: String(localized: "Développeur \(team)"), color: .green, symbol: "checkmark.seal")
             }
         }
     }
@@ -361,12 +361,12 @@ private struct ExtensionRow: View {
                 Spacer()
                 SeverityBadge(severity: ext.risk)
                 if ext.unpacked {
-                    Pill(text: "Non empaquetée", color: .orange)
+                    Pill(text: String(localized: "Non empaquetée"), color: .orange)
                 } else if ext.fromStore == false && ext.browser != "safari" {
-                    Pill(text: "Hors boutique", color: .orange)
+                    Pill(text: String(localized: "Hors boutique"), color: .orange)
                 }
                 if ext.enabled == false {
-                    Pill(text: "Désactivée", color: .secondary)
+                    Pill(text: String(localized: "Désactivée"), color: .secondary)
                 }
                 Button {
                     withAnimation(.snappy) { expanded.toggle() }

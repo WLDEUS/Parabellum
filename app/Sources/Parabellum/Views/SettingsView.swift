@@ -18,6 +18,7 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             if loaded {
                 Form {
+                    LanguageSettingsSection()
                     scanSection
                     realtimeSection
                     mlSection
@@ -158,8 +159,8 @@ struct SettingsView: View {
             Stepper(value: $draft.scan.archiveMaxEntries, in: 100...1_000_000, step: 1000) {
                 LabeledContent("Entrées max. par archive", value: PBFormat.count(draft.scan.archiveMaxEntries))
             }
-            StringListEditor(title: "Dossiers surveillés (~ = ton dossier personnel)", placeholder: "~/Downloads", items: $draft.scan.watchPaths)
-            StringListEditor(title: "Exclusions (préfixes de chemin)", placeholder: "~/Projets/vm", items: $draft.scan.excludePaths)
+            StringListEditor(title: String(localized: "Dossiers surveillés (~ = ton dossier personnel)"), placeholder: "~/Downloads", items: $draft.scan.watchPaths)
+            StringListEditor(title: String(localized: "Exclusions (préfixes de chemin)"), placeholder: "~/Projets/vm", items: $draft.scan.excludePaths)
         } header: {
             Text("Analyse")
         } footer: {
@@ -214,9 +215,9 @@ struct SettingsView: View {
             Toggle("Bloquer les publicités", isOn: $draft.dns.blockAds)
             Toggle("Bloquer les traqueurs et la télémétrie", isOn: $draft.dns.blockTrackers)
             TextField("Adresse d'écoute", text: $draft.dns.listen)
-            StringListEditor(title: "Résolveurs amont (noms dnscrypt-proxy)", placeholder: "cloudflare", items: $draft.dns.upstreamServers)
-            StringListEditor(title: "Toujours autoriser", placeholder: "exemple.fr ou *.exemple.fr", items: $draft.dns.customAllow)
-            StringListEditor(title: "Toujours bloquer", placeholder: "pub.exemple.com", items: $draft.dns.customBlock)
+            StringListEditor(title: String(localized: "Résolveurs amont (noms dnscrypt-proxy)"), placeholder: "cloudflare", items: $draft.dns.upstreamServers)
+            StringListEditor(title: String(localized: "Toujours autoriser"), placeholder: String(localized: "exemple.fr ou *.exemple.fr"), items: $draft.dns.customAllow)
+            StringListEditor(title: String(localized: "Toujours bloquer"), placeholder: "pub.exemple.com", items: $draft.dns.customBlock)
         } header: {
             Text("DNS anti-pub et anti-malware")
         } footer: {
@@ -264,7 +265,7 @@ struct SettingsView: View {
             Toggle("Mettre à jour les signatures ClamAV (freshclam)", isOn: $draft.updates.freshclam)
             TextField("URL de la base de menaces", text: $draft.updates.dbBaseUrl)
             TextField("API des releases de l'app", text: $draft.updates.appReleasesApi)
-            secretField("Jeton GitHub (dépôt privé, optionnel)", $draft.updates.githubToken)
+            secretField(String(localized: "Jeton GitHub (dépôt privé, optionnel)"), $draft.updates.githubToken)
         } header: {
             Text("Mises à jour")
         } footer: {
@@ -326,7 +327,7 @@ struct SettingsView: View {
             if draft.vpn.backend == .external {
                 externalServicePicker
                 StringListEditor(
-                    title: "Serveurs du VPN autorisés par le kill switch (nom ou IP)",
+                    title: String(localized: "Serveurs du VPN autorisés par le kill switch (nom ou IP)"),
                     placeholder: "vpn.exemple.com",
                     items: $draft.vpn.externalServerAddresses
                 )
@@ -338,10 +339,10 @@ struct SettingsView: View {
             Stepper(value: $draft.vpn.leakTestIntervalMinutes, in: 0...1440, step: 15) {
                 LabeledContent(
                     "Test de fuite automatique",
-                    value: draft.vpn.leakTestIntervalMinutes == 0 ? "à la demande" : "toutes les \(PBFormat.duration(seconds: draft.vpn.leakTestIntervalMinutes * 60))"
+                    value: draft.vpn.leakTestIntervalMinutes == 0 ? String(localized: "à la demande") : String(localized: "toutes les \(PBFormat.duration(seconds: draft.vpn.leakTestIntervalMinutes * 60))")
                 )
             }
-            LabeledContent("Réseaux de confiance", value: "\(draft.vpn.trustedNetworks.count) (gérés dans la section VPN)")
+            LabeledContent("Réseaux de confiance", value: String(localized: "\(draft.vpn.trustedNetworks.count) (gérés dans la section VPN)"))
         } header: {
             Text("VPN")
         } footer: {
@@ -369,7 +370,7 @@ struct SettingsView: View {
             Toggle("Arrêter le programme sur une détection sûre", isOn: $draft.behaviorGuard.killOnDetection)
                 .disabled(!draft.behaviorGuard.stealerDetection)
             StringListEditor(
-                title: "Team ID autorisés à lire les données des navigateurs (gestionnaires de mots de passe…)",
+                title: String(localized: "Team ID autorisés à lire les données des navigateurs (gestionnaires de mots de passe…)"),
                 placeholder: "2BUA8C4S2C",
                 items: $draft.behaviorGuard.trustedTeamIds
             )
@@ -405,7 +406,7 @@ struct SettingsView: View {
             Toggle("Bloquer les domaines jugés malveillants avec une haute confiance", isOn: $draft.intelligence.blockMlDomains)
                 .disabled(!draft.intelligence.domainModel)
             StringListEditor(
-                title: "Domaines autorisés (jamais signalés par le modèle)",
+                title: String(localized: "Domaines autorisés (jamais signalés par le modèle)"),
                 placeholder: "exemple.fr",
                 items: $draft.intelligence.domainAllowlist
             )
@@ -486,7 +487,7 @@ struct SettingsView: View {
                 Stepper(value: $draft.dataRemoval.repeatEveryDays, in: 0...720, step: 30) {
                     LabeledContent(
                         "Renouveler les demandes",
-                        value: draft.dataRemoval.repeatEveryDays == 0 ? "jamais" : "tous les \(draft.dataRemoval.repeatEveryDays) jours"
+                        value: draft.dataRemoval.repeatEveryDays == 0 ? String(localized: "jamais") : String(localized: "tous les \(draft.dataRemoval.repeatEveryDays) jours")
                     )
                 }
                 Picker("Langue des courriers", selection: $draft.dataRemoval.language) {
@@ -535,14 +536,14 @@ struct SettingsView: View {
             if hasMaskedIdentifiers {
                 maskedIdentifiersRow
             }
-            StringListEditor(title: "Adresses surveillées", placeholder: "prenom.nom@exemple.fr", items: $draft.breach.emails)
+            StringListEditor(title: String(localized: "Adresses surveillées"), placeholder: "prenom.nom@exemple.fr", items: $draft.breach.emails)
             Picker("Service", selection: $draft.breach.provider) {
                 ForEach(BreachProvider.allCases, id: \.self) { provider in
                     Text(provider.label).tag(provider)
                 }
             }
             if draft.breach.provider == .hibp {
-                secretField("Clé API Have I Been Pwned", $draft.breach.hibpApiKey)
+                secretField(String(localized: "Clé API Have I Been Pwned"), $draft.breach.hibpApiKey)
             }
             Picker("Vérification", selection: $draft.breach.checkIntervalHours) {
                 Text("Chaque jour").tag(24)
@@ -568,7 +569,7 @@ struct SettingsView: View {
                 }
             }
             if draft.aliases.provider != .disabled {
-                secretField("Clé API", $draft.aliases.apiKey)
+                secretField(String(localized: "Clé API"), $draft.aliases.apiKey)
                 TextField("Instance auto-hébergée (https://…, vide = service public)", text: $draft.aliases.baseUrl)
                 if draft.aliases.provider == .addy {
                     TextField("Domaine des alias (vide = celui du compte)", text: $draft.aliases.domain)
@@ -619,7 +620,7 @@ struct SettingsView: View {
     private var privacySection: some View {
         Section {
             Toggle("Vérifier l'empreinte des fichiers suspects sur VirusTotal", isOn: $draft.privacy.virustotalLookup)
-            secretField("Clé API VirusTotal", $draft.privacy.virustotalApiKey)
+            secretField(String(localized: "Clé API VirusTotal"), $draft.privacy.virustotalApiKey)
                 .disabled(!draft.privacy.virustotalLookup)
         } header: {
             Text("Confidentialité")

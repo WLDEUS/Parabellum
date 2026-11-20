@@ -54,7 +54,7 @@ struct DashboardView: View {
     }
 
     private var postureCard: some View {
-        Card(title: "Sécurité de macOS", symbol: "checkmark.shield") {
+        Card(title: String(localized: "Sécurité de macOS"), symbol: "checkmark.shield") {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(model.posture) { check in
                     postureRow(check)
@@ -165,18 +165,18 @@ struct DashboardView: View {
             Button { model.section = .alerts } label: {
                 StatTile(
                     value: PBFormat.count(status.openAlerts),
-                    caption: "Alertes ouvertes",
+                    caption: String(localized: "Alertes ouvertes"),
                     symbol: "bell.badge.fill",
                     tint: status.openAlerts > 0 ? .orange : Brand.accent
                 )
             }
             .buttonStyle(.plain)
             Button { model.section = .quarantine } label: {
-                StatTile(value: PBFormat.count(status.quarantined), caption: "En quarantaine", symbol: "archivebox.fill")
+                StatTile(value: PBFormat.count(status.quarantined), caption: String(localized: "En quarantaine"), symbol: "archivebox.fill")
             }
             .buttonStyle(.plain)
-            StatTile(value: PBFormat.count(status.db.malwareHashes), caption: "Signatures de malwares", symbol: "cylinder.split.1x2.fill", tint: Brand.violet)
-            StatTile(value: PBFormat.count(status.db.blockedDomains), caption: "Domaines bloqués", symbol: "network.badge.shield.half.filled", tint: Brand.cyan)
+            StatTile(value: PBFormat.count(status.db.malwareHashes), caption: String(localized: "Signatures de malwares"), symbol: "cylinder.split.1x2.fill", tint: Brand.violet)
+            StatTile(value: PBFormat.count(status.db.blockedDomains), caption: String(localized: "Domaines bloqués"), symbol: "network.badge.shield.half.filled", tint: Brand.cyan)
             // Coffre
             VaultDashboardTile(store: model.vault)
             // Travel mode
@@ -185,7 +185,7 @@ struct DashboardView: View {
     }
 
     private func issuesCard(_ status: StatusInfo) -> some View {
-        Card(title: "Points à corriger", symbol: "wrench.and.screwdriver") {
+        Card(title: String(localized: "Points à corriger"), symbol: "wrench.and.screwdriver") {
             VStack(alignment: .leading, spacing: 10) {
                 if !status.realtime.fullDiskAccess {
                     fullDiskAccessRow
@@ -252,7 +252,7 @@ struct DashboardView: View {
     }
 
     private var notificationsDeniedCard: some View {
-        Card(title: "Notifications désactivées", symbol: "bell.slash") {
+        Card(title: String(localized: "Notifications désactivées"), symbol: "bell.slash") {
             HStack {
                 Text("Les alertes ne s'affichent que dans l'app. Autorise les notifications de Parabellum dans Réglages Système.")
                     .fixedSize(horizontal: false, vertical: true)
@@ -265,22 +265,22 @@ struct DashboardView: View {
     }
 
     private func databaseCard(_ db: DbStatus) -> some View {
-        Card(title: "Base de menaces", symbol: "cylinder.split.1x2") {
+        Card(title: String(localized: "Base de menaces"), symbol: "cylinder.split.1x2") {
             VStack(alignment: .leading, spacing: 6) {
-                InfoRow(label: "Version", value: db.version ?? "Aucune")
+                InfoRow(label: String(localized: "Version"), value: db.version ?? "Aucune")
                 if let built = db.builtDate {
-                    InfoRow(label: "Construite", value: "\(PBFormat.dateTime(built)) (\(PBFormat.relative(built)))")
+                    InfoRow(label: String(localized: "Construite"), value: "\(PBFormat.dateTime(built)) (\(PBFormat.relative(built)))")
                 }
                 if let success = db.lastSuccessDate {
-                    InfoRow(label: "Dernière MAJ", value: PBFormat.relative(success))
+                    InfoRow(label: String(localized: "Dernière MAJ"), value: PBFormat.relative(success))
                 }
-                InfoRow(label: "Hash malveillants", value: PBFormat.count(db.malwareHashes))
-                InfoRow(label: "Règles YARA", value: PBFormat.count(db.yaraRules))
-                InfoRow(label: "Domaines bloqués", value: PBFormat.count(db.blockedDomains))
-                InfoRow(label: "ClamAV", value: db.clamavVersion ?? "—")
-                InfoRow(label: "Modèle ML", value: db.mlModelVersion ?? "—")
+                InfoRow(label: String(localized: "Hash malveillants"), value: PBFormat.count(db.malwareHashes))
+                InfoRow(label: String(localized: "Règles YARA"), value: PBFormat.count(db.yaraRules))
+                InfoRow(label: String(localized: "Domaines bloqués"), value: PBFormat.count(db.blockedDomains))
+                InfoRow(label: String(localized: "ClamAV"), value: db.clamavVersion ?? "—")
+                InfoRow(label: String(localized: "Modèle ML"), value: db.mlModelVersion ?? "—")
                 if let previous = db.previousVersion {
-                    InfoRow(label: "Version précédente", value: previous)
+                    InfoRow(label: String(localized: "Version précédente"), value: previous)
                 }
                 if let error = db.lastError {
                     Label(error, systemImage: "xmark.circle")
@@ -299,19 +299,19 @@ struct DashboardView: View {
     }
 
     private func countersCard(_ status: StatusInfo) -> some View {
-        Card(title: "Activité", symbol: "list.bullet.rectangle") {
+        Card(title: String(localized: "Activité"), symbol: "list.bullet.rectangle") {
             VStack(alignment: .leading, spacing: 10) {
                 counterRow("Alertes ouvertes", value: status.openAlerts, symbol: "bell.badge", color: status.openAlerts > 0 ? .orange : .secondary) {
                     model.section = .alerts
                 }
-                counterRow("En quarantaine", value: status.quarantined, symbol: "archivebox", color: .secondary) {
+                counterRow(String(localized: "En quarantaine"), value: status.quarantined, symbol: "archivebox", color: .secondary) {
                     model.section = .quarantine
                 }
-                counterRow("Composants à traiter", value: status.componentsNeedingAttention, symbol: "puzzlepiece.extension", color: status.componentsNeedingAttention > 0 ? .orange : .secondary) {
+                counterRow(String(localized: "Composants à traiter"), value: status.componentsNeedingAttention, symbol: "puzzlepiece.extension", color: status.componentsNeedingAttention > 0 ? .orange : .secondary) {
                     model.section = .components
                 }
-                InfoRow(label: "Dernière analyse", value: status.lastScanDate.map { PBFormat.dateTime($0) } ?? "Jamais", selectable: false)
-                InfoRow(label: "DNS anti-pub", value: status.dnsEnabled ? "Activé" : "Désactivé", selectable: false)
+                InfoRow(label: String(localized: "Dernière analyse"), value: status.lastScanDate.map { PBFormat.dateTime($0) } ?? "Jamais", selectable: false)
+                InfoRow(label: String(localized: "DNS anti-pub"), value: status.dnsEnabled ? String(localized: "Activé") : String(localized: "Désactivé"), selectable: false)
             }
         }
     }
@@ -331,13 +331,13 @@ struct DashboardView: View {
     }
 
     private func monitorsCard(_ realtime: RealtimeStatus) -> some View {
-        Card(title: "Surveillance temps réel", symbol: "eye") {
+        Card(title: String(localized: "Surveillance temps réel"), symbol: "eye") {
             VStack(alignment: .leading, spacing: 6) {
-                monitorRow("FSEvents (dossiers surveillés)", realtime.fsevents)
+                monitorRow(String(localized: "FSEvents (dossiers surveillés)"), realtime.fsevents)
                 monitorRow("eslogger (Endpoint Security)", realtime.eslogger)
-                monitorRow("Accès complet au disque", realtime.fullDiskAccess)
+                monitorRow(String(localized: "Accès complet au disque"), realtime.fullDiskAccess)
                 monitorRow("Persistance", realtime.persistenceMonitor)
-                monitorRow("Périphériques", realtime.deviceMonitor)
+                monitorRow(String(localized: "Périphériques"), realtime.deviceMonitor)
             }
         }
     }
@@ -352,38 +352,38 @@ struct DashboardView: View {
     }
 
     private func daemonCard(_ status: StatusInfo) -> some View {
-        Card(title: "Service parabellumd", symbol: "cpu") {
+        Card(title: String(localized: "Service parabellumd"), symbol: "cpu") {
             VStack(alignment: .leading, spacing: 6) {
-                InfoRow(label: "Version", value: status.version)
-                InfoRow(label: "Actif depuis", value: PBFormat.duration(seconds: status.uptimeSecs), selectable: false)
-                InfoRow(label: "Mémoire (RSS)", value: PBFormat.bytes(status.rssBytes), selectable: false)
-                InfoRow(label: "Alimentation", value: status.onBattery ? "Sur batterie" : "Secteur", selectable: false)
-                InfoRow(label: "Classifieur ML", value: status.mlEnabled ? "Activé" : "Désactivé", selectable: false)
+                InfoRow(label: String(localized: "Version"), value: status.version)
+                InfoRow(label: String(localized: "Actif depuis"), value: PBFormat.duration(seconds: status.uptimeSecs), selectable: false)
+                InfoRow(label: String(localized: "Mémoire (RSS)"), value: PBFormat.bytes(status.rssBytes), selectable: false)
+                InfoRow(label: String(localized: "Alimentation"), value: status.onBattery ? String(localized: "Sur batterie") : "Secteur", selectable: false)
+                InfoRow(label: String(localized: "Classifieur ML"), value: status.mlEnabled ? String(localized: "Activé") : String(localized: "Désactivé"), selectable: false)
             }
         }
     }
 
     private var quickActions: some View {
-        Card(title: "Actions rapides", symbol: "bolt.fill") {
+        Card(title: String(localized: "Actions rapides"), symbol: "bolt.fill") {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 10)], spacing: 10) {
-                QuickAction(title: "Analyser les Téléchargements", symbol: "arrow.down.circle.fill") {
+                QuickAction(title: String(localized: "Analyser les Téléchargements"), symbol: "arrow.down.circle.fill") {
                     model.section = .scan
                     Task { await model.scanDownloads() }
                 }
-                QuickAction(title: "Analyser un dossier…", symbol: "folder.fill") {
+                QuickAction(title: String(localized: "Analyser un dossier…"), symbol: "folder.fill") {
                     model.pickAndScan()
                 }
-                QuickAction(title: "Rétro-chasse (30 j)", symbol: "clock.arrow.circlepath") {
+                QuickAction(title: String(localized: "Rétro-chasse (30 j)"), symbol: "clock.arrow.circlepath") {
                     Task { await model.retroHunt(days: 30) }
                 }
                 .help("Ré-analyse les fichiers vus ces 30 derniers jours avec la base actuelle")
-                QuickAction(title: "Analyse anti-spyware", symbol: "eye.trianglebadge.exclamationmark.fill") {
+                QuickAction(title: String(localized: "Analyse anti-spyware"), symbol: "eye.trianglebadge.exclamationmark.fill") {
                     model.section = .scan
                     Task { await model.spywareScan() }
                 }
                 .disabled(model.isBusy("spyware"))
                 .help("Recherche des traces de logiciels espions (Pegasus, Predator, Graphite…) avec Zero Breach Toolkit, en lecture seule")
-                QuickAction(title: "Tout mettre à jour", symbol: "arrow.triangle.2.circlepath") {
+                QuickAction(title: String(localized: "Tout mettre à jour"), symbol: "arrow.triangle.2.circlepath") {
                     Task { await model.updateNow(.all) }
                 }
                 .disabled(model.updateInProgress)

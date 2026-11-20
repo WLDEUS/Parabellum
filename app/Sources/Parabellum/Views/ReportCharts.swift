@@ -23,14 +23,14 @@ enum ReportText {
     /// Key figures (value, caption, SF Symbol, tint).
     static func figures(_ r: ActivityReport) -> [(String, String, String, Color)] {
         [
-            (count(r.filesScanned), "fichiers analysés", "doc.text.magnifyingglass", Brand.indigo),
-            (count(r.threatsDetected), "menaces détectées", "ladybug.fill", r.threatsDetected > 0 ? .red : .green),
-            (count(r.quarantined), "mises en quarantaine", "archivebox.fill", .orange),
+            (count(r.filesScanned), String(localized: "fichiers analysés"), "doc.text.magnifyingglass", Brand.indigo),
+            (count(r.threatsDetected), String(localized: "menaces détectées"), "ladybug.fill", r.threatsDetected > 0 ? .red : .green),
+            (count(r.quarantined), String(localized: "mises en quarantaine"), "archivebox.fill", .orange),
             (count(r.scans), "analyses", "magnifyingglass", Brand.cyan),
-            (r.dnsBlockedQueries.map { count($0) } ?? "—", "pubs et traqueurs bloqués", "hand.raised.slash.fill", Brand.violet),
+            (r.dnsBlockedQueries.map { count($0) } ?? "—", String(localized: "pubs et traqueurs bloqués"), "hand.raised.slash.fill", Brand.violet),
             (count(r.alertsTotal), "alertes", "bell.badge.fill", .orange),
-            (count(r.falsePositivesReported), "faux positifs signalés", "hand.thumbsup.fill", Color.gray),
-            (count(r.dbUpdates), "mises à jour de la base", "cylinder.split.1x2.fill", .teal),
+            (count(r.falsePositivesReported), String(localized: "faux positifs signalés"), "hand.thumbsup.fill", Color.gray),
+            (count(r.dbUpdates), String(localized: "mises à jour de la base"), "cylinder.split.1x2.fill", .teal),
         ]
     }
 }
@@ -49,7 +49,7 @@ struct DailyActivityChart: View {
                 ForEach(report.daily) { day in
                     BarMark(
                         x: .value("Jour", day.day, unit: .day),
-                        y: .value("Fichiers analysés", day.filesScanned)
+                        y: .value(String(localized: "Fichiers analysés"), day.filesScanned)
                     )
                     .foregroundStyle(Brand.gradient)
                     .cornerRadius(3)
@@ -57,7 +57,7 @@ struct DailyActivityChart: View {
                 ForEach(report.daily.filter { $0.threats > 0 }) { day in
                     PointMark(
                         x: .value("Jour", day.day, unit: .day),
-                        y: .value("Fichiers analysés", day.filesScanned)
+                        y: .value(String(localized: "Fichiers analysés"), day.filesScanned)
                     )
                     .foregroundStyle(.red)
                     .symbolSize(70)
@@ -66,7 +66,7 @@ struct DailyActivityChart: View {
                     }
                 }
             }
-            .chartYAxisLabel("Fichiers analysés")
+            .chartYAxisLabel(String(localized: "Fichiers analysés"))
             .frame(height: 170)
         }
     }
@@ -85,7 +85,7 @@ struct DnsBlockedChart: View {
             Chart(days) { day in
                 AreaMark(
                     x: .value("Jour", day.day, unit: .day),
-                    y: .value("Requêtes bloquées", day.dnsBlocked)
+                    y: .value(String(localized: "Requêtes bloquées"), day.dnsBlocked)
                 )
                 .foregroundStyle(
                     LinearGradient(colors: [Brand.violet.opacity(0.55), Brand.violet.opacity(0.05)], startPoint: .top, endPoint: .bottom)
@@ -93,7 +93,7 @@ struct DnsBlockedChart: View {
                 .interpolationMethod(.catmullRom)
                 LineMark(
                     x: .value("Jour", day.day, unit: .day),
-                    y: .value("Requêtes bloquées", day.dnsBlocked)
+                    y: .value(String(localized: "Requêtes bloquées"), day.dnsBlocked)
                 )
                 .foregroundStyle(Brand.violet)
                 .interpolationMethod(.catmullRom)
@@ -108,7 +108,7 @@ struct TopListChart: View {
     let items: [NamedCount]
     var color: Color = Brand.indigo
     var label: (String) -> String = { $0 }
-    var empty = "Rien sur cette période."
+    var empty = String(localized: "Rien sur cette période.")
 
     var body: some View {
         if items.isEmpty {
@@ -191,17 +191,17 @@ struct NetworkSummary: View {
             }
             .frame(width: 86, height: 86)
             VStack(alignment: .leading, spacing: 6) {
-                row("VPN connecté", ReportText.hours(report.vpnConnectedSecs), "lock.shield")
+                row(String(localized: "VPN connecté"), ReportText.hours(report.vpnConnectedSecs), "lock.shield")
                 row(
                     "Tests de fuite",
                     report.leakTestsFailed > 0
-                        ? "\(report.leakTests) dont \(report.leakTestsFailed) en échec"
-                        : "\(report.leakTests), tous réussis",
+                        ? String(localized: "\(report.leakTests) dont \(report.leakTestsFailed) en échec")
+                        : String(localized: "\(report.leakTests), tous réussis"),
                     "drop.triangle",
                     warn: report.leakTestsFailed > 0
                 )
-                row("Alertes réseau", ReportText.count(report.networkAlerts), "wifi.exclamationmark", warn: report.networkAlerts > 0)
-                row("Détections comportementales", ReportText.count(report.behaviorDetections), "eye.trianglebadge.exclamationmark", warn: report.behaviorDetections > 0)
+                row(String(localized: "Alertes réseau"), ReportText.count(report.networkAlerts), "wifi.exclamationmark", warn: report.networkAlerts > 0)
+                row(String(localized: "Détections comportementales"), ReportText.count(report.behaviorDetections), "eye.trianglebadge.exclamationmark", warn: report.behaviorDetections > 0)
             }
         }
     }
@@ -226,14 +226,14 @@ struct PrivacySummaryView: View {
             if let p = report.privacy, p.total > 0 {
                 let parts = [
                     PrivacyPart(name: "Abouties", count: p.completed, color: .green),
-                    PrivacyPart(name: "En attente de réponse", count: p.waitingAnswer, color: Brand.cyan),
-                    PrivacyPart(name: "En retard", count: p.overdue, color: .orange),
-                    PrivacyPart(name: "À envoyer", count: p.queued, color: .gray),
+                    PrivacyPart(name: String(localized: "En attente de réponse"), count: p.waitingAnswer, color: Brand.cyan),
+                    PrivacyPart(name: String(localized: "En retard"), count: p.overdue, color: .orange),
+                    PrivacyPart(name: String(localized: "À envoyer"), count: p.queued, color: .gray),
                     PrivacyPart(name: "Action requise", count: p.needsAction, color: .red),
                 ]
                 Chart(parts.filter { $0.count > 0 }) { part in
                     BarMark(x: .value("Demandes", part.count), y: .value("Campagne", "RGPD"))
-                        .foregroundStyle(by: .value("État", part.name))
+                        .foregroundStyle(by: .value(String(localized: "État"), part.name))
                 }
                 .chartForegroundStyleScale(domain: parts.map { $0.name }, range: parts.map { $0.color })
                 .chartYAxis(.hidden)

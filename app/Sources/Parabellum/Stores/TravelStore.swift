@@ -85,7 +85,7 @@ final class TravelStore: ObservableObject {
         status = result
         lastLoad = Date()
         reconcileLocal()
-        var parts = ["Mode Voyage activé."]
+        var parts = [String(localized: "Mode Voyage activé.")]
         parts.append(contentsOf: result.warnings)
         model.banner = Banner(message: parts.joined(separator: " "), isError: false)
         await model.refreshStatus()
@@ -99,7 +99,7 @@ final class TravelStore: ObservableObject {
         status = result
         lastLoad = Date()
         reconcileLocal()
-        let message = ["Mode Voyage désactivé : réglages précédents rétablis.", result.message, localMessage]
+        let message = [String(localized: "Mode Voyage désactivé : réglages précédents rétablis."), result.message, localMessage]
             .compactMap { $0 }
             .joined(separator: " ")
         model.banner = Banner(message: message, isError: false)
@@ -155,7 +155,7 @@ final class TravelStore: ObservableObject {
             savedSnapshot = nil
             var parts: [String] = []
             if !plan.kept.isEmpty {
-                parts.append("Modifiés entre-temps, conservés : \(plan.kept.joined(separator: ", ")).")
+                parts.append(String(localized: "Modifiés entre-temps, conservés : \(plan.kept.joined(separator: ", "))."))
             }
             parts.append(contentsOf: failures)
             localMessage = parts.isEmpty ? nil : parts.joined(separator: " ")
@@ -188,12 +188,12 @@ enum TravelLocal {
                 // sharingd only reads the preference at launch: restart it (launchd relaunches it on demand).
                 runTool("/usr/bin/killall", ["sharingd"])
             } else {
-                failures.append("AirDrop n'a pas pu être modifié")
+                failures.append(String(localized: "AirDrop n'a pas pu être modifié"))
             }
         }
         if let on = target.bluetoothOn, on != current.bluetoothOn {
             if !Bluetooth.setPower(on) {
-                failures.append("Bluetooth n'a pas pu être \(on ? "rallumé" : "coupé") (réglez-le dans le Centre de contrôle)")
+                failures.append(String(localized: "Bluetooth n'a pas pu être \(on ? "rallumé" : "coupé") (réglez-le dans le Centre de contrôle)"))
             }
         }
         return failures

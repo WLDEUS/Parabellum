@@ -96,7 +96,7 @@ struct MenuBarContentView: View {
         case .connected:
             guard let status = model.status else { return "Chargement…" }
             if status.protection == .paused, let until = status.pausedUntilDate {
-                return "En pause jusqu'à \(PBFormat.time(until))"
+                return String(localized: "En pause jusqu'à \(PBFormat.time(until))")
             }
             return status.protection.label
         }
@@ -144,15 +144,15 @@ struct MenuBarContentView: View {
 
     private var actions: some View {
         VStack(alignment: .leading, spacing: 4) {
-            MenuActionButton(title: "Analyser les Téléchargements", symbol: "arrow.down.circle") {
+            MenuActionButton(title: String(localized: "Analyser les Téléchargements"), symbol: "arrow.down.circle") {
                 Task { await model.scanDownloads() }
             }
             .disabled(model.isBusy("scan"))
-            MenuActionButton(title: "Analyser un dossier…", symbol: "folder.badge.gearshape") {
+            MenuActionButton(title: String(localized: "Analyser un dossier…"), symbol: "folder.badge.gearshape") {
                 model.pickAndScan()
             }
             MenuActionButton(
-                title: model.updateInProgress ? "Mise à jour en cours…" : "Mettre à jour maintenant",
+                title: model.updateInProgress ? String(localized: "Mise à jour en cours…") : String(localized: "Mettre à jour maintenant"),
                 symbol: "arrow.triangle.2.circlepath"
             ) {
                 Task { await model.updateNow(.all) }
@@ -179,7 +179,7 @@ struct MenuBarContentView: View {
             }
 
             if model.status?.protection == .paused {
-                MenuActionButton(title: "Reprendre la protection", symbol: "play.circle") {
+                MenuActionButton(title: String(localized: "Reprendre la protection"), symbol: "play.circle") {
                     Task { await model.setProtection(pausedMinutes: 0) }
                 }
             } else {
@@ -245,7 +245,7 @@ struct MenuBarContentView: View {
 
     private func alertsText(_ count: Int) -> String {
         switch count {
-        case 0: return "Aucune alerte ouverte"
+        case 0: return String(localized: "Aucune alerte ouverte")
         case 1: return "1 alerte ouverte"
         default: return "\(count) alertes ouvertes"
         }

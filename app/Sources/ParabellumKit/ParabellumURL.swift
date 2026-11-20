@@ -44,7 +44,7 @@ public enum ParabellumURL {
             return .failure(ParabellumURLError("Lien illisible."))
         }
         guard c.scheme?.lowercased() == scheme else {
-            return .failure(ParabellumURLError("Ce lien n'est pas un lien parabellum://."))
+            return .failure(ParabellumURLError(String(localized: "Ce lien n'est pas un lien parabellum://.")))
         }
         if c.user != nil || c.password != nil || c.port != nil {
             return .failure(ParabellumURLError("Lien parabellum:// invalide."))
@@ -64,10 +64,10 @@ public enum ParabellumURL {
         func only(_ allowed: Set<String>) -> ParabellumURLError? {
             let unknown = Set(query.keys).subtracting(allowed)
             if let name = unknown.sorted().first {
-                return ParabellumURLError("Paramètre inconnu : \(name).")
+                return ParabellumURLError(String(localized: "Paramètre inconnu : \(name)."))
             }
             for (name, values) in query where name != "path" && values.count > 1 {
-                return ParabellumURLError("Paramètre répété : \(name).")
+                return ParabellumURLError(String(localized: "Paramètre répété : \(name)."))
             }
             return nil
         }
@@ -85,10 +85,10 @@ public enum ParabellumURL {
             }
             let paths = query["path"] ?? []
             if paths.isEmpty {
-                return .failure(ParabellumURLError("Indiquez le fichier à analyser : parabellum://scan?path=/chemin/absolu"))
+                return .failure(ParabellumURLError(String(localized: "Indiquez le fichier à analyser : parabellum://scan?path=/chemin/absolu")))
             }
             if paths.count > maxPaths {
-                return .failure(ParabellumURLError("Au plus \(maxPaths) chemins par lien."))
+                return .failure(ParabellumURLError(String(localized: "Au plus \(maxPaths) chemins par lien.")))
             }
             for p in paths {
                 if let e = validatePath(p) {
@@ -113,7 +113,7 @@ public enum ParabellumURL {
             let raw = query["minutes"]?.first ?? "15"
             guard !raw.isEmpty, raw.count <= 5, raw.allSatisfy({ $0.isASCII && $0.isNumber }),
                   let minutes = Int(raw), (1...maxPauseMinutes).contains(minutes) else {
-                return .failure(ParabellumURLError("Durée de pause invalide (1 à \(maxPauseMinutes) minutes)."))
+                return .failure(ParabellumURLError(String(localized: "Durée de pause invalide (1 à \(maxPauseMinutes) minutes).")))
             }
             return .success(.pause(minutes: minutes))
         case ["resume"]:
@@ -126,7 +126,7 @@ public enum ParabellumURL {
                 return .success(.update(target: .all))
             }
             guard let target = UpdateTarget(rawValue: raw.lowercased()), target != .unknown else {
-                return .failure(ParabellumURLError("Cible de mise à jour inconnue : \(raw) (db, components, app, all)."))
+                return .failure(ParabellumURLError(String(localized: "Cible de mise à jour inconnue : \(raw) (db, components, app, all).")))
             }
             return .success(.update(target: target))
         case ["open"]:
@@ -146,30 +146,30 @@ public enum ParabellumURL {
     /// Absolute, normalized, printable path (no `..`, `.`, `//`, NUL or control characters).
     static func validatePath(_ p: String) -> ParabellumURLError? {
         guard p.hasPrefix("/"), p.utf8.count <= maxPathLength else {
-            return ParabellumURLError("Chemin absolu requis : \(p.prefix(200))")
+            return ParabellumURLError(String(localized: "Chemin absolu requis : \(String(p.prefix(200)))"))
         }
         if p.unicodeScalars.contains(where: { $0.properties.generalCategory == .control }) {
-            return ParabellumURLError("Chemin invalide (caractère de contrôle).")
+            return ParabellumURLError(String(localized: "Chemin invalide (caractère de contrôle)."))
         }
         let parts = p.split(separator: "/", omittingEmptySubsequences: false).dropFirst()
         if p != "/" && parts.contains(where: { $0.isEmpty || $0 == "." || $0 == ".." }) {
-            return ParabellumURLError("Chemin non normalisé refusé : \(p.prefix(200))")
+            return ParabellumURLError(String(localized: "Chemin non normalisé refusé : \(String(p.prefix(200)))"))
         }
         return nil
     }
 
     /// Example links, for the "Raccourcis" settings section.
     public static let examples: [(title: String, url: String)] = [
-        ("Analyser les téléchargements", "parabellum://scan/downloads"),
-        ("Analyser un fichier", "parabellum://scan?path=/Users/moi/Downloads/fichier.dmg"),
-        ("Connecter le VPN", "parabellum://vpn/connect"),
-        ("Déconnecter le VPN", "parabellum://vpn/disconnect"),
-        ("Activer le mode Voyage", "parabellum://travel/on"),
-        ("Désactiver le mode Voyage", "parabellum://travel/off"),
+        (String(localized: "Analyser les téléchargements"), "parabellum://scan/downloads"),
+        (String(localized: "Analyser un fichier"), "parabellum://scan?path=/Users/moi/Downloads/fichier.dmg"),
+        (String(localized: "Connecter le VPN"), "parabellum://vpn/connect"),
+        (String(localized: "Déconnecter le VPN"), "parabellum://vpn/disconnect"),
+        (String(localized: "Activer le mode Voyage"), "parabellum://travel/on"),
+        (String(localized: "Désactiver le mode Voyage"), "parabellum://travel/off"),
         ("Pause de 15 minutes", "parabellum://pause?minutes=15"),
-        ("Reprendre la protection", "parabellum://resume"),
-        ("Tout mettre à jour", "parabellum://update"),
-        ("Ouvrir les alertes", "parabellum://open/alerts"),
+        (String(localized: "Reprendre la protection"), "parabellum://resume"),
+        (String(localized: "Tout mettre à jour"), "parabellum://update"),
+        (String(localized: "Ouvrir les alertes"), "parabellum://open/alerts"),
     ]
 }
 
@@ -214,10 +214,10 @@ extension ParabellumURLAction {
 
     private var confirmationTitle: String {
         switch self {
-        case .vpnDisconnect: return "Un lien demande de couper le VPN."
-        case .travelOff: return "Un lien demande de désactiver le mode Voyage."
-        case .pause(let minutes): return "Un lien demande de mettre la protection en pause pendant \(Self.duration(minutes))."
-        default: return "Un lien demande de réduire la protection."
+        case .vpnDisconnect: return String(localized: "Un lien demande de couper le VPN.")
+        case .travelOff: return String(localized: "Un lien demande de désactiver le mode Voyage.")
+        case .pause(let minutes): return String(localized: "Un lien demande de mettre la protection en pause pendant \(Self.duration(minutes)).")
+        default: return String(localized: "Un lien demande de réduire la protection.")
         }
     }
 

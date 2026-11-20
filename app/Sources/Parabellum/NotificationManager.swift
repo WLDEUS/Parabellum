@@ -115,7 +115,7 @@ final class NotificationManager {
 
         let content = UNMutableNotificationContent()
         content.title = alert.title
-        content.subtitle = "\(alert.kind.label) · gravité \(alert.severity.label.lowercased())"
+        content.subtitle = String(localized: "\(alert.kind.label) · gravité \(alert.severity.label.lowercased())")
         content.body = alert.message
         content.sound = .default
         content.threadIdentifier = alert.kind.rawValue
@@ -184,12 +184,12 @@ final class NotificationManager {
 
     private static func buttonTitle(for action: AlertAction) -> String {
         switch action {
-        case .quarantine: return "Mettre en quarantaine"
+        case .quarantine: return String(localized: "Mettre en quarantaine")
         case .allow, .approvePersistence: return "Autoriser"
         case .trustDevice: return "Faire confiance"
         case .blockDevice: return "Bloquer"
         case .removePersistence: return "Supprimer"
-        case .killProcess: return "Arrêter le processus"
+        case .killProcess: return String(localized: "Arrêter le processus")
         default: return action.label
         }
     }

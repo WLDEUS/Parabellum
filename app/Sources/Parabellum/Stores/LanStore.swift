@@ -9,10 +9,10 @@ enum LanFilter: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .all: return "Tous"
-        case .unknown: return "Inconnus"
-        case .new: return "Nouveaux"
-        case .online: return "En ligne"
+        case .all: return String(localized: "Tous")
+        case .unknown: return String(localized: "Inconnus")
+        case .new: return String(localized: "Nouveaux")
+        case .online: return String(localized: "En ligne")
         }
     }
 }

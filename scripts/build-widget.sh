@@ -53,6 +53,10 @@ sed -e "s/@VERSION@/$(pb_version)/g" \
     "$PB_REPO_ROOT/installer/app/Widget-Info.plist.in" >"$appex/Contents/Info.plist"
 /usr/bin/plutil -lint "$appex/Contents/Info.plist" >/dev/null
 printf 'XPC!????' >"$appex/Contents/PkgInfo"
+mkdir -p "$appex/Contents/Resources"
+for lproj in "$PB_REPO_ROOT"/app/Localization/*.lproj; do
+    /usr/bin/ditto "$lproj" "$appex/Contents/Resources/$(basename "$lproj")"
+done
 /usr/bin/xattr -cr "$appex" 2>/dev/null || true
 
 pb_codesign --entitlements "$PB_REPO_ROOT/installer/entitlements/widget.entitlements" "$appex"

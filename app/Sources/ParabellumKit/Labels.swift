@@ -5,10 +5,10 @@ import Foundation
 extension Verdict {
     public var label: String {
         switch self {
-        case .clean: return "Sain"
-        case .suspicious: return "Suspect"
-        case .malicious: return "Malveillant"
-        case .unknown: return "Inconnu"
+        case .clean: return String(localized: "Sain")
+        case .suspicious: return String(localized: "Suspect")
+        case .malicious: return String(localized: "Malveillant")
+        case .unknown: return String(localized: "Inconnu")
         }
     }
 }
@@ -16,12 +16,12 @@ extension Verdict {
 extension Severity {
     public var label: String {
         switch self {
-        case .info: return "Info"
-        case .low: return "Faible"
-        case .medium: return "Moyenne"
-        case .high: return "Élevée"
-        case .critical: return "Critique"
-        case .unknown: return "Inconnue"
+        case .info: return String(localized: "Info")
+        case .low: return String(localized: "Faible")
+        case .medium: return String(localized: "Moyenne")
+        case .high: return String(localized: "Élevée")
+        case .critical: return String(localized: "Critique")
+        case .unknown: return String(localized: "Inconnue")
         }
     }
 }
@@ -29,13 +29,13 @@ extension Severity {
 extension DetectionEngine {
     public var label: String {
         switch self {
-        case .hashDb: return "Base de hash"
-        case .clamav: return "ClamAV"
-        case .yara: return "YARA"
-        case .ml: return "Modèle ML"
-        case .heuristic: return "Heuristique"
-        case .virusTotal: return "VirusTotal"
-        case .unknown: return "Moteur inconnu"
+        case .hashDb: return String(localized: "Base de hash")
+        case .clamav: return String(localized: "ClamAV")
+        case .yara: return String(localized: "YARA")
+        case .ml: return String(localized: "Modèle ML")
+        case .heuristic: return String(localized: "Heuristique")
+        case .virusTotal: return String(localized: "VirusTotal")
+        case .unknown: return String(localized: "Moteur inconnu")
         }
     }
 }
@@ -43,16 +43,16 @@ extension DetectionEngine {
 extension FileKind {
     public var label: String {
         switch self {
-        case .macho: return "Exécutable Mach-O"
-        case .fatMacho: return "Mach-O universel"
-        case .dmg: return "Image disque (DMG)"
-        case .pkg: return "Paquet d'installation (PKG)"
-        case .zip: return "Archive ZIP"
-        case .script: return "Script"
-        case .appBundle: return "Application"
-        case .document: return "Document"
-        case .archive: return "Archive"
-        case .other: return "Autre"
+        case .macho: return String(localized: "Exécutable Mach-O")
+        case .fatMacho: return String(localized: "Mach-O universel")
+        case .dmg: return String(localized: "Image disque (DMG)")
+        case .pkg: return String(localized: "Paquet d'installation (PKG)")
+        case .zip: return String(localized: "Archive ZIP")
+        case .script: return String(localized: "Script")
+        case .appBundle: return String(localized: "Application")
+        case .document: return String(localized: "Document")
+        case .archive: return String(localized: "Archive")
+        case .other: return String(localized: "Autre")
         }
     }
 }
@@ -60,14 +60,14 @@ extension FileKind {
 extension ScanOrigin {
     public var label: String {
         switch self {
-        case .manual: return "Manuelle"
-        case .downloads: return "Téléchargements"
-        case .volume: return "Volume externe"
-        case .realtime: return "Temps réel"
-        case .scheduled: return "Planifiée"
-        case .retroHunt: return "Rétro-chasse"
-        case .spyware: return "Anti-spyware"
-        case .unknown: return "Autre"
+        case .manual: return String(localized: "Manuelle")
+        case .downloads: return String(localized: "Téléchargements")
+        case .volume: return String(localized: "Volume externe")
+        case .realtime: return String(localized: "Temps réel")
+        case .scheduled: return String(localized: "Planifiée")
+        case .retroHunt: return String(localized: "Rétro-chasse")
+        case .spyware: return String(localized: "Anti-spyware")
+        case .unknown: return String(localized: "Autre")
         }
     }
 }
@@ -75,12 +75,12 @@ extension ScanOrigin {
 extension JobState {
     public var label: String {
         switch self {
-        case .queued: return "En attente"
-        case .running: return "En cours"
-        case .finished: return "Terminée"
-        case .cancelled: return "Annulée"
-        case .failed: return "Échec"
-        case .unknown: return "Inconnu"
+        case .queued: return String(localized: "En attente")
+        case .running: return String(localized: "En cours")
+        case .finished: return String(localized: "Terminée")
+        case .cancelled: return String(localized: "Annulée")
+        case .failed: return String(localized: "Échec")
+        case .unknown: return String(localized: "Inconnu")
         }
     }
 }
@@ -88,16 +88,16 @@ extension JobState {
 extension AlertKind {
     public var label: String {
         switch self {
-        case .malware: return "Malware"
-        case .suspicious: return "Fichier suspect"
-        case .persistence: return "Persistance"
-        case .device: return "Périphérique"
-        case .network: return "Réseau"
-        case .update: return "Mise à jour"
-        case .system: return "Système"
-        case .behavior: return "Comportement"
-        case .privacy: return "Vie privée"
-        case .unknown: return "Autre"
+        case .malware: return String(localized: "Malware")
+        case .suspicious: return String(localized: "Fichier suspect")
+        case .persistence: return String(localized: "Persistance")
+        case .device: return String(localized: "Périphérique")
+        case .network: return String(localized: "Réseau")
+        case .update: return String(localized: "Mise à jour")
+        case .system: return String(localized: "Système")
+        case .behavior: return String(localized: "Comportement")
+        case .privacy: return String(localized: "Vie privée")
+        case .unknown: return String(localized: "Autre")
         }
     }
 }
@@ -105,10 +105,10 @@ extension AlertKind {
 extension AlertStatus {
     public var label: String {
         switch self {
-        case .open: return "Ouverte"
-        case .acknowledged: return "Vue"
-        case .resolved: return "Résolue"
-        case .unknown: return "Inconnu"
+        case .open: return String(localized: "Ouverte")
+        case .acknowledged: return String(localized: "Vue")
+        case .resolved: return String(localized: "Résolue")
+        case .unknown: return String(localized: "Inconnu")
         }
     }
 }
@@ -116,24 +116,24 @@ extension AlertStatus {
 extension AlertAction {
     public var label: String {
         switch self {
-        case .acknowledge: return "Marquer comme vue"
-        case .quarantine: return "Mettre en quarantaine"
-        case .allow: return "Autoriser"
-        case .restore: return "Restaurer"
-        case .trustDevice: return "Faire confiance"
-        case .blockDevice: return "Bloquer"
-        case .approvePersistence: return "Approuver"
-        case .removePersistence: return "Supprimer l'élément"
-        case .reportFalsePositive: return "Signaler un faux positif"
-        case .dismiss: return "Ignorer"
-        case .killProcess: return "Arrêter le processus"
-        case .resumeProcess: return "Reprendre le processus"
-        case .trustNetwork: return "Faire confiance à ce réseau"
-        case .allowDomain: return "Autoriser ce domaine"
-        case .markNormal: return "C'est normal"
-        case .trustLanDevice: return "Je connais cet appareil"
-        case .enableTravelMode: return "Activer le mode Voyage"
-        case .unknown: return "Action inconnue"
+        case .acknowledge: return String(localized: "Marquer comme vue")
+        case .quarantine: return String(localized: "Mettre en quarantaine")
+        case .allow: return String(localized: "Autoriser")
+        case .restore: return String(localized: "Restaurer")
+        case .trustDevice: return String(localized: "Faire confiance")
+        case .blockDevice: return String(localized: "Bloquer")
+        case .approvePersistence: return String(localized: "Approuver")
+        case .removePersistence: return String(localized: "Supprimer l'élément")
+        case .reportFalsePositive: return String(localized: "Signaler un faux positif")
+        case .dismiss: return String(localized: "Ignorer")
+        case .killProcess: return String(localized: "Arrêter le processus")
+        case .resumeProcess: return String(localized: "Reprendre le processus")
+        case .trustNetwork: return String(localized: "Faire confiance à ce réseau")
+        case .allowDomain: return String(localized: "Autoriser ce domaine")
+        case .markNormal: return String(localized: "C'est normal")
+        case .trustLanDevice: return String(localized: "Je connais cet appareil")
+        case .enableTravelMode: return String(localized: "Activer le mode Voyage")
+        case .unknown: return String(localized: "Action inconnue")
         }
     }
 
@@ -152,14 +152,14 @@ extension DeviceKind {
     /// Section title (plural).
     public var label: String {
         switch self {
-        case .volume: return "Volumes"
-        case .hid: return "Claviers, souris et HID"
-        case .usb: return "Autres périphériques USB"
-        case .bluetooth: return "Bluetooth"
-        case .networkInterface: return "Interfaces réseau"
-        case .thunderbolt: return "Thunderbolt"
-        case .wifiNetwork: return "Réseaux Wi-Fi"
-        case .unknown: return "Autres"
+        case .volume: return String(localized: "Volumes")
+        case .hid: return String(localized: "Claviers, souris et HID")
+        case .usb: return String(localized: "Autres périphériques USB")
+        case .bluetooth: return String(localized: "Bluetooth")
+        case .networkInterface: return String(localized: "Interfaces réseau")
+        case .thunderbolt: return String(localized: "Thunderbolt")
+        case .wifiNetwork: return String(localized: "Réseaux Wi-Fi")
+        case .unknown: return String(localized: "Autres")
         }
     }
 }
@@ -167,9 +167,9 @@ extension DeviceKind {
 extension DeviceTrust {
     public var label: String {
         switch self {
-        case .unknown: return "Non vérifié"
-        case .trusted: return "De confiance"
-        case .blocked: return "Bloqué"
+        case .unknown: return String(localized: "Non vérifié")
+        case .trusted: return String(localized: "De confiance")
+        case .blocked: return String(localized: "Bloqué")
         }
     }
 }
@@ -177,10 +177,10 @@ extension DeviceTrust {
 extension DeviceChange {
     public var label: String {
         switch self {
-        case .new: return "Nouveau"
-        case .connected: return "Connecté"
-        case .disconnected: return "Déconnecté"
-        case .unknown: return "Inconnu"
+        case .new: return String(localized: "Nouveau")
+        case .connected: return String(localized: "Connecté")
+        case .disconnected: return String(localized: "Déconnecté")
+        case .unknown: return String(localized: "Inconnu")
         }
     }
 }
@@ -188,19 +188,19 @@ extension DeviceChange {
 extension PersistenceKind {
     public var label: String {
         switch self {
-        case .launchAgent: return "LaunchAgent"
-        case .launchDaemon: return "LaunchDaemon"
-        case .loginItem: return "Élément de connexion"
-        case .backgroundItem: return "Élément d'arrière-plan"
-        case .cron: return "Tâche cron"
-        case .periodic: return "Script periodic"
-        case .shellProfile: return "Profil shell"
-        case .configurationProfile: return "Profil de configuration"
-        case .browserExtension: return "Extension de navigateur"
-        case .systemExtension: return "Extension système"
-        case .kernelExtension: return "Extension du noyau"
-        case .authorizationPlugin: return "Plugin d'autorisation"
-        case .other: return "Autre"
+        case .launchAgent: return String(localized: "LaunchAgent")
+        case .launchDaemon: return String(localized: "LaunchDaemon")
+        case .loginItem: return String(localized: "Élément de connexion")
+        case .backgroundItem: return String(localized: "Élément d'arrière-plan")
+        case .cron: return String(localized: "Tâche cron")
+        case .periodic: return String(localized: "Script periodic")
+        case .shellProfile: return String(localized: "Profil shell")
+        case .configurationProfile: return String(localized: "Profil de configuration")
+        case .browserExtension: return String(localized: "Extension de navigateur")
+        case .systemExtension: return String(localized: "Extension système")
+        case .kernelExtension: return String(localized: "Extension du noyau")
+        case .authorizationPlugin: return String(localized: "Plugin d'autorisation")
+        case .other: return String(localized: "Autre")
         }
     }
 }
@@ -208,12 +208,12 @@ extension PersistenceKind {
 extension PersistenceStatus {
     public var label: String {
         switch self {
-        case .baseline: return "Présent à l'installation"
-        case .new: return "Nouveau"
-        case .approved: return "Approuvé"
-        case .removed: return "Supprimé"
-        case .quarantined: return "En quarantaine"
-        case .unknown: return "Inconnu"
+        case .baseline: return String(localized: "Présent à l'installation")
+        case .new: return String(localized: "Nouveau")
+        case .approved: return String(localized: "Approuvé")
+        case .removed: return String(localized: "Supprimé")
+        case .quarantined: return String(localized: "En quarantaine")
+        case .unknown: return String(localized: "Inconnu")
         }
     }
 }
@@ -221,14 +221,14 @@ extension PersistenceStatus {
 extension ComponentState {
     public var label: String {
         switch self {
-        case .notInstalled: return "Non installé"
-        case .installed: return "À jour"
-        case .updateAvailable: return "Mise à jour disponible"
-        case .updating: return "Mise à jour…"
-        case .error: return "Erreur"
-        case .disabled: return "Désactivé"
-        case .needsUserAction: return "Action requise"
-        case .unknown: return "Inconnu"
+        case .notInstalled: return String(localized: "Non installé")
+        case .installed: return String(localized: "À jour")
+        case .updateAvailable: return String(localized: "Mise à jour disponible")
+        case .updating: return String(localized: "Mise à jour…")
+        case .error: return String(localized: "Erreur")
+        case .disabled: return String(localized: "Désactivé")
+        case .needsUserAction: return String(localized: "Action requise")
+        case .unknown: return String(localized: "Inconnu")
         }
     }
 }
@@ -236,11 +236,11 @@ extension ComponentState {
 extension UpdateTarget {
     public var label: String {
         switch self {
-        case .db: return "Base de menaces"
-        case .components: return "Composants"
-        case .app: return "Application"
-        case .all: return "Tout"
-        case .unknown: return "Inconnu"
+        case .db: return String(localized: "Base de menaces")
+        case .components: return String(localized: "Composants")
+        case .app: return String(localized: "Application")
+        case .all: return String(localized: "Tout")
+        case .unknown: return String(localized: "Inconnu")
         }
     }
 }
@@ -248,10 +248,10 @@ extension UpdateTarget {
 extension ExtensionState {
     public var label: String {
         switch self {
-        case .notInstalled: return "Non installée"
-        case .installedDisabled: return "Installée mais désactivée"
-        case .enabled: return "Activée"
-        case .unknown: return "État inconnu"
+        case .notInstalled: return String(localized: "Non installée")
+        case .installedDisabled: return String(localized: "Installée mais désactivée")
+        case .enabled: return String(localized: "Activée")
+        case .unknown: return String(localized: "État inconnu")
         }
     }
 }
@@ -259,10 +259,10 @@ extension ExtensionState {
 extension ProtectionState {
     public var label: String {
         switch self {
-        case .active: return "Protection active"
-        case .paused: return "Protection en pause"
-        case .degraded: return "Protection dégradée"
-        case .unknown: return "État inconnu"
+        case .active: return String(localized: "Protection active")
+        case .paused: return String(localized: "Protection en pause")
+        case .degraded: return String(localized: "Protection dégradée")
+        case .unknown: return String(localized: "État inconnu")
         }
     }
 }
@@ -270,14 +270,14 @@ extension ProtectionState {
 extension ErrorCode {
     public var label: String {
         switch self {
-        case .badRequest: return "Requête invalide"
-        case .notFound: return "Introuvable"
-        case .permissionDenied: return "Permission refusée"
-        case .authRequired: return "Autorisation administrateur requise"
-        case .busy: return "Service occupé"
-        case .unavailable: return "Indisponible"
-        case .internalError: return "Erreur interne"
-        case .unknown: return "Erreur"
+        case .badRequest: return String(localized: "Requête invalide")
+        case .notFound: return String(localized: "Introuvable")
+        case .permissionDenied: return String(localized: "Permission refusée")
+        case .authRequired: return String(localized: "Autorisation administrateur requise")
+        case .busy: return String(localized: "Service occupé")
+        case .unavailable: return String(localized: "Indisponible")
+        case .internalError: return String(localized: "Erreur interne")
+        case .unknown: return String(localized: "Erreur")
         }
     }
 }
@@ -287,12 +287,12 @@ extension ErrorCode {
 extension VpnState {
     public var label: String {
         switch self {
-        case .disconnected: return "Déconnecté"
-        case .connecting: return "Connexion…"
-        case .connected: return "Connecté"
-        case .disconnecting: return "Déconnexion…"
-        case .error: return "Erreur"
-        case .unknown: return "État inconnu"
+        case .disconnected: return String(localized: "Déconnecté")
+        case .connecting: return String(localized: "Connexion…")
+        case .connected: return String(localized: "Connecté")
+        case .disconnecting: return String(localized: "Déconnexion…")
+        case .error: return String(localized: "Erreur")
+        case .unknown: return String(localized: "État inconnu")
         }
     }
 }
@@ -300,11 +300,11 @@ extension VpnState {
 extension KillSwitchState {
     public var label: String {
         switch self {
-        case .off: return "Désactivé"
-        case .armed: return "Armé"
-        case .blocking: return "Internet bloqué (tunnel coupé)"
-        case .error: return "Erreur"
-        case .unknown: return "État inconnu"
+        case .off: return String(localized: "Désactivé")
+        case .armed: return String(localized: "Armé")
+        case .blocking: return String(localized: "Internet bloqué (tunnel coupé)")
+        case .error: return String(localized: "Erreur")
+        case .unknown: return String(localized: "État inconnu")
         }
     }
 }
@@ -312,9 +312,9 @@ extension KillSwitchState {
 extension VpnMode {
     public var label: String {
         switch self {
-        case .off: return "Manuel"
-        case .always: return "Toujours connecté"
-        case .untrustedNetworks: return "Sur les réseaux non fiables"
+        case .off: return String(localized: "Manuel")
+        case .always: return String(localized: "Toujours connecté")
+        case .untrustedNetworks: return String(localized: "Sur les réseaux non fiables")
         }
     }
 }
@@ -322,8 +322,8 @@ extension VpnMode {
 extension VpnBackend {
     public var label: String {
         switch self {
-        case .singBox: return "sing-box (géré par Parabellum)"
-        case .external: return "VPN déjà configuré dans macOS"
+        case .singBox: return String(localized: "sing-box (géré par Parabellum)")
+        case .external: return String(localized: "VPN déjà configuré dans macOS")
         }
     }
 }
@@ -331,8 +331,8 @@ extension VpnBackend {
 extension SendMode {
     public var label: String {
         switch self {
-        case .drafts: return "Brouillons ouverts dans Mail (tu envoies)"
-        case .smtp: return "Envoi automatique par SMTP"
+        case .drafts: return String(localized: "Brouillons ouverts dans Mail (tu envoies)")
+        case .smtp: return String(localized: "Envoi automatique par SMTP")
         }
     }
 }
@@ -340,8 +340,8 @@ extension SendMode {
 extension BreachProvider {
     public var label: String {
         switch self {
-        case .xposedOrNot: return "XposedOrNot (gratuit)"
-        case .hibp: return "Have I Been Pwned (clé payante)"
+        case .xposedOrNot: return String(localized: "XposedOrNot (gratuit)")
+        case .hibp: return String(localized: "Have I Been Pwned (clé payante)")
         }
     }
 }
@@ -349,9 +349,9 @@ extension BreachProvider {
 extension AliasProvider {
     public var label: String {
         switch self {
-        case .disabled: return "Aucun"
+        case .disabled: return String(localized: "Aucun")
         case .addy: return "addy.io"
-        case .simpleLogin: return "SimpleLogin"
+        case .simpleLogin: return String(localized: "SimpleLogin")
         }
     }
 }
@@ -359,17 +359,17 @@ extension AliasProvider {
 extension RemovalStatus {
     public var label: String {
         switch self {
-        case .queued: return "En file d'attente"
-        case .draftReady: return "Brouillon prêt"
-        case .sent: return "Envoyée"
-        case .reminded: return "Relancée"
-        case .escalated: return "Sans réponse (CNIL)"
-        case .completed: return "Effacement confirmé"
-        case .refused: return "Refusée"
-        case .needsForm: return "Formulaire web"
-        case .needsYou: return "À toi de répondre"
-        case .failed: return "Échec d'envoi"
-        case .unknown: return "Inconnu"
+        case .queued: return String(localized: "En file d'attente")
+        case .draftReady: return String(localized: "Brouillon prêt")
+        case .sent: return String(localized: "Envoyée")
+        case .reminded: return String(localized: "Relancée")
+        case .escalated: return String(localized: "Sans réponse (CNIL)")
+        case .completed: return String(localized: "Effacement confirmé")
+        case .refused: return String(localized: "Refusée")
+        case .needsForm: return String(localized: "Formulaire web")
+        case .needsYou: return String(localized: "À toi de répondre")
+        case .failed: return String(localized: "Échec d'envoi")
+        case .unknown: return String(localized: "Inconnu")
         }
     }
 }
@@ -380,7 +380,7 @@ public enum PrivacyLabels {
         switch code {
         case "eu": return "Europe"
         case "global": return "International"
-        case "us": return "États-Unis"
+        case "us": return String(localized: "États-Unis")
         default: return code
         }
     }

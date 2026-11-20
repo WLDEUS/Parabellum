@@ -23,7 +23,7 @@ public struct RouterAdmin: Sendable, Hashable {
         // HTTPS only when the router clearly serves it and not plain HTTP (self-signed otherwise).
         let https = device.openPorts.contains(443) && !device.openPorts.contains(80)
         guard let url = URL(string: "\(https ? "https" : "http")://\(ip)/") else { return nil }
-        return RouterAdmin(url: url, title: "Ouvrir la configuration du routeur", isFreebox: false)
+        return RouterAdmin(url: url, title: String(localized: "Ouvrir la configuration du routeur"), isFreebox: false)
     }
 
     /// Free's boxes: vendor from the MAC prefix (`Freebox SAS`), or the name the box gives itself.

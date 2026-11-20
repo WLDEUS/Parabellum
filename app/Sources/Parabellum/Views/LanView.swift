@@ -44,7 +44,7 @@ struct LanView: View {
                     ContentUnavailableView(
                         "Aucun réseau local",
                         systemImage: "wifi.slash",
-                        description: Text(store.status?.message ?? "Connecte ce Mac à un réseau pour voir ses appareils.")
+                        description: Text(store.status?.message ?? String(localized: "Connecte ce Mac à un réseau pour voir ses appareils."))
                     )
                     .padding(.top, 40)
                 }
@@ -189,7 +189,7 @@ private struct LanHeaderCard: View {
                     }
                     HStack(spacing: 6) {
                         Pill(
-                            text: network.trusted ? "Réseau de confiance" : "Réseau non fiable",
+                            text: network.trusted ? String(localized: "Réseau de confiance") : String(localized: "Réseau non fiable"),
                             color: network.trusted ? .green : .orange,
                             symbol: network.trusted ? "checkmark.shield.fill" : "exclamationmark.shield"
                         )
@@ -197,7 +197,7 @@ private struct LanHeaderCard: View {
                             Pill(text: subnet, color: .secondary)
                         }
                         if let mode = network.lastScanMode {
-                            Pill(text: mode == .active ? "Analyse complète" : "Analyse passive", color: Brand.cyan)
+                            Pill(text: mode == .active ? String(localized: "Analyse complète") : String(localized: "Analyse passive"), color: Brand.cyan)
                         }
                     }
                     Text(lastScanText)
@@ -217,7 +217,7 @@ private struct LanHeaderCard: View {
                 VStack(alignment: .leading, spacing: 6) {
                     ProgressView(value: store.status?.progress ?? 0)
                         .tint(Brand.indigo)
-                    Text(store.status?.phase ?? "Analyse en cours…")
+                    Text(store.status?.phase ?? String(localized: "Analyse en cours…"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -230,10 +230,10 @@ private struct LanHeaderCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack(spacing: 12) {
-                StatTile(value: "\(store.count(.all))", caption: "Appareils connus de Parabellum", symbol: "square.grid.2x2", tint: Brand.indigo)
-                StatTile(value: "\(store.count(.online))", caption: "En ligne maintenant", symbol: "dot.radiowaves.left.and.right", tint: .green)
-                StatTile(value: "\(store.count(.unknown))", caption: "Non reconnus", symbol: "questionmark.circle", tint: .orange)
-                StatTile(value: "\(store.count(.new))", caption: "Nouveaux (24 h)", symbol: "sparkles", tint: Brand.violet)
+                StatTile(value: "\(store.count(.all))", caption: String(localized: "Appareils connus de Parabellum"), symbol: "square.grid.2x2", tint: Brand.indigo)
+                StatTile(value: "\(store.count(.online))", caption: String(localized: "En ligne maintenant"), symbol: "dot.radiowaves.left.and.right", tint: .green)
+                StatTile(value: "\(store.count(.unknown))", caption: String(localized: "Non reconnus"), symbol: "questionmark.circle", tint: .orange)
+                StatTile(value: "\(store.count(.new))", caption: String(localized: "Nouveaux (24 h)"), symbol: "sparkles", tint: Brand.violet)
             }
         }
         .padding(20)
@@ -242,9 +242,9 @@ private struct LanHeaderCard: View {
     }
 
     private var lastScanText: String {
-        guard let date = network.lastScanDate else { return "Jamais analysé" }
+        guard let date = network.lastScanDate else { return String(localized: "Jamais analysé") }
         let every = store.status?.intervalMinutes ?? 15
-        return "Dernière analyse \(PBFormat.relative(date)) · automatique toutes les \(every) min"
+        return String(localized: "Dernière analyse \(PBFormat.relative(date)) · automatique toutes les \(every) min")
     }
 
     @ViewBuilder
@@ -357,7 +357,7 @@ struct LanDeviceCard: View {
     private var subtitle: String {
         var parts = [device.deviceType.label]
         if device.privateMac {
-            parts.append("adresse privée")
+            parts.append(String(localized: "adresse privée"))
         } else if let vendor = device.vendor {
             parts.append(vendor)
         }
@@ -370,19 +370,19 @@ struct LanDeviceCard: View {
     private var badges: some View {
         HStack(spacing: 4) {
             if device.isSelf {
-                Pill(text: "Ce Mac", color: Brand.indigo)
+                Pill(text: String(localized: "Ce Mac"), color: Brand.indigo)
             } else if device.isGateway {
-                Pill(text: "Routeur", color: Brand.indigo)
+                Pill(text: String(localized: "Routeur"), color: Brand.indigo)
             } else if device.trusted {
-                Pill(text: "Connu", color: .green, symbol: "checkmark")
+                Pill(text: String(localized: "Connu"), color: .green, symbol: "checkmark")
             } else {
-                Pill(text: "Inconnu", color: .orange, symbol: "questionmark")
+                Pill(text: String(localized: "Inconnu"), color: .orange, symbol: "questionmark")
             }
             if device.isNew() && !device.isSelf {
-                Pill(text: "Nouveau", color: Brand.violet, symbol: "sparkles")
+                Pill(text: String(localized: "Nouveau"), color: Brand.violet, symbol: "sparkles")
             }
             if !device.openPorts.isEmpty {
-                Pill(text: "\(device.openPorts.count) port(s)", color: .secondary)
+                Pill(text: String(localized: "\(device.openPorts.count) port(s)"), color: .secondary)
             }
         }
         .padding(.top, 2)
@@ -406,32 +406,32 @@ private struct LanDeviceSheet: View {
                 Form {
                     Section("Nom") {
                         HStack {
-                            TextField("Nom affiché", text: $name, prompt: Text(device.mdnsName ?? device.hostname ?? "Ex. iPhone de Camille"))
+                            TextField("Nom affiché", text: $name, prompt: Text(device.mdnsName ?? device.hostname ?? String(localized: "Ex. iPhone de Camille")))
                             Button("Enregistrer") { Task { await store.rename(device, to: name) } }
                                 .disabled(model.isBusy("lan.device.\(mac)") || name == (device.name ?? ""))
                         }
                     }
                     Section("Identité") {
-                        InfoRow(label: "Adresse IPv4", value: device.ipv4 ?? "—", monospaced: true)
-                        InfoRow(label: "Adresse matérielle", value: device.mac, monospaced: true)
+                        InfoRow(label: String(localized: "Adresse IPv4"), value: device.ipv4 ?? "—", monospaced: true)
+                        InfoRow(label: String(localized: "Adresse matérielle"), value: device.mac, monospaced: true)
                         if device.privateMac {
                             Text("Adresse privée : le téléphone, la tablette ou l'ordinateur masque son adresse réelle. Le fabricant n'est pas identifiable et l'appareil peut revenir avec une autre adresse.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         } else {
-                            InfoRow(label: "Fabricant", value: device.vendor ?? "Inconnu")
+                            InfoRow(label: String(localized: "Fabricant"), value: device.vendor ?? "Inconnu")
                         }
                         if let model = device.model {
-                            InfoRow(label: "Modèle", value: model)
+                            InfoRow(label: String(localized: "Modèle"), value: model)
                         }
                         if let host = device.hostname {
-                            InfoRow(label: "Nom Bonjour", value: host, monospaced: true)
+                            InfoRow(label: String(localized: "Nom Bonjour"), value: host, monospaced: true)
                         }
                         if !device.ipv6.isEmpty {
-                            InfoRow(label: "IPv6", value: device.ipv6.joined(separator: "\n"), monospaced: true)
+                            InfoRow(label: String(localized: "IPv6"), value: device.ipv6.joined(separator: "\n"), monospaced: true)
                         }
-                        InfoRow(label: "Vu pour la première fois", value: PBFormat.dateTime(device.firstSeenDate))
-                        InfoRow(label: "Vu pour la dernière fois", value: PBFormat.dateTime(device.lastSeenDate))
+                        InfoRow(label: String(localized: "Vu pour la première fois"), value: PBFormat.dateTime(device.firstSeenDate))
+                        InfoRow(label: String(localized: "Vu pour la dernière fois"), value: PBFormat.dateTime(device.lastSeenDate))
                     }
                     if !device.services.isEmpty {
                         Section("Services Bonjour") {
@@ -553,7 +553,7 @@ private struct LanDeviceSheet: View {
         switch port {
         case 21: return "FTP"
         case 22: return "SSH"
-        case 23: return "Telnet (non chiffré)"
+        case 23: return String(localized: "Telnet (non chiffré)")
         case 25: return "SMTP"
         case 53: return "DNS"
         case 80: return "HTTP"
@@ -561,10 +561,10 @@ private struct LanDeviceSheet: View {
         case 443: return "HTTPS"
         case 515, 631, 9100: return "Impression"
         case 548: return "AFP"
-        case 554: return "Flux vidéo (RTSP)"
-        case 3389: return "Bureau à distance"
+        case 554: return String(localized: "Flux vidéo (RTSP)")
+        case 3389: return String(localized: "Bureau à distance")
         case 5000: return "UPnP / NAS"
-        case 5900: return "Partage d'écran (VNC)"
+        case 5900: return String(localized: "Partage d'écran (VNC)")
         case 8008, 8080: return "HTTP alternatif"
         case 8443: return "HTTPS alternatif"
         default: return ""

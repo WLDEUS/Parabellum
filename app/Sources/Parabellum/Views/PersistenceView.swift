@@ -102,12 +102,12 @@ private struct PersistenceRow: View {
                     VerdictBadge(verdict: verdict)
                 }
             }
-            InfoRow(label: "Fichier", value: item.path, monospaced: true)
+            InfoRow(label: String(localized: "Fichier"), value: item.path, monospaced: true)
             if let program = item.program {
-                InfoRow(label: "Programme", value: program, monospaced: true)
+                InfoRow(label: String(localized: "Programme"), value: program, monospaced: true)
             }
             if item.arguments.count > 1 || (item.arguments.count == 1 && item.arguments.first != item.program) {
-                InfoRow(label: "Arguments", value: item.arguments.joined(separator: " "), monospaced: true)
+                InfoRow(label: String(localized: "Arguments"), value: item.arguments.joined(separator: " "), monospaced: true)
             }
             if let signing = item.signing {
                 HStack {
@@ -119,7 +119,7 @@ private struct PersistenceRow: View {
                 }
             }
             if let sha = item.programSha256 {
-                InfoRow(label: "SHA-256", value: sha, monospaced: true)
+                InfoRow(label: String(localized: "SHA-256"), value: sha, monospaced: true)
             }
             HStack {
                 Text(seenText)
@@ -152,7 +152,7 @@ private struct PersistenceRow: View {
     }
 
     private var seenText: String {
-        var text = "Vu pour la première fois " + PBFormat.relative(item.firstSeenDate)
+        var text = String(localized: "Vu pour la première fois ") + PBFormat.relative(item.firstSeenDate)
         if let user = item.user {
             text += " · utilisateur " + user
         }

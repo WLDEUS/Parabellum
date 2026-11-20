@@ -18,7 +18,7 @@ struct BreachesTab: View {
     }
 
     private var breachCard: some View {
-        Card(title: "Tes adresses dans des fuites connues", symbol: "exclamationmark.lock") {
+        Card(title: String(localized: "Tes adresses dans des fuites connues"), symbol: "exclamationmark.lock") {
             VStack(alignment: .leading, spacing: 10) {
                 if let breach = model.config?.breach {
                     if breach.enabled && !breach.emails.isEmpty {
@@ -71,7 +71,7 @@ private struct BreachRow: View {
             HStack(spacing: 6) {
                 Text(finding.breach).fontWeight(.semibold)
                 if finding.new {
-                    Pill(text: "Nouveau", color: .orange)
+                    Pill(text: String(localized: "Nouveau"), color: .orange)
                 }
                 if let date = finding.breachDate {
                     Text(date).font(.caption).foregroundStyle(.secondary)
@@ -101,7 +101,7 @@ private struct PasswordCheckCard: View {
     @State private var exportResults: [LeakedPasswordEntry]?
 
     var body: some View {
-        Card(title: "Mots de passe compromis (Pwned Passwords)", symbol: "key") {
+        Card(title: String(localized: "Mots de passe compromis (Pwned Passwords)"), symbol: "key") {
             VStack(alignment: .leading, spacing: 10) {
                 Text("k-anonymat : seuls les 5 premiers caractères de l'empreinte SHA-1 quittent le Mac, jamais le mot de passe.")
                     .font(.caption)
@@ -183,7 +183,7 @@ private struct PasswordCheckCard: View {
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = [.commaSeparatedText]
-        panel.prompt = "Vérifier"
+        panel.prompt = String(localized: "Vérifier")
         NSApp.activate()
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task {
@@ -203,7 +203,7 @@ struct AliasesTab: View {
     }
 
     var body: some View {
-        Card(title: "Alias e-mail", symbol: "at") {
+        Card(title: String(localized: "Alias e-mail"), symbol: "at") {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Une adresse différente pour chaque inscription : elle redirige vers ta vraie boîte, et tu la coupes si elle reçoit du spam ou fuit. Moins de données arrivent chez les courtiers.")
                     .font(.callout)
@@ -284,7 +284,7 @@ struct PrivacyToolsTab: View {
     @State private var dropTargeted = false
 
     var body: some View {
-        Card(title: "Retirer les métadonnées", symbol: "location.slash") {
+        Card(title: String(localized: "Retirer les métadonnées"), symbol: "location.slash") {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Photos et documents gardent souvent la position GPS, l'appareil, l'auteur ou la date. Parabellum écrit une copie nettoyée (« .clean ») à côté de l'original, avec tes droits. JPEG, PNG, WebP et documents Office en natif ; le reste via exiftool s'il est installé (Homebrew).")
                     .font(.callout)
@@ -352,15 +352,15 @@ struct PrivacyToolsTab: View {
 
     private func reportDetail(_ report: CleanReport) -> String {
         if let error = report.error {
-            return "Échec : \(error)"
+            return String(localized: "Échec : \(error)")
         }
         if report.output == nil {
-            return "Rien à retirer."
+            return String(localized: "Rien à retirer.")
         }
         if report.removed.isEmpty {
-            return "Copie écrite (\(report.method)), rien d'identifiant trouvé."
+            return String(localized: "Copie écrite (\(report.method)), rien d'identifiant trouvé.")
         }
-        return "Retiré : \(report.removed.joined(separator: ", ")) (\(report.method))"
+        return String(localized: "Retiré : \(report.removed.joined(separator: ", ")) (\(report.method))")
     }
 
     private func pickFiles() {

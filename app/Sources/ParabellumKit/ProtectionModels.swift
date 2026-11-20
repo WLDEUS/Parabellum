@@ -428,16 +428,16 @@ public enum ReplyKind: String, TolerantEnum {
 
     public var label: String {
         switch self {
-        case .erased: return "Données effacées"
-        case .noData: return "Aucune donnée"
-        case .acknowledged: return "Accusé de réception"
-        case .identityRequested: return "Pièce d'identité demandée"
-        case .infoRequested: return "Informations demandées"
-        case .formRequired: return "Formulaire exigé"
-        case .refused: return "Refus"
-        case .autoReply: return "Réponse automatique"
-        case .bounce: return "Adresse rejetée"
-        case .other, .unknown: return "À lire"
+        case .erased: return String(localized: "Données effacées")
+        case .noData: return String(localized: "Aucune donnée")
+        case .acknowledged: return String(localized: "Accusé de réception")
+        case .identityRequested: return String(localized: "Pièce d'identité demandée")
+        case .infoRequested: return String(localized: "Informations demandées")
+        case .formRequired: return String(localized: "Formulaire exigé")
+        case .refused: return String(localized: "Refus")
+        case .autoReply: return String(localized: "Réponse automatique")
+        case .bounce: return String(localized: "Adresse rejetée")
+        case .other, .unknown: return String(localized: "À lire")
         }
     }
 }
@@ -449,11 +449,11 @@ public enum MailAgentState: String, TolerantEnum {
 
     public var label: String {
         switch self {
-        case .disabled: return "Désactivé"
-        case .waiting: return "Attend un moment d'inactivité"
-        case .running: return "En cours"
-        case .error: return "Erreur à la dernière passe"
-        case .unknown: return "Inconnu"
+        case .disabled: return String(localized: "Désactivé")
+        case .waiting: return String(localized: "Attend un moment d'inactivité")
+        case .running: return String(localized: "En cours")
+        case .error: return String(localized: "Erreur à la dernière passe")
+        case .unknown: return String(localized: "Inconnu")
         }
     }
 }

@@ -173,16 +173,16 @@ extension SigningInfo {
     /// One-line French summary.
     var summary: String {
         if !signed {
-            return "Non signé"
+            return String(localized: "Non signé")
         }
         if !valid {
-            return "Signature invalide"
+            return String(localized: "Signature invalide")
         }
         if apple {
-            return "Signé par Apple"
+            return String(localized: "Signé par Apple")
         }
         if adhoc {
-            return "Signature ad hoc"
+            return String(localized: "Signature ad hoc")
         }
         var parts: [String] = []
         if let authority {
@@ -190,10 +190,10 @@ extension SigningInfo {
         } else if let teamId {
             parts.append("Team ID \(teamId)")
         } else {
-            parts.append("Signé")
+            parts.append(String(localized: "Signé"))
         }
         if let notarized {
-            parts.append(notarized ? "notarisé" : "non notarisé")
+            parts.append(notarized ? String(localized: "notarisé") : String(localized: "non notarisé"))
         }
         return parts.joined(separator: " · ")
     }

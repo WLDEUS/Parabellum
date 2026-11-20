@@ -60,7 +60,7 @@ struct ComponentsView: View {
                     }
                     .width(min: 110, ideal: 140)
 
-                    TableColumn("État") { (component: ComponentStatus) in
+                    TableColumn(String(localized: "État")) { (component: ComponentStatus) in
                         HStack(spacing: 4) {
                             if model.installingComponents.contains(component.name) || component.state == .updating {
                                 ProgressView().controlSize(.mini)

@@ -163,9 +163,9 @@ private struct DisconnectedBar: View {
     private var title: String {
         switch model.connection {
         case .unreachable(let message):
-            return "Service Parabellum injoignable — reconnexion automatique (\(message))"
+            return String(localized: "Service Parabellum injoignable — reconnexion automatique (\(message))")
         case .connecting, .connected:
-            return "Reconnexion au service Parabellum…"
+            return String(localized: "Reconnexion au service Parabellum…")
         }
     }
 }

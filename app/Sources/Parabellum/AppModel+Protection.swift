@@ -72,7 +72,7 @@ extension AppModel {
             try await self.call(.vpnImportProfile(profile: trimmed), as: VpnProfileInfo.self, timeout: 60)
         }
         guard let info else { return false }
-        banner = Banner(message: "Profil importé : \(info.name) (\(info.protocolName), \(info.server):\(info.port)).", isError: false)
+        banner = Banner(message: String(localized: "Profil importé : \(info.name) (\(info.protocolName), \(info.server):\(info.port))."), isError: false)
         await loadVpnStatus()
         return true
     }
@@ -84,12 +84,12 @@ extension AppModel {
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         panel.prompt = "Importer"
-        panel.message = "Fichier WireGuard (.conf) ou fichier texte contenant un lien de partage"
+        panel.message = String(localized: "Fichier WireGuard (.conf) ou fichier texte contenant un lien de partage")
         NSApp.activate()
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         guard size <= 1_000_000, let text = try? String(contentsOf: url, encoding: .utf8) else {
-            banner = Banner(message: "Fichier illisible ou trop gros (1 Mo maximum).", isError: true)
+            banner = Banner(message: String(localized: "Fichier illisible ou trop gros (1 Mo maximum)."), isError: true)
             return
         }
         Task { await importVpnProfile(text) }
@@ -100,7 +100,7 @@ extension AppModel {
             try await self.callVoid(.vpnRemoveProfile)
         }
         if done != nil {
-            banner = Banner(message: "Profil VPN supprimé.", isError: false)
+            banner = Banner(message: String(localized: "Profil VPN supprimé."), isError: false)
             await loadVpnStatus()
         }
     }
@@ -111,7 +111,7 @@ extension AppModel {
         }
         if let result {
             banner = Banner(
-                message: result.ok ? "Test de fuite réussi : aucune fuite détectée." : "Test de fuite : au moins un point à corriger (détails dans la section VPN).",
+                message: result.ok ? String(localized: "Test de fuite réussi : aucune fuite détectée.") : String(localized: "Test de fuite : au moins un point à corriger (détails dans la section VPN)."),
                 isError: !result.ok
             )
             await loadVpnStatus()
@@ -160,7 +160,7 @@ extension AppModel {
             try await self.call(.createSnapshot, as: SnapshotInfo.self, timeout: 120)
         }
         if let snapshot {
-            banner = Banner(message: "Instantané créé : \(snapshot.name)", isError: false)
+            banner = Banner(message: String(localized: "Instantané créé : \(snapshot.name)"), isError: false)
             await loadGuard()
         }
     }
@@ -174,7 +174,7 @@ extension AppModel {
         panel.allowsMultipleSelection = false
         panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser
         panel.prompt = "Restaurer"
-        panel.message = "Fichier ou dossier de ton dossier personnel à récupérer tel qu'il était dans l'instantané"
+        panel.message = String(localized: "Fichier ou dossier de ton dossier personnel à récupérer tel qu'il était dans l'instantané")
         NSApp.activate()
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let path = url.path
@@ -186,7 +186,7 @@ extension AppModel {
             try await self.call(.restoreFromSnapshot(snapshot: snapshot.name, path: path), as: RestoredTo.self, timeout: 1900)
         }
         if let restored {
-            banner = Banner(message: "Copie restaurée : \(restored.restoredTo)", isError: false)
+            banner = Banner(message: String(localized: "Copie restaurée : \(restored.restoredTo)"), isError: false)
             revealInFinder(restored.restoredTo)
         }
     }
@@ -252,7 +252,7 @@ extension AppModel {
         }
         if let value {
             mailAgent = value
-            banner = Banner(message: "L'agent lira la boîte RGPD au prochain moment d'inactivité du Mac.", isError: false)
+            banner = Banner(message: String(localized: "L'agent lira la boîte RGPD au prochain moment d'inactivité du Mac."), isError: false)
         }
     }
 
@@ -264,7 +264,7 @@ extension AppModel {
         guard let value else { return }
         mailAgent = value
         banner = Banner(
-            message: "L'agent lit la boîte RGPD maintenant. Au premier passage, Ollama et le modèle (≈ 2,5 Go) sont téléchargés.",
+            message: String(localized: "L'agent lit la boîte RGPD maintenant. Au premier passage, Ollama et le modèle (≈ 2,5 Go) sont téléchargés."),
             isError: false
         )
         // Follow the run: status every 5 s while it runs (at most 30 min).
@@ -317,7 +317,7 @@ extension AppModel {
         }
         guard let saved else { return false }
         identity = saved
-        banner = Banner(message: "Identité enregistrée (stockée par le service, lisible par root uniquement).", isError: false)
+        banner = Banner(message: String(localized: "Identité enregistrée (stockée par le service, lisible par root uniquement)."), isError: false)
         return true
     }
 
@@ -327,7 +327,7 @@ extension AppModel {
         }
         if let summary {
             removalSummary = summary
-            banner = Banner(message: "\(summary.queued) demande(s) d'effacement en file d'attente sur \(summary.total).", isError: false)
+            banner = Banner(message: String(localized: "\(summary.queued) demande(s) d'effacement en file d'attente sur \(summary.total)."), isError: false)
             await loadPrivacy()
         }
     }
@@ -355,7 +355,7 @@ extension AppModel {
     func openDraft(for request: RemovalRequest) async {
         guard let url = await writeDraft(for: request) else { return }
         NSWorkspace.shared.open(url)
-        banner = Banner(message: "E-mail ouvert dans Mail. Envoie-le, puis marque la demande comme envoyée.", isError: false)
+        banner = Banner(message: String(localized: "E-mail ouvert dans Mail. Envoie-le, puis marque la demande comme envoyée."), isError: false)
         await loadPrivacy()
     }
 
@@ -365,7 +365,7 @@ extension AppModel {
             request.canDraft && (request.status == .queued || request.status == .draftReady || request.isOverdue())
         }
         guard !pending.isEmpty else {
-            banner = Banner(message: "Aucun e-mail à préparer pour l'instant.", isError: false)
+            banner = Banner(message: String(localized: "Aucun e-mail à préparer pour l'instant."), isError: false)
             return
         }
         var written = 0
@@ -379,7 +379,7 @@ extension AppModel {
         if written > 0 {
             NSWorkspace.shared.open(Self.draftsFolder)
             banner = Banner(
-                message: "\(written) e-mail(s) prêts dans Téléchargements › Parabellum-RGPD : ouvre chacun dans Mail et envoie-le, puis marque les demandes comme envoyées.",
+                message: String(localized: "\(written) e-mail(s) prêts dans Téléchargements › Parabellum-RGPD : ouvre chacun dans Mail et envoie-le, puis marque les demandes comme envoyées."),
                 isError: false
             )
         }
@@ -418,7 +418,7 @@ extension AppModel {
             breaches = list
             let fresh = list.filter { $0.new }.count
             banner = Banner(
-                message: fresh > 0 ? "\(fresh) nouvelle(s) fuite(s) trouvée(s)." : "Aucune nouvelle fuite pour tes adresses.",
+                message: fresh > 0 ? String(localized: "\(fresh) nouvelle(s) fuite(s) trouvée(s).") : String(localized: "Aucune nouvelle fuite pour tes adresses."),
                 isError: fresh > 0
             )
         }
@@ -431,7 +431,7 @@ extension AppModel {
         if let alias {
             upsert(alias, into: &emailAliases)
             copyToPasteboard(alias.email)
-            banner = Banner(message: "Alias créé et copié : \(alias.email)", isError: false)
+            banner = Banner(message: String(localized: "Alias créé et copié : \(alias.email)"), isError: false)
         }
         return alias
     }

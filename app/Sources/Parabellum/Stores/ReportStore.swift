@@ -70,7 +70,7 @@ final class ReportStore: ObservableObject {
             reports[key] = result
             lastError = nil
         } else if reports[key] == nil {
-            lastError = "Rapport indisponible (le service est-il à jour ?)."
+            lastError = String(localized: "Rapport indisponible (le service est-il à jour ?).")
         }
     }
 
@@ -93,8 +93,8 @@ final class ReportStore: ObservableObject {
 
     func offsetLabel(_ offset: Int) -> String {
         switch (period, offset) {
-        case (.week, 0): return "Cette semaine"
-        case (.week, 1): return "Semaine dernière"
+        case (.week, 0): return String(localized: "Cette semaine")
+        case (.week, 1): return String(localized: "Semaine dernière")
         case (.week, _): return "Il y a \(offset) semaines"
         case (.month, _):
             guard let date = Calendar.current.date(byAdding: .month, value: -offset, to: Date()) else { return "" }
@@ -115,9 +115,9 @@ final class ReportStore: ObservableObject {
         case .month:
             return "Rapport de " + Self.monthFormatter.string(from: report.startDate)
         case .week:
-            return "Rapport de la semaine du \(PBFormat.day(report.startDate))"
+            return String(localized: "Rapport de la semaine du \(PBFormat.day(report.startDate))")
         case .custom:
-            return "Rapport du \(PBFormat.day(report.startDate)) au \(PBFormat.day(report.lastDate))"
+            return String(localized: "Rapport du \(PBFormat.day(report.startDate)) au \(PBFormat.day(report.lastDate))")
         }
     }
 
@@ -133,10 +133,10 @@ final class ReportStore: ObservableObject {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             try ReportPDF.write(report, title: title(for: report), to: url)
-            model.banner = Banner(message: "Rapport exporté : \(url.lastPathComponent)", isError: false)
+            model.banner = Banner(message: String(localized: "Rapport exporté : \(url.lastPathComponent)"), isError: false)
             NSWorkspace.shared.activateFileViewerSelecting([url])
         } catch {
-            model.banner = Banner(message: "Export PDF impossible : \(error.localizedDescription)", isError: true)
+            model.banner = Banner(message: String(localized: "Export PDF impossible : \(error.localizedDescription)"), isError: true)
         }
     }
 }

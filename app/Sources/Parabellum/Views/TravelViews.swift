@@ -55,12 +55,12 @@ struct TravelMenuCard: View {
 
     private var subtitle: String {
         guard let status = store.status, status.active else {
-            return "VPN, coupe-circuit, DNS et coupe-feu furtif en un clic"
+            return String(localized: "VPN, coupe-circuit, DNS et coupe-feu furtif en un clic")
         }
         if let network = status.network {
-            return "Actif\(status.automatic ? " (automatique)" : "") · \(network)"
+            return String(localized: "Actif\(status.automatic ? " (automatique)" : "") · \(network)")
         }
-        return status.automatic ? "Actif (automatique)" : "Actif"
+        return status.automatic ? String(localized: "Actif (automatique)") : String(localized: "Actif")
     }
 }
 
@@ -74,7 +74,7 @@ struct TravelDashboardTile: View {
         } label: {
             StatTile(
                 value: store.isActive ? "Actif" : "Inactif",
-                caption: store.isActive ? "Mode Voyage · toucher pour rétablir" : "Mode Voyage · toucher pour activer",
+                caption: store.isActive ? String(localized: "Mode Voyage · toucher pour rétablir") : String(localized: "Mode Voyage · toucher pour activer"),
                 symbol: "airplane",
                 tint: store.isActive ? Brand.cyan : (store.onUntrustedNetwork ? .orange : Brand.accent)
             )
@@ -92,7 +92,7 @@ struct TravelCard: View {
     @ObservedObject var store: TravelStore
 
     var body: some View {
-        Card(title: "Mode Voyage", symbol: "airplane", content: {
+        Card(title: String(localized: "Mode Voyage"), symbol: "airplane", content: {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     if let status = store.status, status.active {
@@ -103,9 +103,9 @@ struct TravelCard: View {
                                 .foregroundStyle(.secondary)
                         }
                     } else {
-                        Pill(text: "Inactif", color: .secondary)
+                        Pill(text: String(localized: "Inactif"), color: .secondary)
                         if store.onUntrustedNetwork {
-                            Pill(text: "Réseau non approuvé", color: .orange, symbol: "wifi.exclamationmark")
+                            Pill(text: String(localized: "Réseau non approuvé"), color: .orange, symbol: "wifi.exclamationmark")
                         }
                     }
                     Spacer()
@@ -144,11 +144,11 @@ struct TravelCard: View {
 
     private var explanation: String {
         let travel = model.config?.travel ?? TravelConfig()
-        var items = ["VPN permanent avec coupe-circuit", "blocage DNS", "coupe-feu activé et furtif"]
-        if travel.blockAllIncoming { items.append("connexions entrantes bloquées") }
-        if travel.airdropOff { items.append("AirDrop coupé") }
-        if travel.bluetoothOff { items.append("Bluetooth coupé") }
-        return "Pour les Wi-Fi publics (gare, hôtel, café) : \(items.joined(separator: ", ")). La désactivation rétablit exactement vos réglages d'avant (ceux que vous avez changés entre-temps sont conservés)."
+        var items = [String(localized: "VPN permanent avec coupe-circuit"), "blocage DNS", String(localized: "coupe-feu activé et furtif")]
+        if travel.blockAllIncoming { items.append(String(localized: "connexions entrantes bloquées")) }
+        if travel.airdropOff { items.append(String(localized: "AirDrop coupé")) }
+        if travel.bluetoothOff { items.append(String(localized: "Bluetooth coupé")) }
+        return String(localized: "Pour les Wi-Fi publics (gare, hôtel, café) : \(items.joined(separator: ", ")). La désactivation rétablit exactement vos réglages d'avant (ceux que vous avez changés entre-temps sont conservés).")
     }
 }
 
@@ -176,11 +176,11 @@ struct ShortcutsSettingsSection: View {
     @EnvironmentObject private var model: AppModel
 
     private static let commands: [(title: String, command: String)] = [
-        ("État de la protection", "/usr/local/bin/parabellum status"),
-        ("Analyser un dossier", "/usr/local/bin/parabellum scan ~/Downloads"),
+        (String(localized: "État de la protection"), "/usr/local/bin/parabellum status"),
+        (String(localized: "Analyser un dossier"), "/usr/local/bin/parabellum scan ~/Downloads"),
         ("Mode Voyage", "/usr/local/bin/parabellum travel on"),
-        ("Connecter le VPN", "/usr/local/bin/parabellum vpn connect"),
-        ("État en JSON (pour un script)", "/usr/local/bin/parabellum --json status"),
+        (String(localized: "Connecter le VPN"), "/usr/local/bin/parabellum vpn connect"),
+        (String(localized: "État en JSON (pour un script)"), "/usr/local/bin/parabellum --json status"),
     ]
 
     var body: some View {

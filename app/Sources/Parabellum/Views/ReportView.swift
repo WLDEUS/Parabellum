@@ -14,16 +14,16 @@ struct ReportView: View {
                     header(report)
                     figures(report)
                     HStack(alignment: .top, spacing: 16) {
-                        Card(title: "Activité quotidienne", symbol: "chart.bar.fill") {
+                        Card(title: String(localized: "Activité quotidienne"), symbol: "chart.bar.fill") {
                             DailyActivityChart(report: report)
                         }
-                        Card(title: "Réseau & VPN", symbol: "lock.shield") {
+                        Card(title: String(localized: "Réseau & VPN"), symbol: "lock.shield") {
                             NetworkSummary(report: report)
                         }
                         .frame(maxWidth: 380)
                     }
                     HStack(alignment: .top, spacing: 16) {
-                        Card(title: "Pubs et traqueurs bloqués", symbol: "hand.raised.slash") {
+                        Card(title: String(localized: "Pubs et traqueurs bloqués"), symbol: "hand.raised.slash") {
                             VStack(alignment: .leading, spacing: 12) {
                                 DnsBlockedChart(report: report)
                                 if !report.topBlockedDomains.isEmpty {
@@ -32,19 +32,19 @@ struct ReportView: View {
                                 }
                             }
                         }
-                        Card(title: "Alertes par type", symbol: "bell.badge") {
+                        Card(title: String(localized: "Alertes par type"), symbol: "bell.badge") {
                             AlertKindsChart(report: report)
                         }
                     }
                     HStack(alignment: .top, spacing: 16) {
-                        Card(title: "Familles les plus détectées", symbol: "ladybug") {
-                            TopListChart(items: report.topDetections, color: .red, empty: "Aucune détection sur cette période.")
+                        Card(title: String(localized: "Familles les plus détectées"), symbol: "ladybug") {
+                            TopListChart(items: report.topDetections, color: .red, empty: String(localized: "Aucune détection sur cette période."))
                         }
-                        Card(title: "Analyses par origine", symbol: "magnifyingglass") {
-                            TopListChart(items: report.scansByOrigin, label: ReportText.origin, empty: "Aucune analyse.")
+                        Card(title: String(localized: "Analyses par origine"), symbol: "magnifyingglass") {
+                            TopListChart(items: report.scansByOrigin, label: ReportText.origin, empty: String(localized: "Aucune analyse."))
                         }
                     }
-                    Card(title: "Vie privée", symbol: "hand.raised") {
+                    Card(title: String(localized: "Vie privée"), symbol: "hand.raised") {
                         PrivacySummaryView(report: report)
                     }
                     updates(report)
@@ -128,7 +128,7 @@ struct ReportView: View {
             }
             Spacer()
             if let version = report.dbVersion {
-                Pill(text: "Base \(version)", color: .teal)
+                Pill(text: String(localized: "Base \(version)"), color: .teal)
             }
         }
     }
@@ -144,7 +144,7 @@ struct ReportView: View {
     @ViewBuilder
     private func updates(_ report: ActivityReport) -> some View {
         if !report.componentUpdates.isEmpty || report.persistenceNew > 0 || report.devicesNew > 0 {
-            Card(title: "Système et mises à jour", symbol: "puzzlepiece.extension") {
+            Card(title: String(localized: "Système et mises à jour"), symbol: "puzzlepiece.extension") {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("\(report.persistenceNew) nouvelle(s) persistance(s), \(report.devicesNew) nouveau(x) périphérique(s).")
                     ForEach(report.componentUpdates, id: \.self) { line in

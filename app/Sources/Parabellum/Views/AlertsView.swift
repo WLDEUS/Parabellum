@@ -8,8 +8,8 @@ enum AlertSort: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .severity: return "Gravité"
-        case .date: return "Date"
+        case .severity: return String(localized: "Gravité")
+        case .date: return String(localized: "Date")
         }
     }
 }
@@ -366,7 +366,7 @@ private struct BulkAlertsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .confirmationDialog(
-            pendingAction.map { "\($0.label) sur \(actionable.count) alertes ?" } ?? "",
+            pendingAction.map { String(localized: "\($0.label) sur \(actionable.count) alertes ?") } ?? "",
             isPresented: Binding(get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }),
             presenting: pendingAction
         ) { action in
@@ -473,27 +473,27 @@ private struct AlertDetailView: View {
 
     private var details: some View {
         VStack(alignment: .leading, spacing: 6) {
-            InfoRow(label: "Date", value: PBFormat.dateTime(alert.date))
+            InfoRow(label: String(localized: "Date"), value: PBFormat.dateTime(alert.date))
             if let path = alert.path {
-                InfoRow(label: "Fichier", value: path, monospaced: true)
+                InfoRow(label: String(localized: "Fichier"), value: path, monospaced: true)
             }
             if let sha = alert.sha256 {
-                InfoRow(label: "SHA-256", value: sha, monospaced: true)
+                InfoRow(label: String(localized: "SHA-256"), value: sha, monospaced: true)
             }
             if let deviceId = alert.deviceId {
-                InfoRow(label: "Périphérique", value: deviceId, monospaced: true)
+                InfoRow(label: String(localized: "Périphérique"), value: deviceId, monospaced: true)
             }
             if let persistenceId = alert.persistenceId {
-                InfoRow(label: "Persistance", value: persistenceId, monospaced: true)
+                InfoRow(label: String(localized: "Persistance"), value: persistenceId, monospaced: true)
             }
             if let quarantineId = alert.quarantineId {
-                InfoRow(label: "Quarantaine", value: quarantineId, monospaced: true)
+                InfoRow(label: String(localized: "Quarantaine"), value: quarantineId, monospaced: true)
             }
             if let processPath = alert.processPath {
-                InfoRow(label: "Processus", value: alert.processPid.map { "\(processPath) (PID \($0))" } ?? processPath, monospaced: true)
+                InfoRow(label: String(localized: "Processus"), value: alert.processPid.map { "\(processPath) (PID \($0))" } ?? processPath, monospaced: true)
             }
             if let networkId = alert.networkId {
-                InfoRow(label: "Réseau", value: networkId, monospaced: true)
+                InfoRow(label: String(localized: "Réseau"), value: networkId, monospaced: true)
             }
         }
     }

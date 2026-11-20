@@ -142,9 +142,9 @@ private struct DeviceRow: View {
             .disabled(model.isBusy("device-\(device.id)"))
             if showDetails {
                 VStack(alignment: .leading, spacing: 2) {
-                    InfoRow(label: "Identifiant", value: device.id, monospaced: true)
+                    InfoRow(label: String(localized: "Identifiant"), value: device.id, monospaced: true)
                     if let serial = device.serial {
-                        InfoRow(label: "Numéro de série", value: serial, monospaced: true)
+                        InfoRow(label: String(localized: "Numéro de série"), value: serial, monospaced: true)
                     }
                     ForEach(device.details.keys.sorted(), id: \.self) { key in
                         InfoRow(label: key, value: device.details[key] ?? "", monospaced: true)

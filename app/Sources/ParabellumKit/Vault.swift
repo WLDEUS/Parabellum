@@ -129,7 +129,7 @@ public struct VaultCLIError: Error, LocalizedError, Codable, Sendable, Hashable 
     public var isNotFound: Bool { code == "not_found" }
 
     public var errorDescription: String? {
-        guard let first = message.first else { return "Erreur du coffre" }
+        guard let first = message.first else { return String(localized: "Erreur du coffre") }
         return first.uppercased() + message.dropFirst()
     }
 
@@ -431,7 +431,7 @@ extension ParabellumCLI {
                     continuation.resume(returning: outData)
                 } else {
                     let message = String(decoding: errBox.get(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-                    continuation.resume(throwing: Failure.failed(message.isEmpty ? "échec (code \(process.terminationStatus))" : message))
+                    continuation.resume(throwing: Failure.failed(message.isEmpty ? String(localized: "échec (code \(process.terminationStatus))") : message))
                 }
             }
         }

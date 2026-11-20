@@ -81,21 +81,21 @@ private struct IntelHero: View {
     }
 
     private var title: String {
-        if !behavior.enabled { return "Analyse comportementale désactivée" }
+        if !behavior.enabled { return String(localized: "Analyse comportementale désactivée") }
         if behavior.learning {
-            return "Apprentissage en cours — \(PBFormat.percent(behavior.learningProgress))"
+            return String(localized: "Apprentissage en cours — \(PBFormat.percent(behavior.learningProgress))")
         }
-        return "Ce Mac est sous surveillance comportementale"
+        return String(localized: "Ce Mac est sous surveillance comportementale")
     }
 
     private var subtitle: String {
         if behavior.learning, let until = behavior.learningUntilDate {
-            return "Parabellum observe vos habitudes jusqu'au \(PBFormat.dateTime(until)) ; aucune alerte d'anomalie avant."
+            return String(localized: "Parabellum observe vos habitudes jusqu'au \(PBFormat.dateTime(until)) ; aucune alerte d'anomalie avant.")
         }
         if behavior.enabled {
-            return "Toute nouveauté d'un programme connu (interpréteur lancé, emplacement sensible modifié…) est notée et signalée au-delà du seuil."
+            return String(localized: "Toute nouveauté d'un programme connu (interpréteur lancé, emplacement sensible modifié…) est notée et signalée au-delà du seuil.")
         }
-        return "Activez-la dans Réglages › Intelligence."
+        return String(localized: "Activez-la dans Réglages › Intelligence.")
     }
 
     var body: some View {
@@ -119,14 +119,14 @@ private struct IntelHero: View {
                         symbol: "network"
                     )
                     Pill(
-                        text: domains.modelLoaded ? "Modèle de domaines chargé" : "Règles de secours",
+                        text: domains.modelLoaded ? String(localized: "Modèle de domaines chargé") : String(localized: "Règles de secours"),
                         color: domains.modelLoaded ? Brand.indigo : .secondary,
                         symbol: "cpu"
                     )
                     if domains.blockEnabled {
-                        Pill(text: "Blocage ML", color: .red, symbol: "hand.raised.fill")
+                        Pill(text: String(localized: "Blocage ML"), color: .red, symbol: "hand.raised.fill")
                     }
-                    Pill(text: "Données locales uniquement", color: Brand.cyan, symbol: "lock.fill")
+                    Pill(text: String(localized: "Données locales uniquement"), color: Brand.cyan, symbol: "lock.fill")
                 }
                 if let message = domains.message ?? behavior.message {
                     Label(message, systemImage: "info.circle")
@@ -150,24 +150,24 @@ private struct IntelStats: View {
         let b = status.behavior
         let d = status.domains
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 12) {
-            StatTile(value: PBFormat.count(b.profiles), caption: "Programmes profilés", symbol: "person.text.rectangle")
-            StatTile(value: PBFormat.count(b.behaviors), caption: "Comportements connus", symbol: "point.3.connected.trianglepath.dotted")
+            StatTile(value: PBFormat.count(b.profiles), caption: String(localized: "Programmes profilés"), symbol: "person.text.rectangle")
+            StatTile(value: PBFormat.count(b.behaviors), caption: String(localized: "Comportements connus"), symbol: "point.3.connected.trianglepath.dotted")
             StatTile(
                 value: PBFormat.count(b.anomalies7d),
-                caption: "Anomalies (7 jours)",
+                caption: String(localized: "Anomalies (7 jours)"),
                 symbol: "exclamationmark.triangle",
                 tint: b.anomalies7d > 0 ? .orange : Brand.accent
             )
-            StatTile(value: PBFormat.count(Int(d.scored24h)), caption: "Domaines analysés (24 h)", symbol: "globe")
+            StatTile(value: PBFormat.count(Int(d.scored24h)), caption: String(localized: "Domaines analysés (24 h)"), symbol: "globe")
             StatTile(
                 value: PBFormat.count(Int(d.flaggedTotal)),
-                caption: "Domaines suspects",
+                caption: String(localized: "Domaines suspects"),
                 symbol: "exclamationmark.shield",
                 tint: d.flaggedTotal > 0 ? .orange : Brand.accent
             )
             StatTile(
                 value: d.blockEnabled ? PBFormat.count(d.blockedCount) : "—",
-                caption: d.blockEnabled ? "Bloqués par le modèle" : "Blocage ML désactivé",
+                caption: d.blockEnabled ? String(localized: "Bloqués par le modèle") : String(localized: "Blocage ML désactivé"),
                 symbol: "hand.raised",
                 tint: .red
             )
@@ -183,7 +183,7 @@ private struct AnomaliesCard: View {
     let behavior: BehaviorStatus
 
     var body: some View {
-        Card(title: "Anomalies récentes", symbol: "waveform.path.ecg") {
+        Card(title: String(localized: "Anomalies récentes"), symbol: "waveform.path.ecg") {
             if behavior.recentAnomalies.isEmpty {
                 Text(behavior.learning ? "Rien à signaler pendant l'apprentissage." : "Aucune nouveauté au-delà du seuil.")
                     .font(.callout)
@@ -225,7 +225,7 @@ private struct AnomaliesCard: View {
             }
             Spacer(minLength: 0)
             if a.markedNormal {
-                Pill(text: "Normal", color: .green, symbol: "checkmark")
+                Pill(text: String(localized: "Normal"), color: .green, symbol: "checkmark")
             } else {
                 Button("C'est normal") {
                     Task { await store.markNormal(a) }
@@ -246,7 +246,7 @@ private struct FlaggedDomainsCard: View {
     let domains: DomainIntelStatus
 
     var body: some View {
-        Card(title: "Domaines signalés", symbol: "globe.badge.chevron.backward") {
+        Card(title: String(localized: "Domaines signalés"), symbol: "globe.badge.chevron.backward") {
             if domains.topFlagged.isEmpty {
                 Text(domains.dnsActive ? "Aucun domaine suspect consulté." : "Activez le blocage DNS pour analyser les domaines consultés.")
                     .font(.callout)
@@ -281,7 +281,7 @@ private struct FlaggedDomainsCard: View {
                 HStack(spacing: 6) {
                     Pill(text: scoreText(f.score), color: scoreColor(f.score))
                     if f.blocked {
-                        Pill(text: "Bloqué", color: .red, symbol: "hand.raised.fill")
+                        Pill(text: String(localized: "Bloqué"), color: .red, symbol: "hand.raised.fill")
                     }
                     if f.hits > 1 {
                         Text("\(f.hits) requêtes · \(PBFormat.relative(f.lastSeenDate))")
@@ -296,7 +296,7 @@ private struct FlaggedDomainsCard: View {
             }
             Spacer(minLength: 0)
             if f.allowed {
-                Pill(text: "Autorisé", color: .green, symbol: "checkmark")
+                Pill(text: String(localized: "Autorisé"), color: .green, symbol: "checkmark")
             } else {
                 Button("Autoriser") {
                     Task { await store.allow(domain: f.registrable) }
@@ -314,7 +314,7 @@ private struct DomainTestCard: View {
     @ObservedObject var store: IntelligenceStore
 
     var body: some View {
-        Card(title: "Tester un domaine", symbol: "magnifyingglass") {
+        Card(title: String(localized: "Tester un domaine"), symbol: "magnifyingglass") {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     TextField("exemple : paypa1-securite.com", text: $store.testDomain)
@@ -344,19 +344,19 @@ private struct DomainTestCard: View {
             HStack(spacing: 8) {
                 Text(v.domain).font(.callout.monospaced().weight(.medium))
                 if let skipped = v.skipped {
-                    Pill(text: "Non évalué : \(skipped)", color: .secondary)
+                    Pill(text: String(localized: "Non évalué : \(skipped)"), color: .secondary)
                 } else if v.wouldBlock {
-                    Pill(text: "Malveillant", color: .red, symbol: "xmark.octagon.fill")
+                    Pill(text: String(localized: "Malveillant"), color: .red, symbol: "xmark.octagon.fill")
                 } else if v.flagged {
-                    Pill(text: "Suspect", color: .orange, symbol: "exclamationmark.triangle.fill")
+                    Pill(text: String(localized: "Suspect"), color: .orange, symbol: "exclamationmark.triangle.fill")
                 } else {
-                    Pill(text: "Rien d'anormal", color: .green, symbol: "checkmark.seal.fill")
+                    Pill(text: String(localized: "Rien d'anormal"), color: .green, symbol: "checkmark.seal.fill")
                 }
                 if let score = v.score {
                     Text(scoreText(score)).font(.caption).monospacedDigit().foregroundStyle(.secondary)
                 }
                 if v.allowed {
-                    Pill(text: "Autorisé", color: .green)
+                    Pill(text: String(localized: "Autorisé"), color: .green)
                 }
             }
             if v.source == "heuristic" {
@@ -381,7 +381,7 @@ private struct ModelsCard: View {
     let models: [IntelModelInfo]
 
     var body: some View {
-        Card(title: "Modèles", symbol: "cpu") {
+        Card(title: String(localized: "Modèles"), symbol: "cpu") {
             if models.isEmpty {
                 Text("Aucun modèle chargé.")
                     .font(.callout)
@@ -416,7 +416,7 @@ private struct ModelsCard: View {
                 m.version.map { "version \($0)" },
                 m.threshold.map { "seuil \(String(format: "%.2f", $0))" },
                 metric(m, "auc", "AUC", percent: false),
-                metric(m, "tpr_at_threshold", "détection", percent: true),
+                metric(m, "tpr_at_threshold", String(localized: "détection"), percent: true),
                 metric(m, "fpr_at_threshold", "faux positifs", percent: true),
             ].compactMap { $0 }
             if !facts.isEmpty {
@@ -443,12 +443,12 @@ private struct BaselineCard: View {
     @State private var confirmReset = false
 
     var body: some View {
-        Card(title: "Référence comportementale", symbol: "externaldrive.badge.checkmark") {
+        Card(title: String(localized: "Référence comportementale"), symbol: "externaldrive.badge.checkmark") {
             VStack(alignment: .leading, spacing: 8) {
-                InfoRow(label: "Événements observés", value: PBFormat.count(Int(behavior.eventsObserved)))
-                InfoRow(label: "Taille sur le disque", value: PBFormat.bytes(Int(behavior.baselineBytes)))
+                InfoRow(label: String(localized: "Événements observés"), value: PBFormat.count(Int(behavior.eventsObserved)))
+                InfoRow(label: String(localized: "Taille sur le disque"), value: PBFormat.bytes(Int(behavior.baselineBytes)))
                 if let start = behavior.learningStartedAt {
-                    InfoRow(label: "Apprentissage commencé", value: PBFormat.dateTime(unixSeconds: start))
+                    InfoRow(label: String(localized: "Apprentissage commencé"), value: PBFormat.dateTime(unixSeconds: start))
                 }
                 Text("La référence est stockée dans le dossier de Parabellum (lisible par root uniquement), bornée en taille, et n'est jamais envoyée hors de ce Mac.")
                     .font(.caption)

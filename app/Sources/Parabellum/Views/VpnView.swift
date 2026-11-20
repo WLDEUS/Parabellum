@@ -51,7 +51,7 @@ private struct VpnStatusCard: View {
     let status: VpnStatus
 
     var body: some View {
-        Card(title: "Tunnel", symbol: "lock.shield") {
+        Card(title: String(localized: "Tunnel"), symbol: "lock.shield") {
             VStack(alignment: .leading, spacing: 10) {
                 header
                 details
@@ -85,9 +85,9 @@ private struct VpnStatusCard: View {
                     .font(.title2.weight(.semibold))
                 HStack(spacing: 6) {
                     Pill(text: status.mode.label, color: .secondary)
-                    Pill(text: "Kill switch : \(status.killSwitch.label)", color: status.killSwitch.color)
+                    Pill(text: String(localized: "Kill switch : \(status.killSwitch.label)"), color: status.killSwitch.color)
                     if let manual = status.manualOverride {
-                        Pill(text: manual ? "Connecté à la main" : "Coupé à la main", color: .blue)
+                        Pill(text: manual ? String(localized: "Connecté à la main") : String(localized: "Coupé à la main"), color: .blue)
                     }
                 }
             }
@@ -96,15 +96,15 @@ private struct VpnStatusCard: View {
 
     private var details: some View {
         VStack(alignment: .leading, spacing: 6) {
-            InfoRow(label: "Moteur", value: status.backend.label)
+            InfoRow(label: String(localized: "Moteur"), value: status.backend.label)
             if let since = status.connectedSinceDate {
-                InfoRow(label: "Connecté depuis", value: PBFormat.relative(since))
+                InfoRow(label: String(localized: "Connecté depuis"), value: PBFormat.relative(since))
             }
             if let interface = status.interface {
-                InfoRow(label: "Interface", value: interface, monospaced: true)
+                InfoRow(label: String(localized: "Interface"), value: interface, monospaced: true)
             }
             if let network = status.network {
-                InfoRow(label: "Réseau actuel", value: network.trusted ? "\(network.name) (de confiance)" : "\(network.name) (non fiable)")
+                InfoRow(label: String(localized: "Réseau actuel"), value: network.trusted ? "\(network.name) (de confiance)" : String(localized: "\(network.name) (non fiable)"))
             }
             if status.backend == .singBox && !status.engineInstalled {
                 Label("sing-box sera téléchargé (version épinglée et vérifiée) à la première connexion.", systemImage: "arrow.down.circle")
@@ -171,16 +171,16 @@ private struct VpnProfileCard: View {
     @State private var confirmRemove = false
 
     var body: some View {
-        Card(title: "Serveur (sing-box)", symbol: "server.rack") {
+        Card(title: String(localized: "Serveur (sing-box)"), symbol: "server.rack") {
             VStack(alignment: .leading, spacing: 8) {
                 if let profile = status.profile {
-                    InfoRow(label: "Nom", value: profile.name)
-                    InfoRow(label: "Protocole", value: profile.protocolName)
-                    InfoRow(label: "Serveur", value: "\(profile.server):\(profile.port)", monospaced: true)
+                    InfoRow(label: String(localized: "Nom"), value: profile.name)
+                    InfoRow(label: String(localized: "Protocole"), value: profile.protocolName)
+                    InfoRow(label: String(localized: "Serveur"), value: "\(profile.server):\(profile.port)", monospaced: true)
                     if let transport = profile.transport {
-                        InfoRow(label: "Transport", value: transport)
+                        InfoRow(label: String(localized: "Transport"), value: transport)
                     }
-                    InfoRow(label: "Importé", value: PBFormat.dateTime(profile.importedDate))
+                    InfoRow(label: String(localized: "Importé"), value: PBFormat.dateTime(profile.importedDate))
                 } else {
                     Text("Aucun serveur importé. Colle le lien de partage de ton nœud (celui que tu utilises dans Shadowrocket fonctionne : ss://, vless://, vmess://, trojan://, hysteria2://, tuic://, wireguard://), un abonnement, ou importe un fichier WireGuard .conf.")
                         .foregroundStyle(.secondary)
@@ -226,10 +226,10 @@ private struct VpnExternalCard: View {
     let status: VpnStatus
 
     var body: some View {
-        Card(title: "VPN macOS piloté", symbol: "switch.2") {
+        Card(title: String(localized: "VPN macOS piloté"), symbol: "switch.2") {
             VStack(alignment: .leading, spacing: 8) {
                 if let service = status.externalService {
-                    InfoRow(label: "Service", value: service)
+                    InfoRow(label: String(localized: "Service"), value: service)
                 } else {
                     Text("Aucun service choisi. Dans Réglages › VPN, choisis le VPN déjà configuré dans macOS (Shadowrocket, WireGuard…).")
                         .foregroundStyle(.secondary)
@@ -267,7 +267,7 @@ private struct LeakTestCard: View {
     let result: LeakTestResult?
 
     var body: some View {
-        Card(title: "Dernier test de fuite", symbol: "drop.triangle") {
+        Card(title: String(localized: "Dernier test de fuite"), symbol: "drop.triangle") {
             if let result {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
@@ -293,16 +293,16 @@ private struct LeakTestCard: View {
                         }
                     }
                     if let ip = result.publicIpv4 {
-                        InfoRow(label: "IPv4 publique", value: ip, monospaced: true)
+                        InfoRow(label: String(localized: "IPv4 publique"), value: ip, monospaced: true)
                     }
                     if let ip = result.publicIpv6 {
-                        InfoRow(label: "IPv6 publique", value: ip, monospaced: true)
+                        InfoRow(label: String(localized: "IPv6 publique"), value: ip, monospaced: true)
                     }
                     if let home = result.homeIpv4 {
-                        InfoRow(label: "IPv4 sans VPN", value: home, monospaced: true)
+                        InfoRow(label: String(localized: "IPv4 sans VPN"), value: home, monospaced: true)
                     }
                     if !result.dnsServers.isEmpty {
-                        InfoRow(label: "Serveurs DNS", value: result.dnsServers.joined(separator: ", "), monospaced: true)
+                        InfoRow(label: String(localized: "Serveurs DNS"), value: result.dnsServers.joined(separator: ", "), monospaced: true)
                     }
                 }
             } else {
@@ -318,7 +318,7 @@ private struct NetworksCard: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        Card(title: "Réseaux connus", symbol: "wifi") {
+        Card(title: String(localized: "Réseaux connus"), symbol: "wifi") {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Un réseau est reconnu par l'adresse matérielle de sa box (pas besoin de la localisation). En mode « réseaux non fiables », le VPN s'active partout sauf sur les réseaux de confiance. Parabellum signale aussi une usurpation de la box (ARP spoofing) ou un faux point d'accès.")
                     .font(.caption)
@@ -352,7 +352,7 @@ private struct NetworkRow: View {
                 HStack(spacing: 6) {
                     Text(network.name).fontWeight(network.current ? .semibold : .regular)
                     if network.current {
-                        Pill(text: "Actuel", color: .accentColor)
+                        Pill(text: String(localized: "Actuel"), color: .accentColor)
                     }
                     if let security = network.security {
                         Text(security).font(.caption).foregroundStyle(.secondary)

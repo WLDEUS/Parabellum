@@ -213,6 +213,37 @@ jobs:
         if: always()
         run: scripts/ci-codesign.sh cleanup
 
+  l10n:
+    name: App languages (FR/EN)
+    # The Swift compiler lists every localizable text of the app (French source); each one needs its English
+    # translation (app/Localization/en.lproj), and no French text may be shown without going through it.
+    runs-on: macos-15
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Cache SwiftPM
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: app/.build
+          key: spm-l10n-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('app/Package.swift', 'app/Package.resolved') }}
+          restore-keys: spm-l10n-${{ runner.os }}-${{ runner.arch }}-
+      - name: Extract the localizable strings (compiler)
+        working-directory: app
+        run: |
+          mkdir -p ../ci-logs "$RUNNER_TEMP/stringsdata"
+          swift build \
+            -Xswiftc -emit-localized-strings \
+            -Xswiftc -emit-localized-strings-path -Xswiftc "$RUNNER_TEMP/stringsdata" 2>&1 | tee ../ci-logs/l10n-build.log
+      - name: Every French text has its English translation
+        run: python3 scripts/check_localization.py --stringsdata "$RUNNER_TEMP/stringsdata" 2>&1 | tee ci-logs/l10n.log
+      - name: Annotate errors
+        if: failure()
+        run: python3 -c "$ANNOTATE_PY"
+
   ci-logs:
     name: Push macOS failure logs
     needs: macos
