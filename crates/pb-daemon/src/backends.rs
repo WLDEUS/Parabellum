@@ -57,6 +57,8 @@ pub struct ScanOpts {
     pub recursive: bool,
     /// Volume scans: only executables, scripts, installers, archives, documents with macros…
     pub only_risky_types: bool,
+    /// Pattern rules on inert text as well (file just handed to an interpreter).
+    pub inert_text: bool,
 }
 
 impl ScanOpts {
@@ -67,6 +69,7 @@ impl ScanOpts {
             use_clamav: cfg.scan.clamav_realtime,
             recursive: false,
             only_risky_types: false,
+            inert_text: false,
         }
     }
 }
@@ -128,6 +131,11 @@ pub trait ScanEngine: Send + Sync + 'static {
     /// Hashes the user allowed (restored with "allow", reported false positives): they win over every engine.
     fn set_local_allowlist(&self, sha256_hex: &[String]) {
         let _ = sha256_hex;
+    }
+
+    /// Persistent content-addressed verdicts (clean results reused across restarts and copies).
+    fn set_verdict_store(&self, store: crate::store::Store) {
+        let _ = store;
     }
 }
 

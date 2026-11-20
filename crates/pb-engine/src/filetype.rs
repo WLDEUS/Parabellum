@@ -214,6 +214,12 @@ pub fn detect(head: &[u8], tail: Option<&[u8]>, path: &Path) -> FileKind {
     FileKind::Other
 }
 
+/// Inert text: typed [`FileKind::Other`] (no shebang, no script extension, no magic) with an
+/// inert extension ([`pb_core::inert`]), outside any app-like bundle.
+pub fn is_inert_text(kind: FileKind, path: &Path) -> bool {
+    kind == FileKind::Other && !in_bundle(path) && pb_core::inert::has_inert_extension(path)
+}
+
 /// Is `path` inside (or equal to) an app-like bundle directory (`.app`, `.framework`, …)?
 pub fn in_bundle(path: &Path) -> bool {
     path.components().any(|c| {
@@ -284,6 +290,32 @@ mod tests {
 
     fn p(s: &str) -> &Path {
         Path::new(s)
+    }
+
+    #[test]
+    fn inert_text() {
+        let k = |b: &[u8], n| (detect(b, None, p(n)), p(n));
+        for n in [
+            "rules/x.yar",
+            "src/lib.rs",
+            "sig.json",
+            "README.md",
+            "a.zip!/doc/notes.toml",
+        ] {
+            let (kind, path) = k(b"display dialog", n);
+            assert!(is_inert_text(kind, path), "{n}");
+        }
+        // Shebang or script extension wins; plain .txt and bundles stay scanned.
+        for (b, n) in [
+            (&b"#!/bin/sh\n"[..], "x.json"),
+            (b"x", "run.sh"),
+            (b"x", "payload.txt"),
+            (b"x", "x"),
+            (b"x", "Evil.app/Contents/Resources/x.json"),
+        ] {
+            let (kind, path) = k(b, n);
+            assert!(!is_inert_text(kind, path), "{n}");
+        }
     }
 
     #[test]

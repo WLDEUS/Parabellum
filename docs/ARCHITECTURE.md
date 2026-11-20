@@ -100,6 +100,29 @@
 - **Garde comportementale** : événements `eslogger` (exec, open, create, rename) filtrés par chemins sensibles et
   programmes approuvés (binaires Apple, Team ID de la base ou des réglages). Arrêt sur détection sûre ; rançongiciel
   suspendu (SIGSTOP) jusqu'à la décision de l'utilisateur.
+- **Texte inerte : règles à l'exécution, pas au repos** : YARA et les heuristiques décrivent ce que fait un malware,
+  donc au repos elles se déclenchent sur tout texte qui en parle (nos règles, nos tests, un rapport de sécurité). Les
+  fichiers que rien n'exécute seuls (`.rs`, `.swift`, `.yar`, `.json`, `.toml`, `.yaml`, `.md`… sans shebang, hors
+  bundle, liste dans `pb-core/src/inert.rs`) ne passent plus les règles au repos ; base de hash et ClamAV s'appliquent
+  toujours, et les `.txt` restent analysés. Le seul moyen de les exécuter est de les passer à un interpréteur : quand
+  `sh`, `osascript`, `python`… reçoivent un tel fichier en position de script, `eslogger` transmet l'événement (même
+  lancé par launchd) et le daemon l'analyse entièrement, tue le processus et met le fichier en quarantaine sur une
+  détection sûre. Limite : `sh -c "$(cat x.json)"` ou un chemin relatif ne sont pas couverts par ce mécanisme.
+- **Nos propres fichiers reconnus par leur contenu, jamais par leur emplacement** : `make pkg` écrit
+  `manifest.json` (SHA-256 de chaque fichier installé, `scripts/build-manifest.sh`). Ces empreintes rejoignent
+  l'allowlist du moteur, et la garde ignore ce que font nos binaires vérifiés : un octet changé et le fichier redevient
+  un étranger. Le dossier racine reste hors temps réel (journaux, base, quarantaine), mais `bin/`, `signatures/` et
+  l'app sont comparés au manifeste toutes les 6 h : fichier modifié, manquant ou inconnu → alerte. Le manifeste n'est
+  pas signé à part (la clé release reste hors du job de build) : il hérite de l'authenticité du pkg, et le daemon le
+  scelle (version + empreinte) : un manifeste réécrit sans changement de version déclenche une alerte critique.
+- **Verdicts persistants par contenu** : un verdict propre et autonome (aucune détection, aucune erreur, aucune
+  dépendance à la signature de code, ClamAV a répondu s'il était demandé) est gardé dans `verdict_cache`, sous une
+  clé hash du contenu + typage du fichier + empreinte du moteur (version, base, règles, motifs, modèles, signataires,
+  ClamAV) + options. Il survit aux redémarrages et sert pour toutes les copies du même contenu ; une nouvelle base ou
+  de nouvelles règles changent l'empreinte, donc tout est réanalysé. Les détections ne sont jamais mises en cache.
+- **Aucune signature dans nos binaires** : `scripts/check-no-embedded-signatures.sh` vérifie aussi `parabellumd` et
+  `parabellum` (module yara-x `cuckoo` exclu du build), et un test fait passer le dépôt entier sous nos propres règles :
+  la moindre détection fait échouer la CI.
 - **RGPD sans tiers** : le daemon compose les courriers (FR/EN) et suit les délais ; en mode brouillons, l'app écrit les
   `.eml` dans Téléchargements et Mail les envoie ; en mode SMTP, le daemon envoie avec un quota quotidien.
 - **Agent courrier RGPD (modèle local)** : boîte dédiée lue en IMAP (TLS, `EXAMINE` + `BODY.PEEK` : rien n'est

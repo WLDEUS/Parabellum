@@ -777,6 +777,7 @@ async fn scan(
             use_clamav: use_clamav.unwrap_or(cfg.scan.clamav_on_demand),
             recursive,
             only_risky_types: false,
+            inert_text: false,
         },
     };
     json(&JobStarted {

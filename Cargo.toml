@@ -50,7 +50,13 @@ md-5 = "0.10"
 hex = "0.4"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
-yara-x = "1.22"
+# Default modules minus `cuckoo` (Cuckoo sandbox reports: never used on macOS, and its docstrings put a stealer
+# family name in our binaries). pipeline/yara_rules.py rejects rule files that import it.
+yara-x = { version = "1.22", default-features = false, features = [
+    "constant-folding", "exact-atoms", "fast-regexp", "generate-proto-code",
+    "console-module", "crx-module", "dex-module", "dotnet-module", "elf-module", "lnk-module", "macho-module",
+    "math-module", "hash-module", "pe-module", "string-module", "time-module", "vt-module", "zip-module",
+] }
 goblin = { version = "0.10", default-features = false, features = ["std", "mach64", "mach32", "archive"] }
 rusqlite = { version = "0.41", features = ["bundled"] }
 notify = "8"

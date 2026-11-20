@@ -184,8 +184,13 @@ pub async fn run_dispatcher(ctx: Arc<Ctx>, mut rx: mpsc::Receiver<MonitorEvent>)
                         crate::guard::on_exec(&ctx, &target, &args, parent.as_ref());
                         crate::intel::on_exec(&ctx, &target, parent.as_ref());
                     }
-                    if cfg.realtime.enabled && cfg.realtime.scan_on_exec && !target.is_platform_binary {
-                        spawn_exec_scan(&ctx, &shared, target);
+                    if cfg.realtime.enabled && cfg.realtime.scan_on_exec {
+                        if let Some(script) = pb_core::inert::disguised_script(&target.path, &args) {
+                            spawn_script_scan(&ctx, &shared, target.clone(), PathBuf::from(script));
+                        }
+                        if !target.is_platform_binary {
+                            spawn_exec_scan(&ctx, &shared, target);
+                        }
                     }
                 }
                 Some(MonitorEvent::Persistence { item, change }) => {
@@ -361,6 +366,7 @@ async fn flush_batch(ctx: &Arc<Ctx>, shared: &Arc<RealtimeShared>) {
             use_clamav: true,
             recursive: false,
             only_risky_types: false,
+            inert_text: false,
         },
     };
     if let Err(e) = jobs::submit(ctx, spec).await {
@@ -378,6 +384,96 @@ fn spawn_exec_scan(ctx: &Arc<Ctx>, shared: &Arc<RealtimeShared>, target: EsProce
         scan_exec(&ctx, &shared, target).await;
         shared.pending.fetch_sub(1, Ordering::SeqCst);
     });
+}
+
+fn spawn_script_scan(
+    ctx: &Arc<Ctx>,
+    shared: &Arc<RealtimeShared>,
+    interpreter: EsProcessInfo,
+    script: PathBuf,
+) {
+    if shared.pending.fetch_add(1, Ordering::SeqCst) >= MAX_PENDING_SCANS {
+        shared.pending.fetch_sub(1, Ordering::SeqCst);
+        return;
+    }
+    let (ctx, shared) = (ctx.clone(), shared.clone());
+    tokio::spawn(async move {
+        scan_script_exec(&ctx, &shared, interpreter, script).await;
+        shared.pending.fetch_sub(1, Ordering::SeqCst);
+    });
+}
+
+/// An inert-looking file (`.json`, `.md`, `.yar`…) handed to an interpreter: full scan, pattern rules
+/// included, and the interpreter process is killed on a signature hit (it is running that file).
+pub async fn scan_script_exec(
+    ctx: &Arc<Ctx>,
+    shared: &Arc<RealtimeShared>,
+    interpreter: EsProcessInfo,
+    script: PathBuf,
+) {
+    let cfg = ctx.config();
+    if !script.is_absolute() || ctx.is_excluded(&script, &cfg) {
+        return;
+    }
+    let Ok(md) = tokio::fs::metadata(&script).await else {
+        return;
+    };
+    if !md.is_file() || md.len() == 0 {
+        return;
+    }
+    let key = format!(
+        "script:{}:{}:{}",
+        script.display(),
+        md.len(),
+        mtime_secs(&md)
+    );
+    let generation = ctx.engine_generation();
+    if shared.exec_cached(&key, generation) == Some(Verdict::Clean) {
+        return;
+    }
+    let report = {
+        let Ok(_permit) = ctx.realtime_slots.clone().acquire_owned().await else {
+            return;
+        };
+        let engine = ctx.engine();
+        let (p, c) = (script.clone(), cfg.clone());
+        let mut opts = ScanOpts::realtime(&cfg);
+        opts.inert_text = true;
+        match tokio::task::spawn_blocking(move || {
+            let _qos = QosGuard::enter(ScanPriority::Utility, c.energy.background_qos);
+            engine.scan_file(&p, &c, &opts)
+        })
+        .await
+        {
+            Ok(r) => r,
+            Err(_) => return,
+        }
+    };
+    let mut killed = false;
+    let signature_hit = report.verdict == Verdict::Malicious
+        && actions::signature_grade(ctx.engine().as_ref(), &report);
+    if signature_hit && cfg.realtime.kill_malicious_processes && !ctx.is_paused(pb_core::now_ts()) {
+        match crate::system::kill_if_path(interpreter.pid, Path::new(&interpreter.path)) {
+            Ok(k) => killed = k,
+            Err(e) => tracing::warn!(pid = interpreter.pid, error = %e, "cannot kill interpreter"),
+        }
+        if killed {
+            tracing::warn!(pid = interpreter.pid, script = %script.display(), "interpreter running a malicious file killed");
+        }
+    }
+    let rc = ReportContext {
+        origin: ScanOrigin::Realtime,
+        job_id: None,
+        exec: Some(ExecInfo {
+            pid: interpreter.pid,
+            killed,
+        }),
+    };
+    let verdict = actions::process_report(ctx, report.clone(), &rc, &script).await;
+    if report.sha256.is_some() {
+        shared.exec_remember(key, verdict, generation);
+    }
+    record_history(ctx, &report, &md, verdict).await;
 }
 
 /// Cache key of an executed image: cdhash when ES gives it, else path + size + mtime.

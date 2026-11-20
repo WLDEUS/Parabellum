@@ -653,12 +653,18 @@ fn local_hour() -> u8 {
 }
 
 fn wants_behavior(ctx: &Ctx, path: &str) -> bool {
-    ctx.config().intelligence.behavior_anomaly && !Path::new(path).starts_with(&ctx.paths.root)
+    ctx.config().intelligence.behavior_anomaly
+        && !Path::new(path).starts_with(&ctx.paths.root)
+        && !ctx.own.is_own_image(Path::new(path))
 }
 
 /// eslogger `exec` (called by the real-time dispatcher; never blocks).
 pub fn on_exec(ctx: &Arc<Ctx>, target: &EsProcessInfo, parent: Option<&EsProcessInfo>) {
     if !wants_behavior(ctx, &target.path) {
+        return;
+    }
+    // What our own verified binaries start is not user behaviour to learn or flag.
+    if parent.is_some_and(|p| ctx.own.is_own_image(Path::new(&p.path))) {
         return;
     }
     if let Some(tx) = ctx.intel.behavior_tx.get() {

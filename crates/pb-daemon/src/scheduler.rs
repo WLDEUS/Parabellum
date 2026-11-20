@@ -186,6 +186,7 @@ pub async fn reload_engine(ctx: &Arc<Ctx>) -> bool {
     let (paths, cfg) = (ctx.paths.clone(), ctx.config());
     match tokio::task::spawn_blocking(move || loader.load(&paths, &cfg)).await {
         Ok(Ok(engine)) => {
+            engine.set_verdict_store(ctx.store.clone());
             ctx.swap_engine(engine);
             ctx.state().engine_error = None;
             actions::sync_allowlist(ctx).await;
@@ -483,6 +484,7 @@ pub async fn start_retro_hunt(ctx: &Arc<Ctx>, days: u32) -> Result<String, IpcEr
             use_clamav: cfg.scan.clamav_on_demand,
             recursive: false,
             only_risky_types: true,
+            inert_text: false,
         },
     };
     jobs::submit(ctx, spec).await
@@ -531,6 +533,7 @@ pub async fn hash_retro_check(ctx: &Arc<Ctx>, days: u32) {
             use_clamav: false,
             recursive: false,
             only_risky_types: false,
+            inert_text: false,
         };
         let p2 = p.clone();
         if let Ok(report) =

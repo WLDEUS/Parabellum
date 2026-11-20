@@ -760,3 +760,236 @@ fn realtime_latency_10mb() {
         assert!(ms < 200, "{ms} ms");
     }
 }
+
+#[test]
+fn pattern_rules_skip_inert_text_but_not_scripts() {
+    let f = fixture();
+    install_bundle(&f.paths, &[], &[], |_| {});
+    let e = Engine::load(&f.paths, &Config::default()).unwrap();
+    // A rule source / test file *describing* a phishing dialog is not one.
+    let text =
+        b"display dialog \"x\" with hidden answer\ndo shell script \"dscl . -authonly u p\"\n";
+    for name in ["rule.yar", "tests.rs", "patterns.json"] {
+        std::fs::write(f.data.join(name), text).unwrap();
+        let r = e.scan_file(&f.data.join(name), &opts());
+        assert_eq!(r.verdict, Verdict::Clean, "{name}: {r:?}");
+    }
+    // Same bytes as something macOS runs: still detected.
+    for name in ["x.applescript", "notes.txt"] {
+        std::fs::write(f.data.join(name), text).unwrap();
+        let r = e.scan_file(&f.data.join(name), &opts());
+        assert!(
+            r.detections
+                .iter()
+                .any(|d| d.name == "Heuristic.MacOS.PasswordPhishingDialog"),
+            "{name}: {r:?}"
+        );
+    }
+    let mut shebang = b"#!/usr/bin/osascript\n".to_vec();
+    shebang.extend_from_slice(text);
+    std::fs::write(f.data.join("disguised.json"), &shebang).unwrap();
+    let r = e.scan_file(&f.data.join("disguised.json"), &opts());
+    assert_eq!(r.kind, FileKind::Script);
+    assert!(!r.detections.is_empty(), "{r:?}");
+    // Handed to an interpreter: full scan, and the at-rest cache entry is not reused.
+    let mut o = opts();
+    o.scan_inert_text = true;
+    let r = e.scan_file(&f.data.join("rule.yar"), &o);
+    assert!(!r.detections.is_empty(), "{r:?}");
+    // Hash DB still applies to inert text.
+    let f2 = fixture();
+    install_bundle(&f2.paths, &[text], &[], |_| {});
+    let e2 = Engine::load(&f2.paths, &Config::default()).unwrap();
+    std::fs::write(f2.data.join("known.json"), text).unwrap();
+    assert_eq!(
+        e2.scan_file(&f2.data.join("known.json"), &opts()).verdict,
+        Verdict::Malicious
+    );
+}
+
+/// The repository must not trip its own rules (built-in + `rules/`): a hit here is a false positive the user
+/// would get on their own checkout. Build outputs and VCS data are skipped (`target/` holds test binaries
+/// that embed the rules on purpose).
+#[test]
+fn repository_is_clean_under_its_own_rules() {
+    const SKIP_DIRS: &[&str] = &[
+        "target",
+        ".git",
+        ".build",
+        "dist",
+        ".dev-root",
+        "node_modules",
+        "DerivedData",
+        "__pycache__",
+        ".venv",
+        ".pytest_cache",
+        ".ruff_cache",
+    ];
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let f = fixture();
+    install_bundle(&f.paths, &[], &[], |b| {
+        let yara = b.join("yara");
+        std::fs::remove_file(yara.join("test.yar")).unwrap();
+        std::fs::remove_file(yara.join("broken.yar")).unwrap();
+        for e in std::fs::read_dir(repo.join("rules")).unwrap() {
+            let p = e.unwrap().path();
+            std::fs::copy(&p, yara.join(p.file_name().unwrap())).unwrap();
+        }
+    });
+    let e = Engine::load(&f.paths, &Config::default()).unwrap();
+    assert!(e.stats().yara_rules > 10, "repository rules loaded");
+
+    let mut files = Vec::new();
+    let mut stack = vec![repo.clone()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let entry = entry.unwrap();
+            let ty = entry.file_type().unwrap();
+            let name = entry.file_name();
+            if ty.is_dir() {
+                if !SKIP_DIRS.iter().any(|s| name == *s) {
+                    stack.push(entry.path());
+                }
+            } else if ty.is_file() {
+                files.push(entry.path());
+            }
+        }
+    }
+    assert!(
+        files.len() > 200,
+        "walked the repository ({} files)",
+        files.len()
+    );
+
+    let mut o = opts();
+    o.use_ml = false;
+    let cancel = AtomicBool::new(false);
+    let mut flagged = Vec::new();
+    e.scan_paths(&files, &o, &cancel, &mut |r| {
+        if r.verdict != Verdict::Clean {
+            let names: Vec<&str> = r.detections.iter().map(|d| d.name.as_str()).collect();
+            flagged.push(format!(
+                "{} ({:?}: {})",
+                r.path,
+                r.verdict,
+                names.join(", ")
+            ));
+        }
+    });
+    assert!(
+        flagged.is_empty(),
+        "repository files flagged by our own rules:\n  {}",
+        flagged.join("\n  ")
+    );
+}
+
+#[derive(Default)]
+struct MemVerdicts(Mutex<std::collections::HashMap<String, ScanReport>>);
+
+impl VerdictStore for MemVerdicts {
+    fn get(&self, key: &str) -> Option<ScanReport> {
+        self.0.lock().unwrap().get(key).cloned()
+    }
+    fn put(&self, key: &str, report: &ScanReport) {
+        self.0
+            .lock()
+            .unwrap()
+            .insert(key.to_string(), report.clone());
+    }
+}
+
+#[test]
+fn persistent_verdicts_survive_restarts_but_not_rule_changes() {
+    let f = fixture();
+    install_bundle(&f.paths, &[], &[], |_| {});
+    let store = Arc::new(MemVerdicts::default());
+    let fresh = || {
+        let e = Engine::load(&f.paths, &Config::default()).unwrap();
+        e.set_verdict_store(store.clone());
+        e
+    };
+    let clean = f.data.join("notes.sh");
+    std::fs::write(&clean, b"#!/bin/sh\necho hello\n").unwrap();
+    let bad = f.data.join("bad.sh");
+    std::fs::write(&bad, b"#!/bin/sh\n# PARABELLUM-TEST-MARKER\n").unwrap();
+
+    let e1 = fresh();
+    let r = e1.scan_file(&clean, &opts());
+    assert!(r.verdict == Verdict::Clean && !r.cached);
+    assert_eq!(e1.scan_file(&bad, &opts()).verdict, Verdict::Malicious);
+    assert_eq!(
+        store.0.lock().unwrap().len(),
+        1,
+        "only the clean verdict is stored"
+    );
+
+    // "Restart": new engine, same DB → served from the store, path restored.
+    let e2 = fresh();
+    let r = e2.scan_file(&clean, &opts());
+    assert!(r.cached && r.verdict == Verdict::Clean, "{r:?}");
+    assert_eq!(r.path, clean.to_string_lossy());
+    // Same bytes elsewhere (dedupe by content) → hit too.
+    let copy = f.data.join("copy.sh");
+    std::fs::copy(&clean, &copy).unwrap();
+    assert!(e2.scan_file(&copy, &opts()).cached);
+    // Same bytes, typed differently (inert text) → not the same entry.
+    let as_json = f.data.join("notes.json");
+    std::fs::write(&as_json, b"echo hello\n").unwrap();
+    assert!(!e2.scan_file(&as_json, &opts()).cached);
+    // Other options → miss.
+    let mut o = opts();
+    o.scan_inert_text = true;
+    assert!(!e2.scan_file(&copy, &o).cached);
+    // Malware never comes from the store.
+    assert_eq!(e2.scan_file(&bad, &opts()).verdict, Verdict::Malicious);
+
+    // New rules → new fingerprint → full scan again.
+    let fp = e2.content_fingerprint().to_string();
+    let sig = f.paths.signatures_dir().join("builtin.yar");
+    let mut rules = std::fs::read(&sig).unwrap();
+    rules.extend_from_slice(b"\nrule Extra { strings: $a = \"zzz-extra\" condition: $a }\n");
+    std::fs::write(&sig, rules).unwrap();
+    let e3 = fresh();
+    assert_ne!(e3.content_fingerprint(), fp);
+    assert!(!e3.scan_file(&clean, &opts()).cached);
+}
+
+/// A clean verdict reached without ClamAV (name clamscan cannot take) must not be reused for a copy
+/// that ClamAV would have scanned.
+#[test]
+fn persistent_verdicts_require_the_clamav_answer() {
+    let f = fixture();
+    let mut e = Engine::load(&f.paths, &Config::default()).unwrap();
+    let bin = f.data.join("fake-clamscan");
+    std::fs::write(
+        &bin,
+        "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'ClamAV 1.4.1/1/test'; exit 0; fi\nexit 0\n",
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+    e.clamav = clamav::ClamAv::locate_in(std::iter::once(bin), &f.paths.clamav_db_dir(), None);
+    e.content_fp = e.compute_content_fingerprint(None, &f.paths.signatures_dir());
+    let store = Arc::new(MemVerdicts::default());
+    e.set_verdict_store(store.clone());
+    let mut o = opts();
+    o.use_clamav = true;
+
+    let odd = f.data.join("line\nbreak.bin");
+    std::fs::write(&odd, b"same bytes").unwrap();
+    assert_eq!(e.scan_file(&odd, &o).verdict, Verdict::Clean);
+    assert!(
+        store.0.lock().unwrap().is_empty(),
+        "ClamAV skipped: not persisted"
+    );
+
+    let normal = f.data.join("normal.bin");
+    std::fs::write(&normal, b"same bytes").unwrap();
+    let r = e.scan_file(&normal, &o);
+    assert!(r.verdict == Verdict::Clean && !r.cached);
+    assert_eq!(
+        store.0.lock().unwrap().len(),
+        1,
+        "ClamAV answered: persisted"
+    );
+}

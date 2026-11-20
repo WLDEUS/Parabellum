@@ -4,7 +4,8 @@
 # XProtect flags Parabellum's own (benign) binaries when they embed info-stealer / YARA signature
 # strings as contiguous literals. The engine code must stay clean; the signatures ship as data files
 # in signatures/ and are loaded at runtime. This script builds the release rlibs of pb-ml, pb-engine
-# and pb-monitor plus the pb-features release binary and fails if any forbidden token appears in them.
+# and pb-monitor plus the shipped release binaries (parabellumd, parabellum, pb-features) and fails if
+# any forbidden token appears in them.
 #
 # String literals are target-independent, so a Linux build + strings/grep check is valid for the Mac.
 # The data files under signatures/ and test binaries legitimately contain these tokens and are NOT
@@ -18,7 +19,7 @@ cd "$repo_root"
 
 [[ "${1:-}" == "--skip-build" ]] || true  # accepted for compatibility; paths now come from cargo
 
-echo "building release artifacts (pb-ml, pb-engine, pb-monitor libs + pb-features bin)…"
+echo "building release artifacts (pb-ml, pb-engine, pb-monitor libs + parabellumd, parabellum, pb-features)…"
 # Ask cargo exactly which files it produced instead of guessing hashed rlib paths under deps/ (a
 # restored build cache can report crates as "fresh" and leave the rlib where a glob won't find it).
 # compiler-artifact messages carry the real filenames even for fresh units.
@@ -27,12 +28,14 @@ trap 'rm -f "$build_json"' EXIT
 cargo build --release --message-format=json \
     -p pb-ml -p pb-engine -p pb-monitor --lib >"$build_json"
 cargo build --release --message-format=json -p pb-ml --bin pb-features >>"$build_json"
+cargo build --release --message-format=json -p pb-daemon --bin parabellumd -p pb-cli --bin parabellum >>"$build_json"
 
 # Parse the rlibs of pb-ml/pb-engine/pb-monitor and the pb-features binary out of the cargo output.
 mapfile -t artifacts < <(python3 - "$build_json" <<'PY'
 import json, os, sys
 want = {"pb_ml", "pb_engine", "pb_monitor"}  # cargo target names use underscores
-libs, feat = {}, None
+bin_names = {"pb-features", "parabellumd", "parabellum"}
+libs, bins = {}, {}
 for line in open(sys.argv[1], encoding="utf-8"):
     line = line.strip()
     if not line.startswith("{"):
@@ -47,29 +50,31 @@ for line in open(sys.argv[1], encoding="utf-8"):
     for f in m.get("filenames") or []:
         if f.endswith(".rlib") and name in want:
             libs[name] = f
-        elif name == "pb-features" and not f.endswith(".rlib") and os.path.exists(f):
-            feat = f
+        elif name in bin_names and m.get("executable") == f and os.path.exists(f):
+            bins[name] = f
 missing = want - set(libs)
 if missing:
     sys.stderr.write("ERROR: cargo reported no rlib for: %s\n" % ", ".join(sorted(missing)))
     sys.exit(2)
-if not feat:
-    sys.stderr.write("ERROR: cargo reported no pb-features binary\n")
+missing_bins = bin_names - set(bins)
+if missing_bins:
+    sys.stderr.write("ERROR: cargo reported no binary for: %s\n" % ", ".join(sorted(missing_bins)))
     sys.exit(2)
-print("\n".join(list(libs.values()) + [feat]))
+print("\n".join(list(libs.values()) + list(bins.values())))
 PY
 )
 
 # Dense signature clusters that must never be compiled into a Parabellum binary.
+# Multi-word tokens are split ("display"" dialog") so this script does not match the rules it guards.
 tokens=(
     "find-generic-password"
     "find-internet-password"
     "dump-keychain"
     "unlock-keychain"
-    "display dialog"
-    "display alert"
-    "hidden answer"
-    "default answer"
+    "display"" dialog"
+    "display"" alert"
+    "hidden"" answer"
+    "default"" answer"
     "login.keychain"
     "keychain-db"
     "-authonly"
@@ -124,4 +129,4 @@ if ((fail)); then
     exit 1
 fi
 
-echo "OK: no embedded malware signatures in the release rlibs/bin."
+echo "OK: no embedded malware signatures in the release rlibs/binaries."

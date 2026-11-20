@@ -136,6 +136,10 @@ impl Paths {
     pub fn signatures_dir(&self) -> PathBuf {
         self.root.join("signatures")
     }
+    /// Hashes of every file the installer laid down (`scripts/build-manifest.sh`), see [`crate::own`].
+    pub fn manifest_file(&self) -> PathBuf {
+        self.root.join(crate::own::MANIFEST_FILE)
+    }
     pub fn tmp_dir(&self) -> PathBuf {
         self.root.join("tmp")
     }

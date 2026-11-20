@@ -4,7 +4,7 @@
 use pb_cli::client::Client;
 use pb_cli::{run, Cli, Output};
 use pb_core::config::Config;
-use pb_core::events::{FileEventSource, MonitorEvent};
+use pb_core::events::{EsProcessInfo, FileEventSource, MonitorEvent};
 use pb_core::ipc::*;
 use pb_core::model::*;
 use pb_core::paths::Paths;
@@ -709,4 +709,76 @@ async fn admin_commands_need_approval() {
     let got: Config = cli_json(&sock, &["config", "get"]).await;
     assert_eq!(got.privacy.virustotal_api_key.as_deref(), Some("********"));
     d.shutdown().await;
+}
+
+/// Inert text (`.json`) carrying a payload: left alone at rest (pattern rules skip inert text), scanned
+/// fully and quarantined the moment an interpreter is handed it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn disguised_script_is_caught_when_executed() {
+    let root = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let d = daemon(root.path(), true).await;
+    let tx = d.monitor_sender();
+    let ctx = d.ctx().clone();
+    let payload = data.path().join("settings.json");
+    std::fs::write(&payload, EICAR).unwrap();
+    let path = payload.to_string_lossy().into_owned();
+
+    tx.send(MonitorEvent::FileActivity {
+        path: path.clone(),
+        from: None,
+        source: FileEventSource::FsEvents,
+        process: None,
+    })
+    .await
+    .unwrap();
+    wait_for(
+        || {
+            ctx.store
+                .files_seen_since(0, 10)
+                .ok()?
+                .into_iter()
+                .any(|f| f.path.ends_with("settings.json"))
+                .then_some(())
+        },
+        "at-rest scan",
+    )
+    .await;
+    assert!(
+        payload.exists(),
+        "inert text must not be quarantined at rest"
+    );
+    // The clean at-rest verdict went to the persistent cache: it must not answer for the exec-time scan.
+    assert!(ctx.store.verdict_count().unwrap() >= 1);
+
+    tx.send(MonitorEvent::ProcessExec {
+        target: EsProcessInfo {
+            pid: 999_999,
+            ppid: 1,
+            path: "/bin/sh".into(),
+            signing_id: Some("com.apple.sh".into()),
+            team_id: None,
+            cdhash: None,
+            is_platform_binary: true,
+            codesigning_flags: 1,
+            uid: 501,
+        },
+        args: vec!["sh".into(), path],
+        parent: None,
+    })
+    .await
+    .unwrap();
+    wait_for(|| (!payload.exists()).then_some(()), "quarantine on exec").await;
+    let a = wait_for(
+        || {
+            ctx.store
+                .list_alerts(50, false)
+                .ok()?
+                .into_iter()
+                .find(|a| a.kind == AlertKind::Malware)
+        },
+        "malware alert",
+    )
+    .await;
+    assert!(a.quarantine_id.is_some());
 }

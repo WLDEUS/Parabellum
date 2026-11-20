@@ -81,6 +81,8 @@ pub struct Ctx {
     // ----- Travel mode -----
     /// Travel mode snapshot / state (loaded from `state/travel.json`).
     pub travel: crate::travel::Travel,
+    /// Manifest of our own files (empty without one): recognition by content + integrity checks.
+    pub own: crate::own::Own,
 }
 
 impl Ctx {
@@ -95,6 +97,7 @@ impl Ctx {
         let (config_tx, _) = watch::channel(Arc::new(config));
         let (shutdown, _) = watch::channel(false);
         let travel = crate::travel::Travel::new(&paths.state_dir());
+        let own = crate::own::Own::load(&paths);
         Self {
             paths,
             dev_mode,
@@ -119,6 +122,7 @@ impl Ctx {
             privacy: std::sync::OnceLock::new(),
             intel: crate::intel::IntelState::default(),
             config_write: tokio::sync::Mutex::new(()),
+            own,
             travel,
         }
     }

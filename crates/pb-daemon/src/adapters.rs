@@ -105,6 +105,7 @@ impl EngineAdapter {
         };
         o.recursive = opts.recursive;
         o.only_risky_types = opts.only_risky_types;
+        o.scan_inert_text = opts.inert_text;
         o
     }
 }
@@ -185,6 +186,29 @@ impl ScanEngine for EngineAdapter {
 
     fn set_local_allowlist(&self, sha256_hex: &[String]) {
         self.engine.set_local_allowlist(sha256_hex);
+    }
+
+    fn set_verdict_store(&self, store: crate::store::Store) {
+        self.engine
+            .set_verdict_store(std::sync::Arc::new(StoreVerdicts(store)));
+    }
+}
+
+/// [`pb_engine::VerdictStore`] on the `verdict_cache` table. Failures only cost a rescan.
+struct StoreVerdicts(crate::store::Store);
+
+impl pb_engine::VerdictStore for StoreVerdicts {
+    fn get(&self, key: &str) -> Option<ScanReport> {
+        let json = self.0.verdict_get(key).ok().flatten()?;
+        serde_json::from_str(&json).ok()
+    }
+
+    fn put(&self, key: &str, report: &ScanReport) {
+        if let Ok(json) = serde_json::to_string(report) {
+            if let Err(e) = self.0.verdict_put(key, &json, pb_core::now_ts()) {
+                tracing::debug!(error = %e, "verdict not cached");
+            }
+        }
     }
 }
 

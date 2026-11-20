@@ -16,8 +16,10 @@
 pub mod config;
 pub mod db;
 pub mod events;
+pub mod inert;
 pub mod ipc;
 pub mod model;
+pub mod own;
 pub mod paths;
 // speed: short-lived caches for slow request handlers.
 pub mod cache;

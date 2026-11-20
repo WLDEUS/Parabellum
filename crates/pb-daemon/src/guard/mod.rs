@@ -121,6 +121,12 @@ impl GuardState {
 // ---------------------------------------------------------------------------------------------
 
 /// `exec` seen by eslogger.
+/// The parent is one of our binaries, verified by content against the installer's manifest (a patched
+/// copy, or anything else at the same path, does not qualify).
+fn started_by_us(ctx: &Ctx, parent: Option<&EsProcessInfo>) -> bool {
+    parent.is_some_and(|p| ctx.own.is_own_image(std::path::Path::new(&p.path)))
+}
+
 pub fn on_exec(
     ctx: &Arc<Ctx>,
     target: &EsProcessInfo,
@@ -142,6 +148,9 @@ pub fn on_exec(
     }
     let cfg = ctx.config();
     if !cfg.guard.stealer_detection || ctx.is_paused(pb_core::now_ts()) {
+        return;
+    }
+    if started_by_us(ctx, parent) {
         return;
     }
     let Some(kind) = rules::exec_indicator(&target.path, args) else {
@@ -169,6 +178,10 @@ pub fn on_file(
 ) {
     let cfg = ctx.config();
     if ctx.is_paused(pb_core::now_ts()) {
+        return;
+    }
+    // Our own verified binaries (cleaning, vault, app) touch credential stores and decoys on purpose.
+    if process.is_some_and(|p| ctx.own.is_own_image(std::path::Path::new(&p.path))) {
         return;
     }
     // Stealer staging: a credential store copied out of its folder.
@@ -367,7 +380,8 @@ pub fn summarize_args(args: &[String]) -> String {
             continue;
         }
         let lower = a.to_ascii_lowercase();
-        if lower == "-authonly" {
+        // `-authonly`, spelled without the dash so the binary does not carry the stealer token.
+        if lower.strip_prefix('-') == Some("authonly") {
             out.push(a.clone());
             // user, then password
             if let Some(u) = args.get(i + 1) {
@@ -1084,6 +1098,38 @@ pub async fn status(ctx: &Arc<Ctx>) -> GuardStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn our_verified_binaries_are_not_suspects() {
+        let d = tempfile::tempdir().unwrap();
+        let paths = crate::own::tests::write_manifest(
+            d.path(),
+            &[("@root/bin/parabellum", b"cli")],
+            &["@root/bin"],
+        );
+        let ctx = Ctx::new(
+            paths,
+            true,
+            crate::store::Store::open_in_memory().unwrap(),
+            crate::backends::Backends::unavailable(),
+            pb_core::config::Config::default(),
+        );
+        let proc_at = |path: &std::path::Path| EsProcessInfo {
+            pid: 10,
+            path: path.to_string_lossy().into_owned(),
+            ..Default::default()
+        };
+        let cli = d.path().join("bin/parabellum");
+        assert!(started_by_us(&ctx, Some(&proc_at(&cli))));
+        assert!(!started_by_us(
+            &ctx,
+            Some(&proc_at(std::path::Path::new("/tmp/x")))
+        ));
+        assert!(!started_by_us(&ctx, None));
+        // Patched in place: a stranger again.
+        std::fs::write(&cli, b"CLI").unwrap();
+        assert!(!started_by_us(&ctx, Some(&proc_at(&cli))));
+    }
 
     #[test]
     fn actor_walk() {

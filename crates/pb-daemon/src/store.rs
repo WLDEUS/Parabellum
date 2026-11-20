@@ -200,7 +200,22 @@ CREATE TABLE daily_counters (
 );
 "#,
     ),
+    // ----- Persistent verdicts: content hash + typing + engine/options fingerprints -> clean report -----
+    (
+        3,
+        r#"
+CREATE TABLE verdict_cache (
+    key TEXT PRIMARY KEY,
+    report TEXT NOT NULL,
+    at INTEGER NOT NULL
+);
+CREATE INDEX verdict_cache_at ON verdict_cache(at);
+"#,
+    ),
 ];
+
+/// Rows kept in `verdict_cache` (most recently used first); entries of an older engine simply age out.
+pub const VERDICT_CACHE_CAP: i64 = 500_000;
 
 /// Counters kept per local day in `daily_stats`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -482,7 +497,10 @@ impl Store {
         let sql = if include_resolved {
             "SELECT json FROM alerts ORDER BY ts DESC, id DESC LIMIT ?1"
         } else {
-            "SELECT json FROM alerts WHERE status != 'resolved' ORDER BY ts DESC, id DESC LIMIT ?1"
+            // "Open" list = what still needs the user. Acknowledged alerts stay out of it (the app drops them
+            // live on the `acknowledged` event; listing them here made them all come back on every reconnection).
+            // `open_alerts_by` keeps counting them on purpose: an acknowledged alert still suppresses re-raises.
+            "SELECT json FROM alerts WHERE status = 'open' ORDER BY ts DESC, id DESC LIMIT ?1"
         };
         let mut stmt = conn.prepare(sql)?;
         let rows = stmt.query_map([limit.min(10_000)], |r| {
@@ -557,6 +575,58 @@ impl Store {
     }
 
     /// Open alerts referring to a persistence item / device.
+    /// Not-resolved alerts whose dedupe key (`detection`) starts with `prefix`, with that key.
+    pub fn open_alerts_with_key_prefix(&self, prefix: &str) -> Result<Vec<(Alert, String)>> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(
+            "SELECT json, detection FROM alerts
+             WHERE detection IS NOT NULL AND substr(detection, 1, ?2) = ?1 AND status != 'resolved' ORDER BY id",
+        )?;
+        let rows = stmt.query_map(params![prefix, prefix.chars().count() as i64], |r| {
+            Ok((
+                from_json::<Alert>(&r.get::<_, String>(0)?)?,
+                r.get::<_, String>(1)?,
+            ))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Cached clean report for a verdict key (`pb_engine::VerdictStore`); refreshes its age.
+    pub fn verdict_get(&self, key: &str) -> Result<Option<String>> {
+        let conn = self.lock();
+        let json: Option<String> = conn
+            .query_row(
+                "SELECT report FROM verdict_cache WHERE key = ?1",
+                [key],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if json.is_some() {
+            // At most one write per entry and day (full scans read hundreds of thousands).
+            let now = pb_core::now_ts();
+            conn.execute(
+                "UPDATE verdict_cache SET at = ?2 WHERE key = ?1 AND at < ?3",
+                params![key, now, now - 86_400],
+            )?;
+        }
+        Ok(json)
+    }
+
+    pub fn verdict_put(&self, key: &str, report_json: &str, now: i64) -> Result<()> {
+        self.lock().execute(
+            "INSERT INTO verdict_cache(key, report, at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(key) DO UPDATE SET report = excluded.report, at = excluded.at",
+            params![key, report_json, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn verdict_count(&self) -> Result<i64> {
+        Ok(self
+            .lock()
+            .query_row("SELECT COUNT(*) FROM verdict_cache", [], |r| r.get(0))?)
+    }
+
     pub fn open_alerts_by(&self, key: AlertKey<'_>) -> Result<Vec<Alert>> {
         let conn = self.lock();
         let (col, val) = match key {
@@ -1082,6 +1152,12 @@ impl Store {
             [now - 180 * day],
         )?;
         conn.execute("DELETE FROM update_log WHERE ts < ?1", [now - 180 * day])?;
+        // Unused for 60 days (another engine's keys never get used again), then the size cap.
+        conn.execute("DELETE FROM verdict_cache WHERE at < ?1", [now - 60 * day])?;
+        conn.execute(
+            "DELETE FROM verdict_cache WHERE key IN (SELECT key FROM verdict_cache ORDER BY at DESC LIMIT -1 OFFSET ?1)",
+            [VERDICT_CACHE_CAP],
+        )?;
         conn.execute(
             "DELETE FROM osquery_seen WHERE last_seen < ?1",
             [now - 180 * day],
@@ -1298,6 +1374,23 @@ mod tests {
     }
 
     #[test]
+    fn verdict_cache_roundtrip_and_prune() {
+        let s = Store::open_in_memory().unwrap();
+        let day = 86_400;
+        let now = pb_core::now_ts();
+        assert_eq!(s.verdict_get("k1").unwrap(), None);
+        s.verdict_put("k1", "{\"a\":1}", now - 100 * day).unwrap();
+        s.verdict_put("k2", "{\"b\":2}", now - 10 * day).unwrap();
+        s.verdict_put("k2", "{\"b\":3}", now - 10 * day).unwrap();
+        assert_eq!(s.verdict_get("k2").unwrap().as_deref(), Some("{\"b\":3}"));
+        assert_eq!(s.verdict_count().unwrap(), 2);
+        // k1 unused for 100 days: pruned; k2 was just read (age refreshed): kept.
+        s.prune(now).unwrap();
+        assert_eq!(s.verdict_get("k1").unwrap(), None);
+        assert!(s.verdict_get("k2").unwrap().is_some());
+    }
+
+    #[test]
     fn alerts_roundtrip_dedupe_and_counts() {
         let s = Store::open_in_memory().unwrap();
         let a = s
@@ -1326,6 +1419,15 @@ mod tests {
         assert_eq!(s.list_alerts(10, true).unwrap().len(), 2);
         assert_eq!(s.alerts_by_quarantine("q1").unwrap(), vec![r]);
         assert_eq!(s.count_open_alerts().unwrap(), 1);
+        // Acknowledged: out of the open list (no comeback on reconnection), still in the full history.
+        let mut k = a.clone();
+        k.status = AlertStatus::Acknowledged;
+        s.update_alert(&k).unwrap();
+        assert!(s.list_alerts(10, false).unwrap().is_empty());
+        assert_eq!(s.list_alerts(10, true).unwrap().len(), 2);
+        assert_eq!(s.count_open_alerts().unwrap(), 0);
+        k.status = AlertStatus::Open;
+        s.update_alert(&k).unwrap();
         assert_eq!(s.count_alerts(AlertKind::Malware, 0, 1000).unwrap(), 2);
         let top = s.top_detections(0, 1000, 5).unwrap();
         assert_eq!(
