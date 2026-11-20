@@ -82,7 +82,7 @@ public enum ParabellumCLI {
                 do {
                     try process.run()
                 } catch {
-                    continuation.resume(throwing: Failure.failed("lancement impossible : \(error.localizedDescription)"))
+                    continuation.resume(throwing: Failure.failed(String(localized: "lancement impossible : \(error.localizedDescription)")))
                     return
                 }
                 let timer = DispatchWorkItem { if process.isRunning { process.terminate() } }
