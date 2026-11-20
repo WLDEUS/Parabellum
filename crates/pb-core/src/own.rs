@@ -7,7 +7,8 @@
 //!
 //! Not signed on its own: CI keeps the release key away from the build job, so the manifest's
 //! authenticity is the package's (minisign-verified before every self-update). The daemon also seals
-//! it (version + hash in its database) and alerts if it changes without a version change.
+//! it (version + hash + time in its database) and alerts if it changes without a newer installer
+//! receipt (`/var/db/receipts`).
 //!
 //! Paths: `@root/…` is relative to the Parabellum root (`/Library/Application Support/Parabellum`),
 //! anything else is absolute (`/Applications/Parabellum.app/…`, `/Library/LaunchDaemons/…`).

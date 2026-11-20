@@ -6,8 +6,9 @@
 //!   but the installed trees (`bin/`, `signatures/`, the app) are compared with the manifest: a file
 //!   modified, missing or unknown there raises an alert. Malware that obtained root and hid next to the
 //!   antivirus, or patched it, shows up within [`INTERVAL`].
-//! - **Seal**: the manifest's version + hash are kept in the database; a different manifest with the same
-//!   version did not come from an installer.
+//! - **Seal**: the manifest's version + hash + seal time are kept in the database; a different manifest is
+//!   accepted only if the macOS installer's receipt is newer than the seal (local builds keep the same
+//!   version, so the version proves nothing).
 //!
 //! Without a manifest (development, versions before it) everything here is off.
 
@@ -74,6 +75,8 @@ pub struct Own {
     trees: Vec<PathBuf>,
     /// Content checks already done: path -> (stamp, matches manifest).
     verified: Mutex<HashMap<PathBuf, (Stamp, bool)>>,
+    /// Installer receipt to read (tests point it elsewhere); `None`: [`RECEIPT_PATH`].
+    receipt_override: Option<PathBuf>,
 }
 
 /// What an integrity pass found.
@@ -157,7 +160,18 @@ impl Own {
             by_path,
             trees,
             verified: Mutex::new(HashMap::new()),
+            receipt_override: None,
         }
+    }
+
+    pub fn receipt_path(&self) -> PathBuf {
+        self.receipt_override
+            .clone()
+            .unwrap_or_else(|| PathBuf::from(RECEIPT_PATH))
+    }
+
+    pub fn set_receipt_path(&mut self, path: PathBuf) {
+        self.receipt_override = Some(path);
     }
 
     pub fn is_active(&self) -> bool {
@@ -251,26 +265,52 @@ impl Own {
     }
 }
 
-/// Seal the manifest: first one or a new version is accepted; same version, different content is not.
-/// Returns an alert message when the manifest changed outside an installation.
-pub fn check_seal(previous: Option<&str>, version: &str, sha: &str) -> Result<String, String> {
-    let new = format!("{version} {sha}");
-    match previous {
-        None => Ok(new),
-        Some(p) if p == new => Ok(new),
-        Some(p) => {
-            let old_version = p.split_once(' ').map(|(v, _)| v).unwrap_or(p);
-            if old_version != version {
-                Ok(new)
-            } else {
-                Err(format!(
-                    "Le manifeste des fichiers de Parabellum a changé sans changement de version ({version}). Un \
-                     installateur ne fait jamais ça : un programme avec les droits administrateur a pu le réécrire \
-                     pour masquer une modification. Réinstallez Parabellum (make pkg && make install), puis lancez \
-                     une analyse complète."
-                ))
-            }
-        }
+/// Receipt the macOS installer writes on every installation of our package (`InstallDate`).
+pub const RECEIPT_PATH: &str = "/var/db/receipts/com.wldeus.parabellum.pkg.plist";
+
+/// `InstallDate` of an installer receipt, in Unix seconds.
+pub fn receipt_install_ts(path: &Path) -> Option<i64> {
+    let value = plist::Value::from_file(path).ok()?;
+    let date = value.as_dictionary()?.get("InstallDate")?.as_date()?;
+    let t: std::time::SystemTime = date.into();
+    t.duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|d| i64::try_from(d.as_secs()).ok())
+}
+
+/// Seal: `<version> <manifest sha256> <sealed at>`. A different manifest is accepted only if the macOS
+/// installer ran since the seal (receipt newer than the seal). Local builds keep the same version
+/// (`Cargo.toml`) from one `make pkg` to the next, so the version alone proves nothing. Without a
+/// receipt (never seen on a real install), a version change is still accepted.
+pub fn check_seal(
+    previous: Option<&str>,
+    version: &str,
+    sha: &str,
+    installed_at: Option<i64>,
+    now: i64,
+) -> Result<String, String> {
+    let new = format!("{version} {sha} {now}");
+    let Some(p) = previous else { return Ok(new) };
+    let mut parts = p.split(' ');
+    let (old_version, old_sha) = (parts.next().unwrap_or(""), parts.next().unwrap_or(""));
+    // Seals written before the timestamp existed count as sealed at 0.
+    let sealed_at: i64 = parts.next().and_then(|t| t.parse().ok()).unwrap_or(0);
+    if old_version == version && old_sha == sha {
+        return Ok(p.to_string());
+    }
+    let accepted = match installed_at {
+        Some(t) => t > sealed_at,
+        None => old_version != version,
+    };
+    if accepted {
+        Ok(new)
+    } else {
+        Err(format!(
+            "Le manifeste des fichiers de Parabellum ({version}) a changé sans nouvelle installation : le reçu de \
+             l'installateur macOS est plus ancien que le dernier contrôle. Un programme avec les droits \
+             administrateur a pu le réécrire pour masquer une modification. Réinstallez Parabellum (make pkg && \
+             make install), puis lancez une analyse complète."
+        ))
     }
 }
 
@@ -340,16 +380,28 @@ pub async fn integrity_pass(ctx: &Arc<Ctx>) -> Option<Integrity> {
         return None;
     };
     let previous = ctx.store.run(|s| s.kv_get(KV_SEAL)).await.ok().flatten();
-    match check_seal(previous.as_deref(), version, sha) {
+    let receipt = own.receipt_path();
+    let installed_at = tokio::task::spawn_blocking(move || receipt_install_ts(&receipt))
+        .await
+        .ok()
+        .flatten();
+    match check_seal(
+        previous.as_deref(),
+        version,
+        sha,
+        installed_at,
+        pb_core::now_ts(),
+    ) {
         Ok(seal) => {
             if previous.as_deref() != Some(seal.as_str()) {
                 let _ = ctx.store.run(move |s| s.kv_set(KV_SEAL, &seal)).await;
-                // A new installation answers an earlier seal alert.
-                for mut a in open_alerts(ctx, KEY_SEAL.into()).await {
-                    a.status = AlertStatus::Resolved;
-                    a.actions.clear();
-                    let _ = actions::save_alert(ctx, &a).await;
-                }
+            }
+            // The manifest is trusted again (new installation, or back to the sealed one): an earlier
+            // seal or "unusable manifest" alert is answered.
+            for mut a in open_alerts(ctx, KEY_SEAL.into()).await {
+                a.status = AlertStatus::Resolved;
+                a.actions.clear();
+                let _ = actions::save_alert(ctx, &a).await;
             }
         }
         Err(msg) => {
@@ -530,13 +582,34 @@ pub(crate) mod tests {
     }
 
     fn ctx_at(root: &Path) -> Arc<Ctx> {
-        Arc::new(Ctx::new(
+        ctx_with_store(root, crate::store::Store::open_in_memory().unwrap())
+    }
+
+    /// Context on `root`, reading the installer receipt from `<root>/receipt.plist`.
+    fn ctx_with_store(root: &Path, store: crate::store::Store) -> Arc<Ctx> {
+        let mut ctx = Ctx::new(
             Paths::with_root(root),
             true,
-            crate::store::Store::open_in_memory().unwrap(),
+            store,
             crate::backends::Backends::unavailable(),
             pb_core::config::Config::default(),
-        ))
+        );
+        ctx.own.set_receipt_path(root.join("receipt.plist"));
+        Arc::new(ctx)
+    }
+
+    /// What `installer` leaves in /var/db/receipts.
+    fn write_receipt(root: &Path, installed_at: i64) {
+        let date = std::time::UNIX_EPOCH + std::time::Duration::from_secs(installed_at as u64);
+        let mut dict = plist::Dictionary::new();
+        dict.insert("InstallDate".into(), plist::Value::Date(date.into()));
+        dict.insert(
+            "PackageIdentifier".into(),
+            plist::Value::String("com.wldeus.parabellum.pkg".into()),
+        );
+        plist::Value::Dictionary(dict)
+            .to_file_xml(root.join("receipt.plist"))
+            .unwrap();
     }
 
     async fn own_alerts(ctx: &Arc<Ctx>) -> Vec<(pb_core::model::Alert, String)> {
@@ -580,47 +653,97 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn rewritten_manifest_same_version_is_refused() {
+    async fn reinstall_with_same_version_is_accepted() {
         let d = tempfile::tempdir().unwrap();
         write_manifest(
             d.path(),
             &[("@root/bin/parabellumd", b"daemon")],
             &["@root/bin"],
         );
+        write_receipt(d.path(), pb_core::now_ts() - 3600);
         let ctx = ctx_at(d.path());
         integrity_pass(&ctx).await.unwrap();
-        // An attacker patches the binary and rewrites the manifest to match, keeping the version.
-        let paths = write_manifest(
+        // `make pkg && make install` again: new binaries, same 0.1.0, fresh receipt.
+        write_manifest(
+            d.path(),
+            &[("@root/bin/parabellumd", b"daemon v2")],
+            &["@root/bin"],
+        );
+        write_receipt(d.path(), pb_core::now_ts() + 5);
+        let ctx2 = ctx_with_store(d.path(), ctx.store.clone());
+        assert!(integrity_pass(&ctx2).await.unwrap().is_clean());
+        assert!(own_alerts(&ctx2).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn rewritten_manifest_without_installation_is_refused() {
+        let d = tempfile::tempdir().unwrap();
+        write_manifest(
+            d.path(),
+            &[("@root/bin/parabellumd", b"daemon")],
+            &["@root/bin"],
+        );
+        write_receipt(d.path(), pb_core::now_ts() - 3600);
+        let ctx = ctx_at(d.path());
+        integrity_pass(&ctx).await.unwrap();
+        // An attacker patches the binary and rewrites the manifest to match; no installer ran.
+        write_manifest(
             d.path(),
             &[("@root/bin/parabellumd", b"evil")],
             &["@root/bin"],
         );
-        let ctx2 = Arc::new(Ctx::new(
-            paths,
-            true,
-            ctx.store.clone(),
-            crate::backends::Backends::unavailable(),
-            pb_core::config::Config::default(),
-        ));
+        let ctx2 = ctx_with_store(d.path(), ctx.store.clone());
         assert!(integrity_pass(&ctx2).await.is_none());
         let alerts = own_alerts(&ctx2).await;
         assert_eq!(alerts.len(), 1);
         assert_eq!(alerts[0].0.severity, Severity::Critical);
+        // A later genuine reinstall answers it.
+        write_manifest(
+            d.path(),
+            &[("@root/bin/parabellumd", b"daemon")],
+            &["@root/bin"],
+        );
+        write_receipt(d.path(), pb_core::now_ts() + 5);
+        let ctx3 = ctx_with_store(d.path(), ctx.store.clone());
+        assert!(integrity_pass(&ctx3).await.unwrap().is_clean());
+        assert!(own_alerts(&ctx3).await.is_empty());
+    }
+
+    #[test]
+    fn receipt_date() {
+        let d = tempfile::tempdir().unwrap();
+        write_receipt(d.path(), 1_700_000_000);
+        assert_eq!(
+            receipt_install_ts(&d.path().join("receipt.plist")),
+            Some(1_700_000_000)
+        );
+        assert_eq!(receipt_install_ts(&d.path().join("missing.plist")), None);
     }
 
     #[test]
     fn seal() {
-        let a = "a".repeat(64);
-        let b = "b".repeat(64);
-        assert_eq!(check_seal(None, "1.0", &a).unwrap(), format!("1.0 {a}"));
-        let sealed = format!("1.0 {a}");
-        assert!(check_seal(Some(&sealed), "1.0", &a).is_ok());
-        // New version (installer): accepted.
+        let (a, b) = ("a".repeat(64), "b".repeat(64));
+        let sealed = check_seal(None, "1.0", &a, None, 100).unwrap();
+        assert_eq!(sealed, format!("1.0 {a} 100"));
+        // Unchanged: the seal stays as it is.
         assert_eq!(
-            check_seal(Some(&sealed), "1.1", &b).unwrap(),
-            format!("1.1 {b}")
+            check_seal(Some(&sealed), "1.0", &a, Some(50), 200).unwrap(),
+            sealed
         );
-        // Same version, different manifest: refused.
-        assert!(check_seal(Some(&sealed), "1.0", &b).is_err());
+        // Same version, new manifest: only after an installation newer than the seal.
+        assert_eq!(
+            check_seal(Some(&sealed), "1.0", &b, Some(150), 200).unwrap(),
+            format!("1.0 {b} 200")
+        );
+        assert!(check_seal(Some(&sealed), "1.0", &b, Some(90), 200).is_err());
+        assert!(check_seal(Some(&sealed), "1.0", &b, None, 200).is_err());
+        // A version bump without a newer receipt is not enough either.
+        assert!(check_seal(Some(&sealed), "1.1", &b, Some(90), 200).is_err());
+        // No receipt at all: fall back to the version.
+        assert!(check_seal(Some(&sealed), "1.1", &b, None, 200).is_ok());
+        // Seals from before the timestamp (`<version> <sha>`) count as sealed at 0.
+        let legacy = format!("0.1.0 {a}");
+        assert!(check_seal(Some(&legacy), "0.1.0", &b, Some(1), 200).is_ok());
+        assert!(check_seal(Some(&legacy), "0.1.0", &b, None, 200).is_err());
     }
 }
