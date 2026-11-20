@@ -1,53 +1,79 @@
+import AppKit
 import ParabellumKit
 import SwiftUI
+
+/// How the alert list is ordered.
+enum AlertSort: String, CaseIterable, Identifiable {
+    case severity, date
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .severity: return "Gravité"
+        case .date: return "Date"
+        }
+    }
+}
 
 struct AlertsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var kindFilter: AlertKind?
-    @State private var minimumSeverity: Severity = .info
+    /// Severities shown (chips); all by default.
+    @State private var severities: Set<Severity> = Set(Severity.known)
+    @State private var sort: AlertSort = .severity
+    @State private var selection: Set<Int64> = []
 
-    private var filteredAlerts: [SecurityAlert] {
-        model.alerts.filter { alert in
-            (kindFilter == nil || alert.kind == kindFilter) && alert.severity >= minimumSeverity
+    /// Kind filter only (the severity chips show their counts for it).
+    private var kindFiltered: [SecurityAlert] {
+        model.alerts.filter { kindFilter == nil || $0.kind == kindFilter }
+    }
+
+    /// Critical first, then by date (newest first); or by date only.
+    private func ordered(_ alerts: [SecurityAlert]) -> [SecurityAlert] {
+        alerts.sorted { a, b in
+            if sort == .severity && a.severity != b.severity { return a.severity > b.severity }
+            if a.ts != b.ts { return a.ts > b.ts }
+            return a.id > b.id
         }
     }
 
-    private var selectedAlert: SecurityAlert? {
-        guard let id = model.selectedAlertId else { return nil }
-        return model.alerts.first { $0.id == id }
+    private var selectedAlerts: [SecurityAlert] {
+        model.alerts.filter { selection.contains($0.id) }
     }
 
     var body: some View {
-        // Filtered once per render (used twice below).
-        let filteredAlerts = self.filteredAlerts
+        let base = kindFiltered
+        let visible = ordered(base.filter { severities.contains($0.severity) || !Severity.known.contains($0.severity) })
         return HSplitView {
             VStack(spacing: 0) {
-                filterBar
+                filterBar(base)
                 Divider()
-                if filteredAlerts.isEmpty && model.isFirstLoad("alerts") {
+                if visible.isEmpty && model.isFirstLoad("alerts") {
                     ProgressView("Chargement des alertes…")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if filteredAlerts.isEmpty {
+                } else if visible.isEmpty {
                     ContentUnavailableView(
                         model.includeResolvedAlerts ? "Aucune alerte" : "Aucune alerte ouverte",
                         systemImage: "checkmark.shield",
                         description: Text("Parabellum n'a rien signalé pour ces filtres.")
                     )
                 } else {
-                    List(selection: $model.selectedAlertId) {
-                        ForEach(filteredAlerts) { alert in
-                            AlertRow(alert: alert)
-                        }
-                    }
+                    alertList(visible)
                 }
             }
-            .frame(minWidth: 320, idealWidth: 400)
+            .frame(minWidth: 340, idealWidth: 420)
 
             Group {
-                if let alert = selectedAlert {
+                let picked = selectedAlerts
+                if picked.count > 1 {
+                    BulkAlertsView(alerts: picked) { selection = [] }
+                } else if let alert = picked.first {
                     AlertDetailView(alert: alert)
                 } else {
-                    ContentUnavailableView("Sélectionne une alerte", systemImage: "bell")
+                    ContentUnavailableView(
+                        "Sélectionne une alerte",
+                        systemImage: "bell",
+                        description: Text("⌘-clic ou ⇧-clic pour en sélectionner plusieurs, ⌘A pour toutes.")
+                    )
                 }
             }
             .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
@@ -61,42 +87,269 @@ struct AlertsView: View {
             }
         }
         .onAppear {
+            if let id = model.selectedAlertId { selection = [id] }
             model.revalidateSection(.alerts)
+        }
+        .onChange(of: selection) { _, new in
+            // One alert selected: it is "the" selected alert (notifications, deep links use it).
+            if new.count == 1 { model.selectedAlertId = new.first } else if new.isEmpty { model.selectedAlertId = nil }
+        }
+        .onChange(of: model.selectedAlertId) { _, id in
+            if let id, selection != [id] { selection = [id] }
+        }
+        .onChange(of: model.alerts) { _, alerts in
+            // Drop what disappeared (resolved and hidden, cleaned up).
+            let ids = Set(alerts.map(\.id))
+            if !selection.isSubset(of: ids) { selection = selection.intersection(ids) }
         }
         .onChange(of: model.includeResolvedAlerts) { _, _ in
             Task { await model.loadAlerts() }
         }
     }
 
-    private var filterBar: some View {
-        HStack(spacing: 10) {
-            Picker("État", selection: $model.includeResolvedAlerts) {
-                Text("Ouvertes").tag(false)
-                Text("Toutes").tag(true)
+    @ViewBuilder
+    private func alertList(_ visible: [SecurityAlert]) -> some View {
+        List(selection: $selection) {
+            if sort == .severity {
+                ForEach(Severity.known.reversed(), id: \.self) { severity in
+                    let group = visible.filter { $0.severity == severity }
+                    if !group.isEmpty {
+                        Section {
+                            ForEach(group) { AlertRow(alert: $0) }
+                        } header: {
+                            SeverityHeader(severity: severity, count: group.count)
+                        }
+                    }
+                }
+                let other = visible.filter { !Severity.known.contains($0.severity) }
+                if !other.isEmpty {
+                    Section("Autres") { ForEach(other) { AlertRow(alert: $0) } }
+                }
+            } else {
+                ForEach(visible) { AlertRow(alert: $0) }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
+        }
+        .contextMenu(forSelectionType: Int64.self) { ids in
+            selectionMenu(ids)
+        }
+    }
 
-            Picker("Type", selection: $kindFilter) {
-                Text("Tous les types").tag(AlertKind?.none)
-                ForEach(AlertKind.allCases.filter { $0 != .unknown }, id: \.self) { kind in
-                    Text(kind.label).tag(AlertKind?.some(kind))
+    @ViewBuilder
+    private func selectionMenu(_ ids: Set<Int64>) -> some View {
+        let alerts = model.alerts.filter { ids.contains($0.id) && $0.status != .resolved }
+        let common = BulkAlertsView.commonActions(alerts).filter { !$0.isDestructive }
+        if common.isEmpty {
+            Text("Aucune action commune")
+        } else {
+            ForEach(common, id: \.self) { action in
+                Button(alerts.count > 1 ? "\(action.label) (\(alerts.count))" : action.label) {
+                    let targets = alerts.map(\.id)
+                    Task { await model.resolveMany(targets, action: action) }
                 }
             }
-            .labelsHidden()
-            .fixedSize()
+        }
+    }
 
-            Picker("Gravité", selection: $minimumSeverity) {
-                ForEach(Severity.known, id: \.self) { severity in
-                    Text("≥ \(severity.label)").tag(severity)
+    private func filterBar(_ base: [SecurityAlert]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Picker("État", selection: $model.includeResolvedAlerts) {
+                    Text("Ouvertes").tag(false)
+                    Text("Toutes").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+
+                Picker("Type", selection: $kindFilter) {
+                    Text("Tous les types").tag(AlertKind?.none)
+                    ForEach(AlertKind.allCases.filter { $0 != .unknown }, id: \.self) { kind in
+                        Text(kind.label).tag(AlertKind?.some(kind))
+                    }
+                }
+                .labelsHidden()
+                .fixedSize()
+
+                Picker("Tri", selection: $sort) {
+                    ForEach(AlertSort.allCases) { Text("Tri : \($0.label)").tag($0) }
+                }
+                .labelsHidden()
+                .fixedSize()
+                Spacer()
+            }
+            HStack(spacing: 6) {
+                ForEach(Severity.known.reversed(), id: \.self) { severity in
+                    SeverityChip(
+                        severity: severity,
+                        count: base.filter { $0.severity == severity }.count,
+                        isOn: severities.contains(severity)
+                    ) {
+                        toggle(severity)
+                    }
+                }
+                Spacer()
+                if severities.count != Severity.known.count {
+                    Button("Toutes") { severities = Set(Severity.known) }
+                        .buttonStyle(.link)
+                        .font(.caption)
                 }
             }
-            .labelsHidden()
-            .fixedSize()
-            Spacer()
         }
         .padding(10)
+    }
+
+    /// Click: toggle. ⌥-click: only this severity.
+    private func toggle(_ severity: Severity) {
+        if NSEvent.modifierFlags.contains(.option) {
+            severities = [severity]
+        } else if severities.contains(severity) {
+            severities.remove(severity)
+        } else {
+            severities.insert(severity)
+        }
+    }
+}
+
+private struct SeverityHeader: View {
+    let severity: Severity
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle().fill(severity.color).frame(width: 8, height: 8)
+            Text(severity.label)
+            Text("\(count)").foregroundStyle(.secondary).monospacedDigit()
+        }
+    }
+}
+
+private struct SeverityChip: View {
+    let severity: Severity
+    let count: Int
+    let isOn: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Circle().fill(severity.color).frame(width: 7, height: 7)
+                Text(severity.label)
+                Text("\(count)").monospacedDigit().foregroundStyle(.secondary)
+            }
+            .font(.caption)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule().fill(isOn ? severity.color.opacity(0.18) : Color.clear)
+            )
+            .overlay(
+                Capsule().strokeBorder(isOn ? severity.color.opacity(0.6) : Color.secondary.opacity(0.3))
+            )
+            .opacity(isOn ? 1 : 0.55)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help(isOn ? "Masquer les alertes « \(severity.label) » (⌥-clic : seulement celles-ci)" : "Afficher les alertes « \(severity.label) »")
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+    }
+}
+
+/// Several alerts selected: summary and the actions they all accept.
+private struct BulkAlertsView: View {
+    @EnvironmentObject private var model: AppModel
+    let alerts: [SecurityAlert]
+    let clearSelection: () -> Void
+    @State private var pendingAction: AlertAction?
+
+    /// Actions every non-resolved selected alert offers, in the order of the first one.
+    static func commonActions(_ alerts: [SecurityAlert]) -> [AlertAction] {
+        guard let first = alerts.first else { return [] }
+        return first.knownActions.filter { action in alerts.allSatisfy { $0.knownActions.contains(action) } }
+    }
+
+    private var actionable: [SecurityAlert] { alerts.filter { $0.status != .resolved } }
+
+    var body: some View {
+        let actionable = self.actionable
+        let common = Self.commonActions(actionable)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("\(alerts.count) alertes sélectionnées")
+                        .font(.title2.weight(.semibold))
+                    Spacer()
+                    Button("Tout désélectionner", action: clearSelection)
+                        .buttonStyle(.link)
+                }
+                HStack(spacing: 6) {
+                    ForEach(Severity.known.reversed(), id: \.self) { severity in
+                        let n = alerts.filter { $0.severity == severity }.count
+                        if n > 0 { Pill(text: "\(severity.label) · \(n)", color: severity.color) }
+                    }
+                }
+                Divider()
+                Text("Actions groupées").font(.headline)
+                if actionable.isEmpty {
+                    Text("Toutes ces alertes sont déjà résolues.").foregroundStyle(.secondary)
+                } else if common.isEmpty {
+                    Text("Ces alertes n'ont aucune action en commun : affine la sélection (par type ou gravité).")
+                        .foregroundStyle(.secondary)
+                } else {
+                    HStack(spacing: 8) {
+                        ForEach(common, id: \.self) { action in
+                            Button {
+                                if action.isDestructive { pendingAction = action } else { run(action) }
+                            } label: {
+                                if Request.resolveAlert(alertId: 0, action: action).requiresAdmin {
+                                    Label("\(action.label) (\(actionable.count))", systemImage: "lock.fill")
+                                } else {
+                                    Text("\(action.label) (\(actionable.count))")
+                                }
+                            }
+                            .disabled(model.isBusy("resolve-bulk"))
+                        }
+                    }
+                    if model.isBusy("resolve-bulk") {
+                        ProgressView().controlSize(.small)
+                    }
+                    if actionable.count < alerts.count {
+                        Text("\(alerts.count - actionable.count) alerte(s) déjà résolue(s) ignorée(s).")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Divider()
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(alerts.prefix(12)) { alert in
+                        HStack(spacing: 8) {
+                            Image(systemName: alert.kind.symbol).foregroundStyle(alert.severity.color).frame(width: 18)
+                            Text(alert.title).lineLimit(1)
+                            Spacer()
+                            Text(PBFormat.relative(alert.date)).font(.caption).foregroundStyle(.tertiary)
+                        }
+                    }
+                    if alerts.count > 12 {
+                        Text("… et \(alerts.count - 12) autres").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .confirmationDialog(
+            pendingAction.map { "\($0.label) sur \(actionable.count) alertes ?" } ?? "",
+            isPresented: Binding(get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }),
+            presenting: pendingAction
+        ) { action in
+            Button("\(action.label) (\(actionable.count))", role: .destructive) { run(action) }
+            Button("Annuler", role: .cancel) {}
+        }
+    }
+
+    private func run(_ action: AlertAction) {
+        pendingAction = nil
+        let ids = actionable.map(\.id)
+        Task { await model.resolveMany(ids, action: action) }
     }
 }
 

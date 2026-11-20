@@ -20,6 +20,10 @@ struct PrivacyView: View {
 
     @EnvironmentObject private var model: AppModel
     @State private var tab: Tab = .removal
+    @State private var query = ""
+    @State private var searchKind: PrivacySearch.Kind?
+
+    private var isSearching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -31,19 +35,28 @@ struct PrivacyView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .padding(12)
+            .disabled(isSearching)
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    switch tab {
-                    case .removal: RemovalTab()
-                    case .breaches: BreachesTab()
-                    case .aliases: AliasesTab()
-                    case .tools: PrivacyToolsTab()
+                    if isSearching {
+                        PrivacySearchResults(query: query, kind: $searchKind) { kind in
+                            query = ""
+                            tab = Self.tab(for: kind)
+                        }
+                    } else {
+                        switch tab {
+                        case .removal: RemovalTab()
+                        case .breaches: BreachesTab()
+                        case .aliases: AliasesTab()
+                        case .tools: PrivacyToolsTab()
+                        }
                     }
                 }
                 .padding(20)
             }
         }
+        .searchable(text: $query, placement: .toolbar, prompt: "Rechercher : courtier, e-mail, statut:attente…")
         .navigationTitle("Vie privée")
         .toolbar {
             ToolbarItem {
@@ -55,6 +68,172 @@ struct PrivacyView: View {
         .onAppear {
             model.revalidateSection(.privacy)
         }
+    }
+
+    static func tab(for kind: PrivacySearch.Kind) -> Tab {
+        switch kind {
+        case .request, .broker: return .removal
+        case .breach: return .breaches
+        case .alias: return .aliases
+        }
+    }
+}
+
+/// Results of the privacy search bar (requests, brokers, breaches, aliases), best first.
+private struct PrivacySearchResults: View {
+    @EnvironmentObject private var model: AppModel
+    let query: String
+    @Binding var kind: PrivacySearch.Kind?
+    let open: (PrivacySearch.Kind) -> Void
+
+    var body: some View {
+        let index = PrivacySearch.index(
+            requests: model.removalRequests,
+            brokers: model.brokers,
+            breaches: model.breaches,
+            aliases: model.emailAliases
+        )
+        let all = index.search(query)
+        let hits = kind.map { k in all.filter { $0.document.kind == k.rawValue } } ?? all
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Text(all.count == 1 ? "1 résultat" : "\(all.count) résultats")
+                    .font(.headline)
+                Spacer(minLength: 12)
+                kindChip(nil, count: all.count)
+                ForEach(PrivacySearch.Kind.allCases) { k in
+                    let n = all.filter { $0.document.kind == k.rawValue }.count
+                    if n > 0 { kindChip(k, count: n) }
+                }
+            }
+            if hits.isEmpty {
+                ContentUnavailableView.search(text: query)
+                syntaxHelp
+            } else {
+                ForEach(hits) { hit in
+                    PrivacySearchRow(hit: hit, open: open)
+                }
+                if all.count >= 200 {
+                    Text("Seuls les 200 meilleurs résultats sont affichés : précise la recherche.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func kindChip(_ k: PrivacySearch.Kind?, count: Int) -> some View {
+        let selected = kind == k
+        return Button {
+            kind = k
+        } label: {
+            Text("\(k?.pluralLabel ?? "Tout") \(count)")
+                .font(.caption)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(selected ? Color.accentColor.opacity(0.2) : Color.clear))
+                .overlay(Capsule().strokeBorder(selected ? Color.accentColor : Color.secondary.opacity(0.3)))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var syntaxHelp: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Astuces").font(.caption.weight(.semibold))
+            Text("Les fautes de frappe et les accents sont tolérés. Tous les mots doivent correspondre.")
+            Text("Filtres : \(PrivacySearch.filterHints.joined(separator: "  "))")
+            Text("Phrase exacte : \"accusé de réception\" · Exclure : -refus · Référence d'un courrier : PB-1a2b3c4d")
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .textSelection(.enabled)
+    }
+}
+
+private struct PrivacySearchRow: View {
+    @EnvironmentObject private var model: AppModel
+    let hit: SearchHit
+    let open: (PrivacySearch.Kind) -> Void
+
+    private var kind: PrivacySearch.Kind? { PrivacySearch.Kind(rawValue: hit.document.kind) }
+
+    private static let fieldLabels: [String: String] = [
+        "courtier": "Courtier", "statut": "Statut", "ref": "Référence", "email": "E-mail", "note": "Note",
+        "erreur": "Erreur", "formulaire": "Formulaire", "reponse": "Réponse", "categorie": "Catégorie",
+        "region": "Région", "source": "Source", "site": "Site", "donnees": "Données exposées", "date": "Date",
+        "etat": "État", "libelle": "Libellé", "fournisseur": "Fournisseur",
+    ]
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: kind?.symbol ?? "doc")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .frame(width: 24)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(highlighted(hit.document.title)).fontWeight(.semibold).lineLimit(1)
+                    if let kind { Pill(text: kind.label, color: .secondary) }
+                }
+                if !hit.document.subtitle.isEmpty {
+                    Text(highlighted(hit.document.subtitle)).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                }
+                if let snippet = hit.snippet {
+                    (Text("\(Self.fieldLabels[snippet.field] ?? snippet.field) : ").foregroundColor(.secondary)
+                        + Text(highlighted(snippet.text)))
+                        .font(.caption)
+                        .lineLimit(2)
+                }
+            }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 6) {
+                if let date = hit.document.date {
+                    Text(PBFormat.relative(date)).font(.caption2).foregroundStyle(.tertiary)
+                }
+                HStack(spacing: 8) {
+                    actions
+                    if let kind {
+                        Button("Afficher") { open(kind) }
+                    }
+                }
+                .controlSize(.small)
+            }
+        }
+        .padding(12)
+        .glassSurface()
+    }
+
+    @ViewBuilder
+    private var actions: some View {
+        switch kind {
+        case .request:
+            if let r = model.removalRequests.first(where: { $0.id == hit.document.key }) {
+                if let url = r.optOutUrl {
+                    Button("Formulaire") { model.open(urlString: url) }
+                }
+                Button("Copier la référence") { model.copyToPasteboard(PrivacySearch.reference(requestId: r.id)) }
+            }
+        case .broker:
+            if let b = model.brokers.first(where: { $0.id == hit.document.key }), let url = b.optOutUrl ?? b.website {
+                Button(b.optOutUrl != nil ? "Formulaire" : "Site") { model.open(urlString: url) }
+            }
+        case .alias:
+            Button("Copier") { model.copyToPasteboard(hit.document.title) }
+        case .breach, .none:
+            EmptyView()
+        }
+    }
+
+    private func highlighted(_ text: String) -> AttributedString {
+        var out = AttributedString(text)
+        for range in TextFold.ranges(in: text, matching: hit.matchedWords) {
+            guard let lower = AttributedString.Index(range.lowerBound, within: out),
+                  let upper = AttributedString.Index(range.upperBound, within: out) else { continue }
+            out[lower..<upper].inlinePresentationIntent = .stronglyEmphasized
+            out[lower..<upper].backgroundColor = Color.yellow.opacity(0.3)
+        }
+        return out
     }
 }
 
