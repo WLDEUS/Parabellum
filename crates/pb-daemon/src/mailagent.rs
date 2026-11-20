@@ -243,6 +243,28 @@ struct LazyOllama {
     failed: Mutex<Option<String>>,
 }
 
+/// Last DB refresh asked for a missing Ollama pin (Unix seconds).
+static LAST_PIN_REFRESH: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+const PIN_REFRESH_EVERY: i64 = 30 * 60;
+
+/// The installed DB predates the Ollama pin (published the same night, after this Mac's daily check):
+/// fetch the current DB now instead of failing until tomorrow. At most every 30 minutes.
+async fn refresh_db_for_pin(ctx: &Arc<Ctx>) {
+    let now = pb_core::now_ts();
+    let last = LAST_PIN_REFRESH.load(Ordering::Relaxed);
+    if now - last < PIN_REFRESH_EVERY
+        || LAST_PIN_REFRESH
+            .compare_exchange(last, now, Ordering::Relaxed, Ordering::Relaxed)
+            .is_err()
+    {
+        return;
+    }
+    tracing::info!("Ollama pin missing from the installed DB: checking for a newer DB");
+    if let Err(e) = crate::scheduler::run_updates(ctx, pb_core::model::UpdateTarget::Db).await {
+        tracing::warn!(error = %e.message, "DB refresh for the Ollama pin skipped");
+    }
+}
+
 impl LazyOllama {
     fn new(ctx: Arc<Ctx>, model: String, cancel: Arc<AtomicBool>) -> Self {
         Self {
@@ -264,6 +286,9 @@ impl LazyOllama {
 
     async fn start(&self) -> Result<Server, String> {
         let paths = &self.ctx.paths;
+        if pb_updater::read_ollama_pin(paths).is_none() {
+            refresh_db_for_pin(&self.ctx).await;
+        }
         pb_updater::install_ollama(paths)
             .await
             .map_err(|e| format!("installation d'Ollama : {e}"))?;

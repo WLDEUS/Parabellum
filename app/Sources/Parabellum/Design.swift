@@ -76,7 +76,10 @@ struct GlassSurface<S: InsettableShape>: ViewModifier {
         content
             .background {
                 ZStack {
+                    // The shadow belongs to the slab, not to the content: on `content` it is recomputed
+                    // from every glyph and icon on every scrolled frame, on the shape it is one path.
                     shape.fill(.ultraThinMaterial)
+                        .shadow(color: .black.opacity(0.18), radius: 14, x: 0, y: 6)
                     if let tint {
                         shape.fill(tint.opacity(0.10))
                     }
@@ -93,7 +96,6 @@ struct GlassSurface<S: InsettableShape>: ViewModifier {
                     lineWidth: 0.8
                 )
             }
-            .shadow(color: .black.opacity(0.18), radius: 14, x: 0, y: 6)
     }
 }
 
@@ -139,6 +141,9 @@ struct AuroraBackground: View {
             }
             .frame(width: w, height: h)
             .clipped()
+            // Rendered once into a single texture: glass surfaces scrolling above sample a flat image
+            // instead of re-running three huge Gaussian blurs.
+            .drawingGroup()
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
@@ -171,11 +176,23 @@ struct AuroraBackground: View {
         }
     }
 
+    /// Soft glow drawn as a radial gradient (same look as a blurred disc, no blur filter to run).
     private func glow(_ color: Color, size: CGFloat) -> some View {
-        Circle()
-            .fill(color.opacity(scheme == .dark ? 0.32 : 0.20))
-            .frame(width: size, height: size)
-            .blur(radius: size * 0.28)
+        let strength = scheme == .dark ? 0.32 : 0.20
+        return Circle()
+            .fill(
+                RadialGradient(
+                    stops: [
+                        .init(color: color.opacity(strength), location: 0),
+                        .init(color: color.opacity(strength * 0.55), location: 0.35),
+                        .init(color: color.opacity(0), location: 1),
+                    ],
+                    center: .center,
+                    startRadius: 0,
+                    endRadius: size * 0.78
+                )
+            )
+            .frame(width: size * 1.56, height: size * 1.56)
     }
 }
 
