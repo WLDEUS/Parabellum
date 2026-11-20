@@ -119,7 +119,14 @@ def swift_literals(src: str):
                 j += 1
             text = "".join(body)
             if multi:
-                text = text.strip("\n")
+                # Swift rules: content starts after the opening line, the closing line's indentation is
+                # removed from every line, and that last line break is not part of the string.
+                text = text.removeprefix("\n")
+                cut = text.rfind("\n")
+                indent = text[cut + 1 :] if cut >= 0 else ""
+                if cut >= 0 and indent.strip() == "":
+                    lines = text[:cut].split("\n")
+                    text = "\n".join(ln.removeprefix(indent) for ln in lines)
             yield start_line, text, prefix
             i = j
         else:
@@ -137,6 +144,9 @@ def literal_pattern(text: str) -> str:
                 k += 1
             out.append("\x00")
             i = k
+            continue
+        if text.startswith("\\\n", i):  # line continuation in a multi-line literal
+            i += 2
             continue
         if text[i] == "\\" and i + 1 < len(text):
             out.append(

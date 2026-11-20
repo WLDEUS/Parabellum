@@ -862,11 +862,10 @@ final class AppModel: ObservableObject {
         }
         await refreshStatus()
         if finished != nil || done > 0 {
-            let plural = done > 1 ? "s" : ""
             banner = Banner(
                 message: failed == 0
-                    ? String(localized: "\(action.label) : \(done) alerte\(plural) traitée\(plural).")
-                    : String(localized: "\(action.label) : \(done) traitée\(plural), \(failed) en échec."),
+                    ? String(localized: "\(action.label) : \(done) alerte(s) traitée(s).")
+                    : String(localized: "\(action.label) : \(done) traitée(s), \(failed) en échec."),
                 isError: failed > 0
             )
         }
