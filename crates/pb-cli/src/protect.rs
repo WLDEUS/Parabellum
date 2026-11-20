@@ -1029,7 +1029,8 @@ pub fn privacy(
         }
         PrivacyCmd::Agent { action } => {
             let st: MailAgentStatus = match action {
-                Some(AgentCmd::Run) => c.call(Request::MailAgentRun)?,
+                Some(AgentCmd::Run { now: false }) => c.call(Request::MailAgentRun)?,
+                Some(AgentCmd::Run { now: true }) => c.call(Request::MailAgentRunNow)?,
                 None | Some(AgentCmd::Status) => c.call(Request::MailAgentStatus)?,
             };
             emit(cli, io, &st, agent_status)?;

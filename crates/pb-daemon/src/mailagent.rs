@@ -29,11 +29,14 @@ const ACTIVE_AGAIN: Duration = Duration::from_secs(60);
 struct Runtime {
     state: MailAgentState,
     requested: bool,
+    /// Asked by you right now: no idle / mains-power condition, not stopped when you use the Mac.
+    requested_now: bool,
 }
 
 static RUNTIME: Mutex<Runtime> = Mutex::new(Runtime {
     state: MailAgentState::Disabled,
     requested: false,
+    requested_now: false,
 });
 
 fn rt() -> std::sync::MutexGuard<'static, Runtime> {
@@ -127,6 +130,25 @@ async fn may_run(cfg: &Config) -> bool {
     idle_ok && (!a.require_ac_power || on_ac_power().await)
 }
 
+/// `mail_agent_run_now`: run immediately. During an idle run (which stops when you come back), a
+/// foreground run follows right after it.
+pub async fn request_run_now(ctx: &Arc<Ctx>) -> Result<MailAgentStatus, IpcError> {
+    if !active(&ctx.config()) {
+        return Err(IpcError::new(
+            ErrorCode::BadRequest,
+            "agent courrier désactivé (Réglages › Effacement : activer l'effacement et l'agent)",
+        ));
+    }
+    {
+        let mut r = rt();
+        r.requested_now = true;
+        // Reported at once: the loop picks it up within a second (`kick` keeps the wake-up if busy).
+        r.state = MailAgentState::Running;
+    }
+    kick().notify_one();
+    status(ctx).await
+}
+
 // ----- loop -----------------------------------------------------------------------------------------
 
 pub async fn run_loop(ctx: Arc<Ctx>) {
@@ -162,14 +184,20 @@ pub async fn run_loop(ctx: Arc<Ctx>) {
             .await
             .last_run_at
             .unwrap_or(0);
-        let due = rt().requested
+        let now = rt().requested_now;
+        let due = now
+            || rt().requested
             || pb_core::now_ts() - last >= i64::from(cfg.mail_agent.interval_hours) * 3600;
-        if !due || !may_run(&cfg).await {
+        if !due || (!now && !may_run(&cfg).await) {
             continue;
         }
-        rt().requested = false;
-        rt().state = MailAgentState::Running;
-        let ok = run_once(&ctx, &cfg).await;
+        {
+            let mut r = rt();
+            r.requested = false;
+            r.requested_now = false;
+            r.state = MailAgentState::Running;
+        }
+        let ok = run_once(&ctx, &cfg, !now).await;
         rt().state = if ok {
             MailAgentState::Waiting
         } else {
@@ -178,8 +206,9 @@ pub async fn run_loop(ctx: Arc<Ctx>) {
     }
 }
 
-/// One run; `false` on failure (recorded in the agent state).
-async fn run_once(ctx: &Arc<Ctx>, cfg: &Arc<Config>) -> bool {
+/// One run; `false` on failure (recorded in the agent state). `yield_to_user`: stop as soon as you use the
+/// Mac again (idle runs); a run you asked for keeps going.
+async fn run_once(ctx: &Arc<Ctx>, cfg: &Arc<Config>, yield_to_user: bool) -> bool {
     let Ok(svc) = crate::privacy::service(ctx) else {
         return false;
     };
@@ -191,9 +220,10 @@ async fn run_once(ctx: &Arc<Ctx>, cfg: &Arc<Config>) -> bool {
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(Duration::from_secs(10)).await;
-                let back = idle_seconds()
-                    .await
-                    .is_some_and(|s| s < ACTIVE_AGAIN.as_secs());
+                let back = yield_to_user
+                    && idle_seconds()
+                        .await
+                        .is_some_and(|s| s < ACTIVE_AGAIN.as_secs());
                 if back || ctx.is_shutting_down() {
                     cancel.store(true, Ordering::SeqCst);
                     return;
