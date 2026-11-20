@@ -904,7 +904,9 @@ fn dispatch(
                 || Path::new(&target.path).starts_with(&filter.own_root)
                 || (target.is_platform_binary
                     && !crate::sensitive::platform_exec_of_interest(&target.path, &args)
-                    && !interpreter_from_third_party(&target, parent.as_ref()))
+                    && !interpreter_from_third_party(&target, parent.as_ref())
+                    // `sh /x/payload.json`: the file is skipped by pattern rules at rest, scanned now.
+                    && pb_core::inert::disguised_script(&target.path, &args).is_none())
             {
                 return Dispatch::Skipped;
             }
@@ -1241,6 +1243,43 @@ mod tests {
             n += 1;
         }
         assert_eq!(n, 2);
+    }
+
+    #[tokio::test]
+    async fn dispatch_platform_interpreter_running_inert_text() {
+        let cfg = pb_core::config::Config::default();
+        let f = EsFilter::new(&cfg, Some(Path::new("/Users/q")), Path::new("/pbroot"));
+        let (tx, _rx) = mpsc::channel(8);
+        let launchd = EsProcessInfo {
+            pid: 1,
+            path: "/sbin/launchd".into(),
+            is_platform_binary: true,
+            ..Default::default()
+        };
+        let exec = |args: &[&str]| EsEvent::Exec {
+            target: EsProcessInfo {
+                pid: 9,
+                path: "/bin/sh".into(),
+                is_platform_binary: true,
+                ..Default::default()
+            },
+            args: args.iter().map(|a| a.to_string()).collect(),
+            parent: Some(launchd.clone()),
+        };
+        // Apple -> Apple, normally filtered out: forwarded when handed an inert-looking file.
+        assert!(matches!(
+            dispatch(
+                exec(&["sh", "/Users/Shared/.cfg/update.json"]),
+                &f,
+                &tx,
+                None
+            ),
+            Dispatch::Sent
+        ));
+        assert!(matches!(
+            dispatch(exec(&["sh", "/etc/rc.common"]), &f, &tx, None),
+            Dispatch::Skipped
+        ));
     }
 
     #[tokio::test]

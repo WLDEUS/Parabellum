@@ -107,16 +107,15 @@ impl IndicatorKind {
         match self {
             IndicatorKind::FakePasswordPrompt => {
                 "Une boîte de dialogue AppleScript demande un mot de passe masqué : c'est la technique des \
-                 voleurs de données macOS (AMOS, Poseidon, Banshee…) pour obtenir votre mot de passe de session. \
-                 Ne le saisissez jamais dans ce type de fenêtre."
+                 voleurs de données macOS pour obtenir votre mot de passe de session. Ne le saisissez jamais \
+                 dans ce type de fenêtre."
             }
             IndicatorKind::KeychainDump => {
                 "Un programme lit la clé de chiffrement des mots de passe du navigateur (« Safe Storage ») ou \
                  exporte le trousseau."
             }
             IndicatorKind::PasswordCheck => {
-                "Un programme teste un mot de passe de session avec dscl -authonly (validation d'un mot de \
-                 passe volé)."
+                "Un programme teste un mot de passe de session avec dscl (validation d'un mot de passe volé)."
             }
             IndicatorKind::CredentialAccess => {
                 "Un outil en ligne de commande lit ou copie les bases de mots de passe, cookies ou portefeuilles \

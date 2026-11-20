@@ -27,6 +27,7 @@ pub mod guard;
 pub mod ipc;
 pub mod jobs;
 pub mod mailagent;
+pub mod own;
 pub mod persistence;
 pub mod posture;
 pub mod privacy;

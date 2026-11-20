@@ -127,6 +127,9 @@ install -m 0644 "$installer_dir/launchd/$PB_UI_AGENT_LABEL.plist" "$root/Library
 find "$root" -name .DS_Store -delete
 /usr/bin/xattr -cr "$root" 2>/dev/null || true
 
+# Last step on the payload (everything is signed): hashes of our own files for the daemon (pb-core own.rs).
+"$PB_REPO_ROOT/scripts/build-manifest.sh" "$root" "$version"
+
 install -m 0755 "$installer_dir/scripts/preinstall" "$stage/scripts/preinstall"
 install -m 0755 "$installer_dir/scripts/postinstall" "$stage/scripts/postinstall"
 
@@ -164,6 +167,7 @@ for expected in \
     "Library/Application Support/Parabellum/signatures/heuristics.json" \
     "Library/Application Support/Parabellum/signatures/macho_patterns.json" \
     "Library/Application Support/Parabellum/signatures/script_patterns.json" \
+    "Library/Application Support/Parabellum/manifest.json" \
     "Library/LaunchDaemons/$PB_DAEMON_LABEL.plist" \
     "Library/LaunchAgents/$PB_UI_AGENT_LABEL.plist"; do
     grep -Fqx "$expected" <<<"$payload" || pb_die "payload incomplet : $expected manquant"

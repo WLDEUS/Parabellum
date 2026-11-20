@@ -49,6 +49,12 @@ def test_validate_drops_broken_and_duplicates():
     assert rep.rule_count == 4
 
 
+def test_validate_rejects_modules_missing_from_client():
+    rep = validate([RuleFile("sandbox.yar", "s", 'import "cuckoo"\nrule S { condition: true }')])
+    assert rep.accepted == []
+    assert "cuckoo" in dict(rep.rejected_files)["sandbox.yar"]
+
+
 def test_bundle_name():
     assert bundle_name("elastic", "yara/rules/MacOS_Trojan_X.yar") == "elastic__MacOS_Trojan_X.yar"
     assert bundle_name("x y", "a b.yara") == "x_y__a_b.yar"

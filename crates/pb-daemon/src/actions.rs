@@ -57,10 +57,12 @@ pub fn signature_grade(engine: &dyn ScanEngine, r: &ScanReport) -> bool {
     })
 }
 
-/// Push the local allowlist (store) into the engine.
+/// Push the local allowlist (store) into the engine, with the hashes of our own installed files (exact
+/// content: a modified copy is not covered).
 pub async fn sync_allowlist(ctx: &Arc<Ctx>) {
     match ctx.store.run(|s| s.allowlist_all()).await {
-        Ok(list) => {
+        Ok(mut list) => {
+            list.extend(ctx.own.hashes());
             let engine = ctx.engine();
             let _ = tokio::task::spawn_blocking(move || engine.set_local_allowlist(&list)).await;
         }

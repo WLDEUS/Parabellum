@@ -51,7 +51,7 @@ use std::io::Read;
 use std::os::unix::fs::{FileExt, MetadataExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
 
 /// Files up to this size are read once into memory (hash + YARA + ML on the same buffer); larger
@@ -96,6 +96,9 @@ pub struct ScanOptions {
     /// executable / script / container / app-related, decided from path, mode and the first bytes
     /// ([`filetype::is_risky`]). For multi-TB volumes and retro-hunts.
     pub only_risky_types: bool,
+    /// Run pattern rules on inert text too ([`pb_core::inert`]). Off at rest; on when an interpreter
+    /// was just handed the file (`sh payload.json`).
+    pub scan_inert_text: bool,
 }
 
 impl Default for ScanOptions {
@@ -122,6 +125,7 @@ impl ScanOptions {
             expand_pkg: cfg.scan.expand_pkg,
             exclude_prefixes: cfg.scan.exclude_paths.iter().map(PathBuf::from).collect(),
             only_risky_types: false,
+            scan_inert_text: false,
         }
     }
 
@@ -150,6 +154,7 @@ impl ScanOptions {
             self.archive_max_entries,
             self.mount_dmg,
             self.expand_pkg,
+            self.scan_inert_text,
         )
             .hash(&mut h);
         h.finish()
@@ -220,6 +225,15 @@ impl CacheKey {
     }
 }
 
+/// Persistent content-addressed verdicts (the daemon's database). Only clean, self-contained results are
+/// stored (no detection, no error, no code-signing dependency), under a key made of the content hash,
+/// how the file was typed, and [`Engine::content_fingerprint`] + the options: a new threat DB, new rules,
+/// another binary or other options never reuse an old verdict.
+pub trait VerdictStore: Send + Sync {
+    fn get(&self, key: &str) -> Option<ScanReport>;
+    fn put(&self, key: &str, report: &ScanReport);
+}
+
 /// The scanning engine. `Send + Sync`; share it behind an `Arc`.
 pub struct Engine {
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -242,6 +256,9 @@ pub struct Engine {
     local_allow: RwLock<HashSet<hashdb::Digest>>,
     sign_cache: Mutex<TwoGenCache<hashdb::Digest, Option<SigningInfo>>>,
     scan_cache: Mutex<TwoGenCache<CacheKey, ScanReport>>,
+    /// Everything a verdict depends on besides the content and the options (hex SHA-256).
+    content_fp: String,
+    verdicts: RwLock<Option<Arc<dyn VerdictStore>>>,
 }
 
 /// Per-call scanning context.
@@ -338,6 +355,10 @@ pub(crate) struct Analysis {
     /// On-disk path eligible for ClamAV (top-level only).
     pub clamav_path: Option<PathBuf>,
     pub cache_key: Option<CacheKey>,
+    /// Key in the persistent verdict store (top-level on-disk files, store attached, not allowlisted).
+    pub persist_key: Option<String>,
+    /// Sent to ClamAV and no answer merged yet: the verdict is incomplete, never persisted.
+    pub clamav_pending: bool,
     started: Instant,
     notes: Vec<String>,
     /// Report is already final (scan-cache hit).
@@ -355,6 +376,8 @@ impl Analysis {
             members: Rollup::default(),
             trusted: false,
             allowlisted: false,
+            persist_key: None,
+            clamav_pending: false,
             clamav_path: None,
             cache_key: None,
             started: Instant::now(),
@@ -602,7 +625,12 @@ impl Engine {
             local_allow: RwLock::new(HashSet::new()),
             sign_cache: Mutex::new(TwoGenCache::new(SIGN_CACHE_CAPACITY)),
             scan_cache: Mutex::new(TwoGenCache::new(SCAN_CACHE_CAPACITY)),
+            content_fp: String::new(),
+            verdicts: RwLock::new(None),
         };
+        let mut engine = engine;
+        engine.content_fp =
+            engine.compute_content_fingerprint(builtin_src.as_deref(), &paths.signatures_dir());
         let s = engine.stats();
         tracing::info!(
             db = ?s.db_version, malware_hashes = s.malware_hashes, allow_hashes = s.allow_hashes, yara_rules = s.yara_rules,
@@ -639,6 +667,61 @@ impl Engine {
         if let Ok(mut c) = self.scan_cache.lock() {
             c.clear();
         }
+    }
+
+    /// Attach the persistent verdict store ([`VerdictStore`]).
+    pub fn set_verdict_store(&self, store: Arc<dyn VerdictStore>) {
+        if let Ok(mut g) = self.verdicts.write() {
+            *g = Some(store);
+        }
+    }
+
+    fn verdict_store(&self) -> Option<Arc<dyn VerdictStore>> {
+        self.verdicts.read().ok().and_then(|g| g.clone())
+    }
+
+    /// What a verdict depends on besides the file and the options: engine build, threat DB, rule and
+    /// pattern sources, ML models, trusted signers, ClamAV.
+    pub fn content_fingerprint(&self) -> &str {
+        &self.content_fp
+    }
+
+    fn compute_content_fingerprint(&self, builtin: Option<&[u8]>, signatures: &Path) -> String {
+        use sha2::{Digest as _, Sha256};
+        let mut h = Sha256::new();
+        let mut field = |b: &[u8]| {
+            h.update((b.len() as u64).to_le_bytes());
+            h.update(b);
+        };
+        field(env!("CARGO_PKG_VERSION").as_bytes());
+        field(self.db_version.as_deref().unwrap_or("").as_bytes());
+        field(builtin.unwrap_or_default());
+        for f in [
+            "heuristics.json",
+            "macho_patterns.json",
+            "script_patterns.json",
+        ] {
+            field(&std::fs::read(signatures.join(f)).unwrap_or_default());
+        }
+        let s = self.stats();
+        field(format!("{}/{}/{}", s.malware_hashes, s.allow_hashes, s.yara_rules).as_bytes());
+        for m in &self.model_infos {
+            field(format!("{:?}/{:?}/{:?}", m.loaded, m.version, m.threshold).as_bytes());
+        }
+        field(
+            format!(
+                "{}/{}/{}",
+                self.ml_threshold, self.ml_script_threshold, self.ml_only_untrusted
+            )
+            .as_bytes(),
+        );
+        let mut teams: Vec<&String> = self.team_ids.iter().collect();
+        teams.sort();
+        for t in teams {
+            field(t.as_bytes());
+        }
+        field(format!("{:?}", self.clamav.as_ref().map(|c| c.version.clone())).as_bytes());
+        hex::encode(h.finalize())
     }
 
     fn is_allowlisted(&self, d: &hashdb::Digest) -> bool {
@@ -1030,6 +1113,7 @@ impl Engine {
         match clam.scan_batch(files, &Self::clam_limits(opts), cancel) {
             Ok(hits) => {
                 for (a, p) in batch.iter_mut().zip(files) {
+                    a.clamav_pending = false;
                     if let Some(sigs) = hits.get(p) {
                         for sig in sigs {
                             a.own.push(Detection {
@@ -1066,8 +1150,51 @@ impl Engine {
     }
 
     /// Final verdict + scan-cache store for a top-level analysis.
+    /// Content hash + how the file is typed (extension and bundle matter: the same bytes are a script in
+    /// `x.sh` and inert text in `x.json`) + engine and option fingerprints.
+    fn persist_key(
+        &self,
+        ctx: &Ctx<'_>,
+        path: &Path,
+        digest: &hashdb::Digest,
+        data: &[u8],
+        tail: Option<&[u8]>,
+        truncated: bool,
+    ) -> String {
+        let head = &data[..data.len().min(filetype::HEAD_LEN)];
+        let tail = tail.or((!truncated).then_some(data));
+        let kind = filetype::detect(head, tail, path);
+        format!(
+            "{}:{kind:?}:{}:{}:{:x}:{}",
+            hex::encode(digest),
+            u8::from(filetype::is_inert_text(kind, path)),
+            u8::from(filetype::in_bundle(path)),
+            ctx.fingerprint,
+            self.content_fp
+        )
+    }
+
     fn complete(&self, a: &mut Analysis) {
         a.finalize();
+        if let Some(key) = a.persist_key.take() {
+            let r = &a.report;
+            let self_contained = r.verdict == Verdict::Clean
+                && r.detections.is_empty()
+                && r.error.is_none()
+                && r.signing.is_none()
+                && r.kind != FileKind::AppBundle
+                && !r.cached
+                && !a.allowlisted
+                && !a.clamav_pending;
+            if self_contained {
+                if let Some(store) = self.verdict_store() {
+                    let mut stored = r.clone();
+                    stored.path = String::new();
+                    stored.duration_ms = 0;
+                    store.put(&key, &stored);
+                }
+            }
+        }
         if let Some(key) = a.cache_key.take() {
             if a.report.error.is_none() {
                 let mut stored = a.report.clone();
@@ -1176,6 +1303,20 @@ impl Engine {
             None
         };
         drop(file);
+        if depth == 0 && !self.is_allowlisted(&digest) {
+            if let Some(store) = self.verdict_store() {
+                let key = self.persist_key(ctx, path, &digest, &data, tail.as_deref(), truncated);
+                if let Some(mut hit) = store.get(&key) {
+                    hit.path = std::mem::take(&mut a.report.path);
+                    hit.cached = true;
+                    hit.duration_ms = a.started.elapsed().as_millis() as u64;
+                    a.report = hit;
+                    a.done = true;
+                    return a;
+                }
+                a.persist_key = Some(key);
+            }
+        }
         let info = ContentInfo {
             disk_path: Some(path),
             digest: Some(digest),
@@ -1194,6 +1335,11 @@ impl Engine {
             && scoring::score(&a.own, a.trusted).0 != Verdict::Malicious
         {
             a.clamav_path = Some(path.to_path_buf());
+            a.clamav_pending = true;
+        } else if ctx.opts.use_clamav && self.clamav.is_some() && !a.allowlisted && !hash_only {
+            // ClamAV wanted but skipped for this path (unbatchable name): a clean verdict here would let
+            // a copy under a normal name skip ClamAV too.
+            a.persist_key = None;
         }
         a
     }
@@ -1260,6 +1406,11 @@ impl Engine {
             if let Some(det) = self.hash_detection(d) {
                 a.own.push(det);
             }
+        }
+        if !ctx.opts.scan_inert_text && filetype::is_inert_text(kind, Path::new(&a.report.path)) {
+            // Source code / rule sources / data: pattern rules would only find what the text talks
+            // about (our own rules and test samples first of all). Hash DB above, ClamAV later.
+            return;
         }
         if info.hash_only {
             // Rules still run on the first IN_MEMORY_LIMIT bytes (padding usually goes at the end);

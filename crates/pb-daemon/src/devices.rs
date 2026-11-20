@@ -308,6 +308,7 @@ async fn maybe_scan_volume(ctx: &Arc<Ctx>, cfg: &Config, dev: &DeviceInfo) {
             use_clamav: cfg.scan.clamav_on_demand,
             recursive: true,
             only_risky_types: true,
+            inert_text: false,
         },
     };
     match jobs::submit(ctx, spec).await {

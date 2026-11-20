@@ -489,6 +489,7 @@ mod tests {
                 use_clamav: false,
                 recursive: true,
                 only_risky_types: false,
+                inert_text: false,
             },
         }
     }

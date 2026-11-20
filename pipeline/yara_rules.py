@@ -105,8 +105,16 @@ def remove_rules(text: str, names: Iterable[str]) -> str:
     return header + "".join(kept)
 
 
+# yara-x modules the client is built without (Cargo.toml): a rule importing one compiles here but not there.
+CLIENT_MISSING_MODULES = ("cuckoo",)
+_IMPORT = re.compile(r'^\s*import\s+"([^"]+)"', re.MULTILINE)
+
+
 def compile_one(text: str, origin: str) -> str | None:
     """Compile with default yara-x settings (what the engine uses). Returns an error message or None."""
+    missing = sorted(set(_IMPORT.findall(text)) & set(CLIENT_MISSING_MODULES))
+    if missing:
+        return f"imports module(s) not built into the client: {', '.join(missing)}"
     c = yara_x.Compiler()
     try:
         c.add_source(text, origin=origin)

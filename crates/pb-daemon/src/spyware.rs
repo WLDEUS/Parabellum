@@ -859,6 +859,7 @@ pub async fn start(ctx: &Arc<Ctx>) -> Result<String, IpcError> {
             use_clamav: false,
             recursive: false,
             only_risky_types: false,
+            inert_text: false,
         },
     };
     jobs::submit(ctx, spec).await
