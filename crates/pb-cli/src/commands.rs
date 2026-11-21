@@ -230,6 +230,57 @@ fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
             })?;
             emit(cli, io, &l, |l| format::alerts(l))?;
         }
+        Command::ExportAlerts {
+            format,
+            output,
+            from,
+            to,
+            open_only,
+            min_severity,
+            lang,
+        } => {
+            let min_severity = match min_severity {
+                Some(s) => Some(parse_wire_enum::<Severity>(s).ok_or_else(|| {
+                    CliError::Usage(format!(
+                        "gravité inconnue « {s} » (info, low, medium, high, critical)"
+                    ))
+                })?),
+                None => None,
+            };
+            let r: AlertExport = c.call(Request::ExportAlerts {
+                format: (*format).into(),
+                from: from.clone(),
+                to: to.clone(),
+                include_resolved: !*open_only,
+                min_severity,
+                lang: Some(lang.clone()),
+            })?;
+            match output.as_deref() {
+                Some(p) if p == std::path::Path::new("-") => {
+                    io.out.write_all(r.content.as_bytes())?;
+                }
+                dest => {
+                    let path = dest
+                        .map(std::path::Path::to_path_buf)
+                        .unwrap_or_else(|| std::path::PathBuf::from(&r.file_name));
+                    // Never overwrite silently.
+                    let mut f = std::fs::OpenOptions::new()
+                        .write(true)
+                        .create_new(true)
+                        .open(&path)
+                        .map_err(|e| CliError::Usage(format!("{} : {e}", path.display())))?;
+                    f.write_all(r.content.as_bytes())?;
+                    let note = if r.truncated {
+                        format!(" (tronqué : {} sur {})", r.count, r.total)
+                    } else {
+                        String::new()
+                    };
+                    emit(cli, io, &r.count, |n| {
+                        format!("{n} alerte(s) exportée(s){note} : {}\n", path.display())
+                    })?;
+                }
+            }
+        }
         Command::Resolve { alert_id, action } => {
             let action: AlertAction = parse_wire_enum(action).ok_or_else(|| {
                 CliError::Usage(format!(

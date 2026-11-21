@@ -205,6 +205,25 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
                     .await?,
             )
         }
+        Request::ExportAlerts {
+            format,
+            from,
+            to,
+            include_resolved,
+            min_severity,
+            lang,
+        } => json(
+            &crate::alert_export::export(
+                ctx,
+                format,
+                from,
+                to,
+                include_resolved,
+                min_severity,
+                lang,
+            )
+            .await?,
+        ),
         Request::ResolveAlert { alert_id, action } => {
             json(&actions::resolve_alert(ctx, alert_id, action, peer.admin).await?)
         }

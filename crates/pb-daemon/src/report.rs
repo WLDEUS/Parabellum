@@ -31,7 +31,7 @@ pub const MAX_UPTIME_GAP: i64 = 15 * 60;
 /// The monthly report is announced from this local hour on the 1st (or later if the Mac was off).
 pub const MONTHLY_ANNOUNCE_HOUR: u32 = 9;
 
-fn local_midnight<Tz: TimeZone>(tz: &Tz, d: NaiveDate) -> Option<DateTime<Tz>> {
+pub(crate) fn local_midnight<Tz: TimeZone>(tz: &Tz, d: NaiveDate) -> Option<DateTime<Tz>> {
     // Midnight may not exist on DST days in some zones: fall back to the first valid hour.
     (0..4).find_map(|h| {
         d.and_hms_opt(h, 0, 0)

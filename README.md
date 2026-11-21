@@ -11,6 +11,7 @@ Antivirus personnel et open source pour **macOS 14+ sur Apple Silicon**. Un seul
 | Domaine | Ce que fait Parabellum | Briques |
 |---|---|---|
 | Analyse à la demande | Fichiers, dossiers, DMG (montés en lecture seule), PKG (dépaquetés), ZIP | Base de hash, YARA-X, ClamAV (`clamscan`) |
+| Rapport des alertes | Export complet (résumé par gravité / statut / type, puis chaque alerte avec chemin, SHA-256, processus) en PDF, HTML, CSV, JSON ou Markdown, filtrable par période et gravité : Alertes › Exporter, ou `parabellum export-alerts` | Rendu par le daemon (`export_alerts`) |
 | Clic droit dans le Finder | Sous-menu « Parabellum » (extension Finder) et Actions rapides : analyser, supprimer les métadonnées (copie nettoyée), chiffrer un dossier, supprimer définitivement | Extension FinderSync + `NSServices` |
 | Dossiers chiffrés | Un dossier devient `<nom>.coffre` : image disque APFS AES-256, copie vérifiée (SHA-256) avant suppression définitive de l'original ; ouverture par double-clic avec Touch ID (clé de la Secure Enclave), fichier clé ou mot de passe (secours, même sans Parabellum) | `hdiutil`, CryptoKit |
 | Suppression définitive | Réécriture aléatoire, renommage, suppression, puis suppression des instantanés Time Machine locaux pris depuis la création des fichiers (option, admin). Limites du SSD expliquées dans l'app ; FileVault reste la vraie garantie | `tmutil` |

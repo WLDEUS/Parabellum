@@ -16,6 +16,7 @@
 
 pub mod actions;
 pub mod adapters;
+pub mod alert_export;
 pub mod auth;
 pub mod backends;
 pub mod baseline;

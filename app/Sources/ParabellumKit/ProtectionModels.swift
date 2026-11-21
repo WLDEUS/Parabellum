@@ -184,6 +184,36 @@ public struct VpnStatus: Codable, Sendable, Hashable {
 // MARK: - Behaviour guard & snapshots
 
 /// APFS local snapshot (`tmutil listlocalsnapshots /`).
+/// Format of `export_alerts` (PDF is made by the app from the HTML).
+public enum AlertExportFormat: String, Codable, Sendable, Hashable, CaseIterable {
+    case html, csv, json, markdown
+
+    public var fileExtension: String {
+        switch self {
+        case .html: return "html"
+        case .csv: return "csv"
+        case .json: return "json"
+        case .markdown: return "md"
+        }
+    }
+}
+
+/// Result of `export_alerts`.
+public struct AlertExport: Codable, Sendable, Hashable {
+    public let format: AlertExportFormat
+    public let fileName: String
+    public let mime: String
+    public let content: String
+    public let count: Int
+    public let total: Int
+    public let truncated: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case format, mime, content, count, total, truncated
+        case fileName = "file_name"
+    }
+}
+
 /// Result of `purge_snapshots`.
 public struct SnapshotPurge: Codable, Sendable, Hashable {
     public let deleted: [String]
