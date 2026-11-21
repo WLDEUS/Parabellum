@@ -117,6 +117,9 @@ public struct Config: Codable, Sendable, Hashable {
         if security.spywareScanHour < 0 || security.spywareScanHour > 23 {
             errors.append(String(localized: "L'heure de l'analyse anti-spyware doit être comprise entre 0 et 23."))
         }
+        if scan.threads < 0 || scan.threads > ScanConfig.maxThreads {
+            errors.append(String(localized: "Le nombre de fils d'analyse doit être compris entre 0 (automatique) et \(ScanConfig.maxThreads)."))
+        }
         if fullScan.intervalDays < 1 || fullScan.intervalDays > FullScanConfig.maxIntervalDays {
             errors.append(String(localized: "L'intervalle de l'analyse complète doit être compris entre 1 et \(FullScanConfig.maxIntervalDays) jours."))
         }
@@ -157,6 +160,10 @@ public struct ScanConfig: Codable, Sendable, Hashable {
     public var clamavRealtime: Bool = false
     public var mountDmg: Bool = true
     public var expandPkg: Bool = true
+    /// Analysis threads of folder scans: 0 = automatic, else 1…`maxThreads`.
+    public var threads: Int = 0
+    /// Same bound as `SCAN_MAX_THREADS` in Rust.
+    public static let maxThreads = 16
 
     public init() {}
 
@@ -171,6 +178,7 @@ public struct ScanConfig: Codable, Sendable, Hashable {
         case clamavRealtime = "clamav_realtime"
         case mountDmg = "mount_dmg"
         case expandPkg = "expand_pkg"
+        case threads
     }
 
     public init(from decoder: Decoder) throws {
@@ -186,6 +194,7 @@ public struct ScanConfig: Codable, Sendable, Hashable {
         clamavRealtime = try c.decodeOr(.clamavRealtime, clamavRealtime)
         mountDmg = try c.decodeOr(.mountDmg, mountDmg)
         expandPkg = try c.decodeOr(.expandPkg, expandPkg)
+        threads = try c.decodeOr(.threads, threads)
     }
 }
 

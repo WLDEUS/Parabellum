@@ -145,6 +145,14 @@ struct SettingsView: View {
     private var scanSection: some View {
         Section {
             Toggle("Utiliser ClamAV pour les analyses manuelles et des volumes", isOn: $draft.scan.clamavOnDemand)
+            Stepper(value: $draft.scan.threads, in: 0...ScanConfig.maxThreads) {
+                LabeledContent(
+                    "Analyse en parallèle",
+                    value: draft.scan.threads == 0
+                        ? String(localized: "automatique")
+                        : String(localized: "\(draft.scan.threads) fil(s)")
+                )
+            }
             Toggle("Utiliser aussi ClamAV en temps réel (coûteux en mémoire)", isOn: $draft.scan.clamavRealtime)
             Toggle("Analyser le contenu des DMG (montage en lecture seule)", isOn: $draft.scan.mountDmg)
             Toggle("Analyser le contenu des PKG (scripts et charge utile)", isOn: $draft.scan.expandPkg)

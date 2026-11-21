@@ -1012,3 +1012,120 @@ fn persistent_verdicts_require_the_clamav_answer() {
         "ClamAV answered: persisted"
     );
 }
+
+/// Paths of the top-level reports (members and errors aside), sorted.
+fn top_paths(reports: &[ScanReport]) -> Vec<String> {
+    let mut v: Vec<String> = reports
+        .iter()
+        .filter(|r| !r.path.contains("!/") && r.error.is_none())
+        .map(|r| r.path.clone())
+        .collect();
+    v.sort();
+    v
+}
+
+#[test]
+fn overlapping_roots_are_walked_once() {
+    let f = fixture();
+    let e = Engine::load(&f.paths, &Config::default()).unwrap();
+    let home = f.data.join("home");
+    let dl = home.join("Downloads");
+    std::fs::create_dir_all(dl.join("deep")).unwrap();
+    std::fs::write(home.join("a.txt"), b"a").unwrap();
+    std::fs::write(dl.join("b.txt"), b"b").unwrap();
+    std::fs::write(dl.join("deep/c.txt"), b"c").unwrap();
+    std::os::unix::fs::symlink(&home, f.data.join("home-link")).unwrap();
+    let expected = vec![
+        home.join("Downloads/b.txt").to_string_lossy().into_owned(),
+        home.join("Downloads/deep/c.txt")
+            .to_string_lossy()
+            .into_owned(),
+        home.join("a.txt").to_string_lossy().into_owned(),
+    ];
+    for workers in [1, 4] {
+        let mut o = opts();
+        o.workers = workers;
+        // Nested root (both orders), the same root twice, a file root inside a folder root.
+        for roots in [
+            vec![home.clone(), dl.clone()],
+            vec![dl.clone(), home.clone()],
+            vec![home.clone(), home.clone()],
+            vec![home.join("a.txt"), home.clone()],
+        ] {
+            let (reports, totals) = collect(&e, &roots, &o);
+            let mut got = top_paths(&reports);
+            got.dedup();
+            assert_eq!(top_paths(&reports), got, "{roots:?}: a file reported twice");
+            assert_eq!(totals.files, 3, "{roots:?} ({workers} workers)");
+        }
+        // Same folder under another name (followed link to a root): once.
+        o.follow_symlinks = true;
+        let (_, totals) = collect(&e, &[home.clone(), f.data.join("home-link")], &o);
+        assert_eq!(totals.files, 3, "symlinked root ({workers} workers)");
+        // A link inside the tree back to its own root: not walked again.
+        std::os::unix::fs::symlink(&home, dl.join("loop")).ok();
+        let (reports, _) = collect(&e, std::slice::from_ref(&home), &o);
+        assert_eq!(top_paths(&reports), expected, "{workers} workers");
+        std::fs::remove_file(dl.join("loop")).unwrap();
+    }
+}
+
+#[test]
+fn parallel_scan_matches_serial_scan() {
+    let f = fixture();
+    let e = Engine::load(&f.paths, &Config::default()).unwrap();
+    let root = f.data.join("tree");
+    for i in 0..60 {
+        let d = root.join(format!("d{}", i % 7));
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join(format!("f{i}.txt")), format!("file {i}")).unwrap();
+    }
+    std::fs::write(root.join("d3/eicar.com"), EICAR).unwrap();
+    std::fs::write(
+        root.join("d5/pack.zip"),
+        zip_bytes(&[("inner/eicar.com", EICAR, true), ("ok.txt", b"ok", false)]),
+    )
+    .unwrap();
+    std::fs::write(root.join("d1/big.bin"), vec![0u8; 9 * 1024 * 1024]).unwrap();
+
+    let serial = collect(&e, std::slice::from_ref(&root), &opts());
+    // Fresh engine: no scan-cache hits (a cached container reports no members).
+    let e = Engine::load(&f.paths, &Config::default()).unwrap();
+    let mut o = opts();
+    o.workers = 4;
+    let parallel = collect(&e, std::slice::from_ref(&root), &o);
+    assert_eq!(top_paths(&serial.0), top_paths(&parallel.0));
+    assert_eq!(serial.1.files, parallel.1.files);
+    assert_eq!(serial.1.threats, parallel.1.threats);
+    assert_eq!(parallel.1.threats, 2, "{:?}", parallel.1);
+    assert_eq!(serial.1.bytes, parallel.1.bytes);
+    // Container members are still delivered before their container, on the caller's thread.
+    let zip = root.join("d5/pack.zip").to_string_lossy().into_owned();
+    let pos = |pred: &dyn Fn(&ScanReport) -> bool| parallel.0.iter().position(pred).unwrap();
+    assert!(pos(&|r| r.path.starts_with(&format!("{zip}!/"))) < pos(&|r| r.path == zip));
+
+    // Cancelled from the report callback: stops early, no hang.
+    let e = Engine::load(&f.paths, &Config::default()).unwrap();
+    let cancel = AtomicBool::new(false);
+    let mut seen = 0;
+    let t = e.scan_paths(std::slice::from_ref(&root), &o, &cancel, &mut |_| {
+        seen += 1;
+        if seen == 5 {
+            cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+    });
+    assert!(t.cancelled);
+    assert!(t.files < serial.1.files, "{t:?}");
+}
+
+#[test]
+fn heavy_files_and_worker_counts() {
+    assert!(crate::walk::is_heavy(Path::new("/x/a.DMG"), 10));
+    assert!(crate::walk::is_heavy(
+        Path::new("/x/a.bin"),
+        8 * 1024 * 1024
+    ));
+    assert!(!crate::walk::is_heavy(Path::new("/x/a.sh"), 4096));
+    let n = auto_workers();
+    assert!((1..=crate::walk::MAX_AUTO_WORKERS).contains(&n));
+}

@@ -30,7 +30,10 @@ mod hashdb;
 mod proc;
 mod safefs;
 mod signing;
+mod walk;
 mod yara;
+
+pub use walk::{auto_workers, MAX_WORKERS};
 
 pub use clamav::parse_output as parse_clamscan_output;
 pub use pb_core::model::{
@@ -105,6 +108,8 @@ pub struct ScanOptions {
     /// Skip cloud-only (dataless) files and folders: reading one would download it (iCloud Drive,
     /// File Provider). macOS only.
     pub skip_dataless: bool,
+    /// `scan_paths`: analysis threads (1: walk and analyse on the calling thread). See [`walk`].
+    pub workers: usize,
 }
 
 /// `SF_DATALESS` (`sys/stat.h`): the content lives in the cloud and is fetched when the file is read.
@@ -152,6 +157,7 @@ impl ScanOptions {
             scan_inert_text: false,
             allowed_devices: Vec::new(),
             skip_dataless: false,
+            workers: 1,
         }
     }
 
@@ -307,6 +313,18 @@ struct ClamBatch {
     items: Vec<Analysis>,
     paths: Vec<PathBuf>,
     arg_bytes: usize,
+}
+
+impl ClamBatch {
+    fn push(&mut self, a: Analysis, p: PathBuf) {
+        self.arg_bytes += p.as_os_str().len() + 1;
+        self.paths.push(p);
+        self.items.push(a);
+    }
+
+    fn is_full(&self) -> bool {
+        self.items.len() >= clamav::BATCH_SIZE || self.arg_bytes >= clamav::MAX_ARG_BYTES
+    }
 }
 
 /// Shared extraction budget of one top-level container (all nesting levels).
@@ -978,9 +996,6 @@ impl Engine {
         on_report: &mut dyn FnMut(&ScanReport, bool),
     ) -> ScanTotals {
         let mut totals = ScanTotals::default();
-        let mut ctx = self.new_ctx(opts, cancel);
-        let mut batch = ClamBatch::default();
-
         let mut deliver = |r: &ScanReport, member: bool, totals: &mut ScanTotals| {
             totals.files += 1;
             totals.bytes += r.size;
@@ -993,99 +1008,40 @@ impl Engine {
             on_report(r, member);
         };
 
-        'roots: for root in paths {
-            if ctx.cancelled() {
-                break;
-            }
-            if self.is_excluded(root, opts) {
-                continue;
-            }
-            let meta = if opts.follow_symlinks {
-                std::fs::metadata(root)
-            } else {
-                std::fs::symlink_metadata(root)
-            };
-            let meta = match meta {
-                Ok(m) => m,
-                Err(e) => {
-                    let r = ScanReport {
-                        path: root.to_string_lossy().into_owned(),
-                        error: Some(format!("cannot access: {e}")),
-                        ..Default::default()
-                    };
-                    deliver(&r, false, &mut totals);
-                    continue;
-                }
-            };
-            if meta.is_file() {
-                if opts.skip_dataless && is_dataless(&meta) {
-                    continue;
-                }
-                self.process_candidate(
+        if opts.workers > 1 {
+            self.scan_parallel(paths, opts, cancel, &mut |r, member| {
+                deliver(r, member, &mut totals)
+            });
+        } else {
+            let mut ctx = self.new_ctx(opts, cancel);
+            let mut batch = ClamBatch::default();
+            walk::walk(self, paths, opts, cancel, &mut |item| match item {
+                walk::Item::File(path, meta) => self.process_candidate(
                     &mut ctx,
-                    root,
-                    Some(meta),
-                    &mut batch,
-                    &mut |r, member, t| deliver(r, member, t),
-                    &mut totals,
-                );
-                continue;
-            }
-            if !meta.is_dir() {
-                continue;
-            }
-            let walker = walkdir::WalkDir::new(root)
-                .follow_links(opts.follow_symlinks)
-                .max_depth(if opts.recursive { usize::MAX } else { 1 })
-                .into_iter()
-                .filter_entry(|e| !self.is_excluded(e.path(), opts) && Self::walk_allowed(e, opts));
-            for entry in walker {
-                if ctx.cancelled() {
-                    break 'roots;
-                }
-                let entry = match entry {
-                    Ok(e) => e,
-                    Err(e) => {
-                        let path = e
-                            .path()
-                            .map(|p| p.to_string_lossy().into_owned())
-                            .unwrap_or_else(|| root.to_string_lossy().into_owned());
-                        let r = ScanReport {
-                            path,
-                            error: Some(format!("cannot read: {e}")),
-                            ..Default::default()
-                        };
-                        deliver(&r, false, &mut totals);
-                        continue;
-                    }
-                };
-                if !entry.file_type().is_file() {
-                    continue;
-                }
-                let meta = entry.metadata().ok();
-                if opts.skip_dataless && meta.as_ref().is_some_and(is_dataless) {
-                    continue;
-                }
-                self.process_candidate(
-                    &mut ctx,
-                    entry.path(),
+                    &path,
                     meta,
                     &mut batch,
                     &mut |r, member, t| deliver(r, member, t),
                     &mut totals,
-                );
-            }
+                ),
+                walk::Item::Error(r) => deliver(&r, false, &mut totals),
+            });
+            // Flush what is left (without ClamAV if cancelled).
+            self.flush_batch(
+                &mut batch,
+                opts,
+                cancel,
+                &mut |r, member, t| deliver(r, member, t),
+                &mut totals,
+            );
         }
-        // Flush what is left (without ClamAV if cancelled).
-        self.flush_batch(
-            &mut batch,
-            opts,
-            cancel,
-            &mut |r, member, t| deliver(r, member, t),
-            &mut totals,
-        );
         totals.cancelled = cancel.load(Ordering::Relaxed);
         totals
+    }
+
+    /// `only_risky_types`: is this file worth a look?
+    fn wanted(opts: &ScanOptions, path: &Path, meta: Option<&std::fs::Metadata>) -> bool {
+        !opts.only_risky_types || filetype::is_risky(path, meta.map_or(0o755, |m| m.mode()))
     }
 
     fn process_candidate<'e>(
@@ -1100,11 +1056,8 @@ impl Engine {
         if ctx.cancelled() {
             return;
         }
-        if ctx.opts.only_risky_types {
-            let mode = meta.as_ref().map_or(0o755, |m| m.mode());
-            if !filetype::is_risky(path, mode) {
-                return;
-            }
+        if !Self::wanted(ctx.opts, path, meta.as_ref()) {
+            return;
         }
         let display = path.to_string_lossy().into_owned();
         let mut a = self.scan_top(ctx, path, display, &mut |member| {
@@ -1112,12 +1065,8 @@ impl Engine {
         });
         match a.clamav_path.take() {
             Some(p) => {
-                batch.arg_bytes += p.as_os_str().len() + 1;
-                batch.paths.push(p);
-                batch.items.push(a);
-                if batch.items.len() >= clamav::BATCH_SIZE
-                    || batch.arg_bytes >= clamav::MAX_ARG_BYTES
-                {
+                batch.push(a, p);
+                if batch.is_full() {
                     self.flush_batch(batch, ctx.opts, ctx.cancel, deliver, totals);
                 }
             }
