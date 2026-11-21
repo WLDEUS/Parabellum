@@ -142,6 +142,8 @@ pub enum ScanOrigin {
     RetroHunt,
     /// Mercenary-spyware trace check (Zero Breach Toolkit, run as the console user).
     Spyware,
+    /// Whole-Mac scan asked by you (`full_scan`). The automatic one is [`ScanOrigin::Scheduled`].
+    FullScan,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -711,6 +713,9 @@ pub struct StatusInfo {
     pub quarantined: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_scan: Option<i64>,
+    /// End of the last completed full scan (manual or automatic).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_full_scan: Option<i64>,
     pub dns_enabled: bool,
     pub on_battery: bool,
     pub components_needing_attention: u32,

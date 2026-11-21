@@ -171,6 +171,17 @@ pub enum Request {
     /// console user, read-only). Progress / end are pushed as `scan_progress` / `scan_finished` with
     /// origin `spyware`; matches become alerts. -> [`JobStarted`]
     SpywareScan,
+    /// Scan the whole Mac (see `config::FullScanConfig`): administrator approval, as progress shows every
+    /// path, other users' and protected folders included. One full scan at a time (`busy` otherwise);
+    /// it runs next to the other scans. -> [`JobStarted`]
+    FullScan {
+        /// Override `full_scan.clamav` for this job.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        use_clamav: Option<bool>,
+        /// Override `full_scan.external_volumes` for this job.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        external_volumes: Option<bool>,
+    },
     /// macOS security settings (SIP, Gatekeeper, FileVault, firewall…). `refresh` re-runs the checks
     /// (at most every 30 s) instead of returning the last results. -> `Vec<PostureCheck>`
     Posture {
@@ -365,7 +376,8 @@ impl Request {
             | Request::ReportFalsePositive { .. }
             | Request::SetConfig { .. }
             | Request::QuarantinePath { .. }
-            | Request::SetPersistenceStatus { .. } => true,
+            | Request::SetPersistenceStatus { .. }
+            | Request::FullScan { .. } => true,
             Request::VpnDisconnect
             | Request::VpnImportProfile { .. }
             | Request::VpnRemoveProfile
@@ -674,6 +686,16 @@ mod tests {
         assert_eq!(r.request, Request::SpywareScan);
         assert!(!Request::SpywareScan.requires_admin());
         assert!(Request::SpywareScan.is_mutating());
+        let r: RequestEnvelope = serde_json::from_str(r#"{"id":3,"cmd":"full_scan"}"#).unwrap();
+        assert_eq!(
+            r.request,
+            Request::FullScan {
+                use_clamav: None,
+                external_volumes: None
+            }
+        );
+        assert!(r.request.requires_admin());
+        assert!(r.request.is_mutating());
         let r: RequestEnvelope = serde_json::from_str(r#"{"id":2,"cmd":"posture"}"#).unwrap();
         assert_eq!(r.request, Request::Posture { refresh: false });
         assert!(!r.request.is_mutating());

@@ -100,6 +100,9 @@ final class ProtocolTests: XCTestCase {
             // Activity report
             .report(period: .month, offset: 1),
             .report(period: .custom, offset: 0, from: "2026-10-01", to: "2026-10-15"),
+            // Full scan
+            .fullScan(),
+            .fullScan(useClamav: true, externalVolumes: false),
         ]
     }
 

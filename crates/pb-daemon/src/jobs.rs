@@ -158,8 +158,9 @@ pub enum CancelOutcome {
 #[derive(Default)]
 struct Inner {
     queue: VecDeque<Arc<Job>>,
-    /// At most two: any job, plus a manual scan allowed alongside a long background job (spyware scan,
-    /// retro-hunt, Downloads batch) so "Analyser" never waits behind it.
+    /// Any job, plus a manual scan allowed alongside a long background job (spyware scan, retro-hunt,
+    /// Downloads batch) so "Analyser" never waits behind it. A full scan (hours) has its own slot on top:
+    /// it neither waits for nor blocks the others.
     running: Vec<Arc<Job>>,
 }
 
@@ -247,19 +248,29 @@ impl JobManager {
     /// Pop the next runnable job (skipping deferrable ones when `defer`), marking it running.
     fn take_next(&self, defer: bool) -> Option<Arc<Job>> {
         let mut g = self.lock();
+        let full = |j: &Arc<Job>| crate::fullscan::is_full(j.origin());
         let runnable = |j: &Arc<Job>| !(defer && is_deferrable(j.origin()));
+        let other = |j: &Arc<Job>| runnable(j) && !full(j);
         let manual = |j: &Arc<Job>| j.origin() == ScanOrigin::Manual;
-        let pos = match g.running.as_slice() {
+        let busy: Vec<&Arc<Job>> = g.running.iter().filter(|j| !full(j)).collect();
+        let pos = match busy.as_slice() {
             // Free: manual scans first, then queue order.
             [] => g
                 .queue
                 .iter()
-                .position(|j| runnable(j) && manual(j))
-                .or_else(|| g.queue.iter().position(runnable))?,
+                .position(|j| other(j) && manual(j))
+                .or_else(|| g.queue.iter().position(other)),
             // A background job runs: only a manual scan may start next to it.
-            [busy] if !manual(busy) => g.queue.iter().position(|j| runnable(j) && manual(j))?,
-            _ => return None,
-        };
+            [busy] if !manual(busy) => g.queue.iter().position(|j| other(j) && manual(j)),
+            _ => None,
+        }
+        .or_else(|| {
+            // The full-scan slot.
+            if g.running.iter().any(full) {
+                return None;
+            }
+            g.queue.iter().position(|j| runnable(j) && full(j))
+        })?;
         let job = g.queue.remove(pos)?;
         g.running.push(job.clone());
         Some(job)
@@ -362,6 +373,10 @@ pub async fn run_job(ctx: &Arc<Ctx>, job: Arc<Job>) {
         job = %job.id, state = ?summary.state, files = summary.files_scanned,
         threats = summary.threats, errors = summary.errors, "scan job done"
     );
+    if crate::fullscan::is_full(summary.origin) && summary.state == JobState::Finished {
+        crate::fullscan::record_done(ctx, summary.finished_at.unwrap_or_else(pb_core::now_ts))
+            .await;
+    }
     ctx.bus.publish(DaemonEvent::ScanFinished(summary));
     ctx.status_dirty.notify_one();
 }
@@ -387,7 +402,8 @@ async fn run_engine(ctx: &Arc<Ctx>, job: &Arc<Job>) -> bool {
     let engine = ctx.engine();
     let cfg = ctx.config();
     let job2 = job.clone();
-    let priority = if job.origin() == ScanOrigin::Manual {
+    // Asked now (manual, full scan): utility QoS; the rest, the automatic full scan included: background.
+    let priority = if matches!(job.origin(), ScanOrigin::Manual | ScanOrigin::FullScan) {
         ScanPriority::Utility
     } else {
         ScanPriority::Background
@@ -490,6 +506,8 @@ mod tests {
                 recursive: true,
                 only_risky_types: false,
                 inert_text: false,
+                allowed_devices: Vec::new(),
+                skip_dataless: false,
             },
         }
     }
@@ -538,6 +556,31 @@ mod tests {
         assert!(m.take_next(false).is_none(), "manual still running");
         m.finish(&manual.id);
         assert_eq!(m.take_next(false).unwrap().id, retro2.id);
+    }
+
+    #[test]
+    fn full_scan_has_its_own_slot() {
+        let m = JobManager::new();
+        let full = Job::new(spec(ScanOrigin::FullScan));
+        let full2 = Job::new(spec(ScanOrigin::Scheduled));
+        let volume = Job::new(spec(ScanOrigin::Volume));
+        let manual = Job::new(spec(ScanOrigin::Manual));
+        m.enqueue(full.clone()).unwrap();
+        m.enqueue(full2.clone()).unwrap();
+        m.enqueue(volume.clone()).unwrap();
+        m.enqueue(manual.clone()).unwrap();
+        // Manual first, then the full scan next to it (its own slot), not the volume scan.
+        assert_eq!(m.take_next(false).unwrap().id, manual.id);
+        assert_eq!(m.take_next(false).unwrap().id, full.id);
+        assert!(m.take_next(false).is_none(), "one full scan at a time");
+        m.finish(&manual.id);
+        // The volume scan does not wait for the full scan.
+        assert_eq!(m.take_next(false).unwrap().id, volume.id);
+        assert!(m.take_next(false).is_none());
+        m.finish(&full.id);
+        // Low battery: the automatic full scan waits.
+        assert!(m.take_next(true).is_none());
+        assert_eq!(m.take_next(false).unwrap().id, full2.id);
     }
 
     #[test]

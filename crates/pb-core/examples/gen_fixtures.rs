@@ -237,6 +237,7 @@ fn status() -> StatusInfo {
         open_alerts: 3,
         quarantined: 1,
         last_scan: Some(1_793_000_060),
+        last_full_scan: Some(1_792_900_000),
         dns_enabled: true,
         on_battery: false,
         components_needing_attention: 2,
@@ -1422,6 +1423,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             offset: 0,
             from: Some("2026-10-01".into()),
             to: Some("2026-10-15".into()),
+        },
+        // ----- Full scan -----
+        Request::FullScan {
+            use_clamav: None,
+            external_volumes: None,
+        },
+        Request::FullScan {
+            use_clamav: Some(true),
+            external_volumes: Some(false),
         },
     ];
     // Which commands need administrator approval (`auth` or root), same order/ids as requests.jsonl.

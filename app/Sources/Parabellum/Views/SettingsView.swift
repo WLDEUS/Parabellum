@@ -20,6 +20,7 @@ struct SettingsView: View {
                 Form {
                     LanguageSettingsSection()
                     scanSection
+                    fullScanSection
                     realtimeSection
                     mlSection
                     dnsSection
@@ -143,7 +144,7 @@ struct SettingsView: View {
 
     private var scanSection: some View {
         Section {
-            Toggle("Utiliser ClamAV pour les analyses manuelles, volumes et planifiées", isOn: $draft.scan.clamavOnDemand)
+            Toggle("Utiliser ClamAV pour les analyses manuelles et des volumes", isOn: $draft.scan.clamavOnDemand)
             Toggle("Utiliser aussi ClamAV en temps réel (coûteux en mémoire)", isOn: $draft.scan.clamavRealtime)
             Toggle("Analyser le contenu des DMG (montage en lecture seule)", isOn: $draft.scan.mountDmg)
             Toggle("Analyser le contenu des PKG (scripts et charge utile)", isOn: $draft.scan.expandPkg)
@@ -165,6 +166,33 @@ struct SettingsView: View {
             Text("Analyse")
         } footer: {
             Text("Au-delà de la taille max., les fichiers sont seulement hachés. Les limites d'archives protègent contre les bombes de décompression.")
+        }
+    }
+
+    private var fullScanSection: some View {
+        Section {
+            Toggle("Analyse complète automatique", isOn: $draft.fullScan.auto)
+            Group {
+                Stepper(value: $draft.fullScan.intervalDays, in: 1...FullScanConfig.maxIntervalDays) {
+                    LabeledContent("Au plus tous les", value: String(localized: "\(draft.fullScan.intervalDays) jour(s)"))
+                }
+                Stepper(value: $draft.fullScan.idleMinutes, in: 0...FullScanConfig.maxIdleMinutes, step: 5) {
+                    LabeledContent(
+                        "Démarrer après une inactivité de",
+                        value: draft.fullScan.idleMinutes == 0
+                            ? String(localized: "aucune condition")
+                            : String(localized: "\(draft.fullScan.idleMinutes) min")
+                    )
+                }
+                Toggle("Seulement sur secteur", isOn: $draft.fullScan.requireAcPower)
+            }
+            .disabled(!draft.fullScan.auto)
+            Toggle("Inclure les volumes externes montés", isOn: $draft.fullScan.externalVolumes)
+            Toggle("Utiliser ClamAV (beaucoup plus lent sur un disque entier)", isOn: $draft.fullScan.clamav)
+        } header: {
+            Text("Analyse complète")
+        } footer: {
+            Text("Tout le disque de démarrage sauf le volume système scellé d'Apple ; les fichiers iCloud non téléchargés sont ignorés plutôt que rapatriés. L'analyse automatique tourne en basse priorité et continue quand tu reprends le Mac. Une analyse automatique annulée n'est pas relancée avant le lendemain ; une analyse complète manuelle repousse la suivante.")
         }
     }
 

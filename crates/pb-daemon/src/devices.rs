@@ -309,6 +309,8 @@ async fn maybe_scan_volume(ctx: &Arc<Ctx>, cfg: &Config, dev: &DeviceInfo) {
             recursive: true,
             only_risky_types: true,
             inert_text: false,
+            allowed_devices: Vec::new(),
+            skip_dataless: false,
         },
     };
     match jobs::submit(ctx, spec).await {

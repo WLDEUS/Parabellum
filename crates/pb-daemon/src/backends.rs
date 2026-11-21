@@ -59,6 +59,10 @@ pub struct ScanOpts {
     pub only_risky_types: bool,
     /// Pattern rules on inert text as well (file just handed to an interpreter).
     pub inert_text: bool,
+    /// Full scans: file systems the walk may enter (empty: any).
+    pub allowed_devices: Vec<u64>,
+    /// Full scans: skip cloud-only files instead of downloading them.
+    pub skip_dataless: bool,
 }
 
 impl ScanOpts {
@@ -70,6 +74,8 @@ impl ScanOpts {
             recursive: false,
             only_risky_types: false,
             inert_text: false,
+            allowed_devices: Vec::new(),
+            skip_dataless: false,
         }
     }
 }

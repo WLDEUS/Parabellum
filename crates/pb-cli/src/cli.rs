@@ -164,6 +164,25 @@ pub enum Command {
         #[arg(long, default_value_t = 30)]
         days: u32,
     },
+    /// Analyse complète du Mac : tout le disque de démarrage sauf le volume système scellé d'Apple, sans
+    /// télécharger les fichiers iCloud non présents (sudo). Une seule à la fois.
+    FullScan {
+        /// Utiliser ClamAV (beaucoup plus lent sur un disque entier).
+        #[arg(long, conflicts_with = "no_clamav")]
+        clamav: bool,
+        /// Ne pas utiliser ClamAV.
+        #[arg(long)]
+        no_clamav: bool,
+        /// Inclure les volumes externes montés (jamais les sauvegardes Time Machine ni les partages).
+        #[arg(long, conflicts_with = "no_external")]
+        external: bool,
+        /// Ne pas inclure les volumes externes.
+        #[arg(long)]
+        no_external: bool,
+        /// Rendre la main tout de suite (suivi : parabellum job <id>).
+        #[arg(long)]
+        no_wait: bool,
+    },
     /// Rechercher des traces de logiciels espions (Pegasus, Predator, Graphite…) avec Zero Breach Toolkit.
     SpywareScan {
         /// Rendre la main tout de suite (suivi : parabellum job <id>).
@@ -756,6 +775,19 @@ mod tests {
                 no_wait: true
             }
         ));
+        assert!(matches!(
+            parse(&["full-scan", "--external", "--no-clamav"])
+                .unwrap()
+                .command,
+            Command::FullScan {
+                clamav: false,
+                no_clamav: true,
+                external: true,
+                no_external: false,
+                no_wait: false
+            }
+        ));
+        assert!(parse(&["full-scan", "--clamav", "--no-clamav"]).is_err());
         assert!(matches!(
             parse(&["spyware-scan", "--no-wait"]).unwrap().command,
             Command::SpywareScan { no_wait: true }

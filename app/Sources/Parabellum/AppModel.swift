@@ -1017,6 +1017,26 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Whole-Mac scan (administrator approval asked by `call`), followed like a scan.
+    func startFullScan() async {
+        let started = await perform("full-scan") {
+            try await self.call(.fullScan(), as: JobStarted.self)
+        }
+        if let started {
+            activeScanJobId = started.jobId
+            selectedJobId = started.jobId
+            banner = Banner(
+                message: String(localized: "Analyse complète lancée. Elle dure en général plusieurs heures : tu peux continuer à utiliser le Mac."),
+                isError: false
+            )
+        }
+    }
+
+    /// A full scan (manual or automatic) is queued or running.
+    var fullScanActive: Bool {
+        activeJobs.contains { $0.origin == .fullScan || $0.origin == .scheduled }
+    }
+
     /// Mercenary-spyware check (Zero Breach Toolkit, up to 30 min, followed like a scan).
     func spywareScan() async {
         let started = await perform("spyware") {

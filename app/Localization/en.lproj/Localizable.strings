@@ -17,6 +17,7 @@
 "%@ récupérables" = "%@ recoverable";
 "%@ réécrits" = "%@ overwritten";
 "%@ sur %lld alertes ?" = "%@ on %lld alerts?";
+"%@ · %@" = "%@ · %@";
 "%@ · %@ sur %@ · pensez à le verrouiller après usage" = "%@ · %@ of %@ · remember to lock it after use";
 "%@ · %@ — %@ : %@" = "%@ · %@ — %@: %@";
 "%@ · box %@ · vu %@" = "%@ · router %@ · seen %@";
@@ -39,7 +40,9 @@
 "%lld en place" = "%lld in place";
 "%lld fuite(s) de données trouvée(s) : %@" = "%lld data breach(es) found: %@";
 "%lld Go" = "%lld GB";
+"%lld jour(s)" = "%lld day(s)";
 "%lld menace(s)" = "%lld threat(s)";
+"%lld min" = "%lld min";
 "%lld min sans activité" = "%lld min of inactivity";
 "%lld mot(s) de passe compromis à changer :" = "%lld compromised password(s) to change:";
 "%lld nouveau(x) sur %lld" = "%lld new out of %lld";
@@ -169,6 +172,9 @@
 "Analyse anti-spyware lancée (Zero Breach Toolkit, jusqu'à 30 minutes). Les résultats arrivent dans les alertes." = "Anti-spyware scan started (Zero Breach Toolkit, up to 30 minutes). Results arrive in the alerts.";
 "Analyse automatique toutes les" = "Automatic scan every";
 "Analyse complète" = "Full scan";
+"Analyse complète automatique" = "Automatic full scan";
+"Analyse complète du Mac" = "Full Mac scan";
+"Analyse complète lancée. Elle dure en général plusieurs heures : tu peux continuer à utiliser le Mac." = "Full scan started. It usually takes several hours: you can keep using the Mac.";
 "Analyse comportementale désactivée" = "Behaviour analysis off";
 "Analyse en cours…" = "Scan in progress…";
 "Analyse impossible" = "Scan failed";
@@ -233,6 +239,7 @@
 "Attention : cette image n'est pas chiffrée." = "Warning: this image is not encrypted.";
 "au" = "to";
 "Au plus %lld chemins par lien." = "At most %lld paths per link.";
+"Au plus tous les" = "At most every";
 "Au plus une passe toutes les" = "At most one run every";
 "Au prochain moment d'inactivité" = "At the next idle moment";
 "Au-delà de la taille max., les fichiers sont seulement hachés. Les limites d'archives protègent contre les bombes de décompression." = "Above the max size, files are only hashed. Archive limits protect against decompression bombs.";
@@ -272,6 +279,7 @@
 "Aucune analyse sélectionnée" = "No scan selected";
 "Aucune analyse." = "No scan.";
 "Aucune autorisation ne correspond aux filtres." = "No permission matches the filters.";
+"aucune condition" = "no condition";
 "Aucune demande d'effacement RGPD en cours." = "No GDPR erasure request in progress.";
 "Aucune demande dans cette catégorie." = "No request in this category.";
 "Aucune donnée" = "No data";
@@ -290,6 +298,8 @@
 "Audit toutes les" = "Audit every";
 "Auditer régulièrement les permissions des apps" = "Audit app permissions regularly";
 "Authentification impossible : %@" = "Authentication failed: %@";
+"automatique désactivée" = "automatic off";
+"automatique tous les %lld jour(s)" = "automatic every %lld day(s)";
 "Autorisation administrateur refusée." = "Administrator authorization denied.";
 "Autorisation administrateur requise" = "Administrator authorization required";
 "Autorisations orphelines" = "Orphaned permissions";
@@ -394,6 +404,8 @@
 "Colle un lien de partage (ss://, vless://, vmess://, trojan://, hysteria2://, tuic://, wireguard://), un abonnement en base64 ou le contenu d'un fichier WireGuard. Dans Shadowrocket : appui long sur le nœud › Partager › Copier le lien." = "Paste a share link (ss://, vless://, vmess://, trojan://, hysteria2://, tuic://, wireguard://), a base64 subscription or the content of a WireGuard file. In Shadowrocket: long press on the node › Share › Copy link.";
 "Coller un lien…" = "Paste a link…";
 "Comme Incogni, en open source : Parabellum envoie en ton nom des demandes d'effacement (article 17 du RGPD) aux courtiers en données, suit le délai légal d'un mois, relance, puis prépare une plainte CNIL si l'organisme ne répond pas. Les listes de courtiers (Datenanfragen, Eraser) arrivent avec la base signée." = "Like Incogni, but open source: Parabellum sends erasure requests (GDPR article 17) to data brokers on your behalf, tracks the one-month legal deadline, sends reminders, then prepares a CNIL complaint if the organisation does not answer. Broker lists (Datenanfragen, Eraser) come with the signed database.";
+"Complète" = "Full";
+"Complète (automatique)" = "Full (automatic)";
 "Compléments recommandés" = "Recommended add-ons";
 "Comportement" = "Behaviour";
 "Comportements connus" = "Known behaviours";
@@ -466,6 +478,7 @@
 "Dernier instantané" = "Latest snapshot";
 "Dernier test de fuite" = "Last leak test";
 "dernière : %@" = "last: %@";
+"Dernière : %@" = "Last: %@";
 "Dernière analyse" = "Last scan";
 "Dernière analyse %@" = "Last scan %@";
 "Dernière analyse %@ · automatique toutes les %lld min" = "Last scan %@ · automatic every %lld min";
@@ -558,6 +571,7 @@
 "En attente" = "Pending";
 "En attente de réponse" = "Waiting for an answer";
 "En cours" = "In progress";
+"En cours (voir ci-dessous)" = "In progress (see below)";
 "En file" = "Queued";
 "En file d'attente" = "Queued";
 "En ligne" = "Online";
@@ -675,6 +689,7 @@
 "Imprimer / PDF…" = "Print / PDF…";
 "Inactif" = "Inactive";
 "Inclure ClamAV (plus lent, plus complet)" = "Include ClamAV (slower, more thorough)";
+"Inclure les volumes externes montés" = "Include mounted external volumes";
 "Inconnu" = "Unknown";
 "Inconnue" = "Unknown";
 "Inconnus" = "Unknown";
@@ -711,6 +726,7 @@
 "Jamais" = "Never";
 "jamais" = "never";
 "Jamais analysé" = "Never scanned";
+"Jamais faite" = "Never run";
 "Je connais cet appareil" = "I know this device";
 "Jeton GitHub (dépôt privé, optionnel)" = "GitHub token (private repository, optional)";
 "Jour" = "Day";
@@ -737,6 +753,7 @@
 "L'intervalle d'analyse du réseau local doit être compris entre 5 et 1440 minutes." = "The local network scan interval must be between 5 and 1440 minutes.";
 "L'intervalle d'audit des permissions doit être compris entre 1 et 168 heures." = "The permissions audit interval must be between 1 and 168 hours.";
 "L'intervalle d'énumération de la persistance ne peut pas être négatif." = "The persistence enumeration interval cannot be negative.";
+"L'intervalle de l'analyse complète doit être compris entre 1 et %lld jours." = "The full scan interval must be between 1 and %lld days.";
 "L'intervalle de vérification des fuites doit être compris entre 1 et 720 heures." = "The breach check interval must be between 1 and 720 hours.";
 "L'intervalle des instantanés doit être compris entre 15 et 1 440 minutes." = "The snapshot interval must be between 15 and 1,440 minutes.";
 "L'intervalle du test de fuite doit être compris entre 0 et 10 080 minutes." = "The leak test interval must be between 0 and 10,080 minutes.";
@@ -767,6 +784,7 @@
 "Lancer / compléter la campagne" = "Start / complete the campaign";
 "Lancer l'analyse complète" = "Start the full scan";
 "Lancer maintenant" = "Run now";
+"Lancer une analyse complète du Mac ?" = "Start a full scan of the Mac?";
 "Langue" = "Language";
 "Langue de l'interface" = "Interface language";
 "Langue des courriers" = "Letter language";
@@ -781,6 +799,7 @@
 "Le contenu de chaque fichier est remplacé une fois par des données aléatoires, puis le fichier est renommé et supprimé. Sur un SSD, cela ne garantit pas que les anciennes données soient physiquement effacées : le disque écrit les nouvelles données ailleurs, et macOS peut en garder des copies (instantanés Time Machine locaux, copies APFS). Les fichiers compressés par macOS ou restés dans iCloud sont seulement supprimés." = "The content of each file is replaced once with random data, then the file is renamed and deleted. On an SSD, this does not guarantee that the old data is physically erased: the disk writes new data elsewhere, and macOS may keep copies (local Time Machine snapshots, APFS copies). Files compressed by macOS or left in iCloud are only deleted.";
 "Le dossier des notes doit être dans ton dossier personnel (~/…)." = "The notes folder must be in your home folder (~/…).";
 "Le dossier ~/Coffre est retiré à chaque verrouillage, pour que rien n'y soit enregistré en clair." = "The ~/Coffre folder is removed at each lock, so nothing is saved there in plain text.";
+"Le délai d'inactivité de l'analyse complète doit être compris entre 0 et %lld minutes." = "The full scan idle delay must be between 0 and %lld minutes.";
 "Le fichier est neutralisé et déplacé ; il reste restaurable depuis l'onglet Quarantaine." = "The file is neutralised and moved; it stays restorable from the Quarantine tab.";
 "Le jour de l'analyse anti-spyware doit être compris entre 1 (lundi) et 7 (dimanche)." = "The anti-spyware scan day must be between 1 (Monday) and 7 (Sunday).";
 "Le kill switch coupe Internet tant que le tunnel n'est pas rétabli. Déconnecte le VPN pour retrouver l'accès direct." = "The kill switch cuts the Internet until the tunnel is back. Disconnect the VPN to get direct access again.";
@@ -1319,6 +1338,8 @@
 "Tout cocher / décocher" = "Check / uncheck all";
 "Tout désélectionner" = "Deselect all";
 "Tout est traité. « Toutes » affiche aussi les alertes vues et résolues." = "All handled. “All” also shows seen and resolved alerts.";
+"Tout le disque de démarrage sauf le volume système scellé d'Apple ; les fichiers iCloud non téléchargés sont ignorés plutôt que rapatriés. L'analyse automatique tourne en basse priorité et continue quand tu reprends le Mac. Une analyse automatique annulée n'est pas relancée avant le lendemain ; une analyse complète manuelle repousse la suivante." = "The whole startup disk except Apple's sealed system volume; iCloud files that are not downloaded are skipped rather than fetched. The automatic scan runs at low priority and keeps going when you come back to the Mac. A cancelled automatic scan is not restarted before the next day; a manual full scan postpones the next one.";
+"Tout le disque de démarrage, sauf le volume système scellé d'Apple. Compte en général plusieurs heures ; tu peux continuer à utiliser le Mac et annuler à tout moment. Le mot de passe administrateur est demandé, car la progression montre les chemins de tous les dossiers." = "The whole startup disk, except Apple's sealed system volume. It usually takes several hours; you can keep using the Mac and cancel at any time. Your administrator password is required, as the progress shows the paths of every folder.";
 "Tout mettre à jour" = "Update all";
 "Tout voir dans Persistance" = "See everything in Persistence";
 "Toute nouveauté d'un programme connu (interpréteur lancé, emplacement sensible modifié…) est notée et signalée au-delà du seuil." = "Anything new from a known program (interpreter launched, sensitive location changed…) is recorded and reported above the threshold.";
@@ -1357,6 +1378,8 @@
 "Uniquement à ta demande : quelques connexions TCP vers cet appareil, rien d'autre." = "Only when you ask: a few TCP connections to this device, nothing else.";
 "URL de la base de menaces" = "Threat database URL";
 "Utiliser aussi ClamAV en temps réel (coûteux en mémoire)" = "Also use ClamAV in real time (memory-hungry)";
+"Utiliser ClamAV (beaucoup plus lent sur un disque entier)" = "Use ClamAV (much slower over a whole disk)";
+"Utiliser ClamAV pour les analyses manuelles et des volumes" = "Use ClamAV for manual and volume scans";
 "Utiliser ClamAV pour les analyses manuelles, volumes et planifiées" = "Use ClamAV for manual, volume and scheduled scans";
 "Utilisé" = "Used";
 "Valeur JSON non reconnue" = "Unrecognised JSON value";

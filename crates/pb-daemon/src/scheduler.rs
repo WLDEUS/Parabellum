@@ -504,6 +504,8 @@ pub async fn start_retro_hunt(ctx: &Arc<Ctx>, days: u32) -> Result<String, IpcEr
             recursive: false,
             only_risky_types: true,
             inert_text: false,
+            allowed_devices: Vec::new(),
+            skip_dataless: false,
         },
     };
     jobs::submit(ctx, spec).await
@@ -553,6 +555,8 @@ pub async fn hash_retro_check(ctx: &Arc<Ctx>, days: u32) {
             recursive: false,
             only_risky_types: false,
             inert_text: false,
+            allowed_devices: Vec::new(),
+            skip_dataless: false,
         };
         let p2 = p.clone();
         if let Ok(report) =

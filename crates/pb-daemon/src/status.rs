@@ -132,6 +132,12 @@ pub async fn compute(ctx: &Arc<Ctx>) -> StatusInfo {
         .await
         .ok()
         .flatten();
+    let last_full_scan = ctx
+        .store
+        .run(|s| s.kv_get_i64(crate::fullscan::KV_LAST_DONE))
+        .await
+        .ok()
+        .flatten();
     let q = ctx.backends.quarantine.clone();
     let quarantined = tokio::task::spawn_blocking(move || q.list().map(|l| l.len()).unwrap_or(0))
         .await
@@ -193,6 +199,7 @@ pub async fn compute(ctx: &Arc<Ctx>) -> StatusInfo {
         open_alerts,
         quarantined: quarantined.min(u32::MAX as usize) as u32,
         last_scan,
+        last_full_scan,
         dns_enabled: cfg.dns.enabled,
         on_battery: battery.on_battery,
         components_needing_attention: attention.min(u32::MAX as usize) as u32,

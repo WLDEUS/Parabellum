@@ -71,6 +71,8 @@ public enum Request: Sendable, Equatable {
     /// Mercenary-spyware check (Zero Breach Toolkit); progress as `scan_progress` with origin `spyware`.
     /// → `JobStarted`
     case spywareScan
+    /// Whole-Mac scan; nil = the `[full_scan]` setting. Administrator approval. → `JobStarted`
+    case fullScan(useClamav: Bool? = nil, externalVolumes: Bool? = nil)
     /// macOS security settings; `refresh` re-runs the checks. → `[PostureCheck]`
     case posture(refresh: Bool = false)
     /// Start receiving events on this connection. → `null`
@@ -216,6 +218,7 @@ public enum Request: Sendable, Equatable {
         case .weeklyReport: return "weekly_report"
         case .retroHunt: return "retro_hunt"
         case .spywareScan: return "spyware_scan"
+        case .fullScan: return "full_scan"
         case .posture: return "posture"
         case .subscribe: return "subscribe"
         case .vpnStatus: return "vpn_status"
@@ -295,7 +298,8 @@ public enum Request: Sendable, Equatable {
     /// `AuthorizationExternalForm` holding `DaemonProtocol.adminRight`) or the peer is root.
     public var requiresAdmin: Bool {
         switch self {
-        case .restore, .deleteQuarantined, .reportFalsePositive, .setConfig, .quarantinePath, .setPersistenceStatus:
+        case .restore, .deleteQuarantined, .reportFalsePositive, .setConfig, .quarantinePath, .setPersistenceStatus,
+             .fullScan:
             return true
         case .vpnDisconnect, .vpnImportProfile, .vpnRemoveProfile, .restoreFromSnapshot, .privacySetProfile,
              .privacyDraft, .privacyComplaint, .privacyStartRemoval:
@@ -392,6 +396,13 @@ public enum Request: Sendable, Equatable {
             o["recursive"] = .bool(recursive)
             if let useClamav {
                 o["use_clamav"] = .bool(useClamav)
+            }
+        case let .fullScan(useClamav, externalVolumes):
+            if let useClamav {
+                o["use_clamav"] = .bool(useClamav)
+            }
+            if let externalVolumes {
+                o["external_volumes"] = .bool(externalVolumes)
             }
         case let .cancelScan(jobId):
             o["job_id"] = .string(jobId)

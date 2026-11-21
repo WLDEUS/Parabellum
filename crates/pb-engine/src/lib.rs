@@ -99,6 +99,30 @@ pub struct ScanOptions {
     /// Run pattern rules on inert text too ([`pb_core::inert`]). Off at rest; on when an interpreter
     /// was just handed the file (`sh payload.json`).
     pub scan_inert_text: bool,
+    /// Walk only into directories on these file systems (`st_dev`); empty: no restriction. Full scans:
+    /// the startup disk, not devfs, swap, network shares or volumes mounted inside a home.
+    pub allowed_devices: Vec<u64>,
+    /// Skip cloud-only (dataless) files and folders: reading one would download it (iCloud Drive,
+    /// File Provider). macOS only.
+    pub skip_dataless: bool,
+}
+
+/// `SF_DATALESS` (`sys/stat.h`): the content lives in the cloud and is fetched when the file is read.
+#[cfg(target_os = "macos")]
+const SF_DATALESS: u32 = 0x4000_0000;
+
+/// Cloud-only placeholder (macOS); never on other systems.
+pub fn is_dataless(m: &std::fs::Metadata) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::macos::fs::MetadataExt as _;
+        m.st_flags() & SF_DATALESS != 0
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = m;
+        false
+    }
 }
 
 impl Default for ScanOptions {
@@ -126,6 +150,8 @@ impl ScanOptions {
             exclude_prefixes: cfg.scan.exclude_paths.iter().map(PathBuf::from).collect(),
             only_risky_types: false,
             scan_inert_text: false,
+            allowed_devices: Vec::new(),
+            skip_dataless: false,
         }
     }
 
@@ -800,6 +826,25 @@ impl Engine {
             && s.notarized != Some(false)
     }
 
+    /// May the walker enter this entry? Directories below the roots must be on an allowed file system and
+    /// not cloud-only; everything else is decided later.
+    fn walk_allowed(e: &walkdir::DirEntry, opts: &ScanOptions) -> bool {
+        if e.depth() == 0
+            || !e.file_type().is_dir()
+            || (opts.allowed_devices.is_empty() && !opts.skip_dataless)
+        {
+            return true;
+        }
+        match e.metadata() {
+            Ok(m) => {
+                (opts.allowed_devices.is_empty() || opts.allowed_devices.contains(&m.dev()))
+                    && !(opts.skip_dataless && is_dataless(&m))
+            }
+            // The walker reports the error when it tries to read the directory.
+            Err(_) => true,
+        }
+    }
+
     fn is_excluded(&self, path: &Path, opts: &ScanOptions) -> bool {
         self.internal_excludes
             .iter()
@@ -973,6 +1018,9 @@ impl Engine {
                 }
             };
             if meta.is_file() {
+                if opts.skip_dataless && is_dataless(&meta) {
+                    continue;
+                }
                 self.process_candidate(
                     &mut ctx,
                     root,
@@ -990,7 +1038,7 @@ impl Engine {
                 .follow_links(opts.follow_symlinks)
                 .max_depth(if opts.recursive { usize::MAX } else { 1 })
                 .into_iter()
-                .filter_entry(|e| !self.is_excluded(e.path(), opts));
+                .filter_entry(|e| !self.is_excluded(e.path(), opts) && Self::walk_allowed(e, opts));
             for entry in walker {
                 if ctx.cancelled() {
                     break 'roots;
@@ -1015,6 +1063,9 @@ impl Engine {
                     continue;
                 }
                 let meta = entry.metadata().ok();
+                if opts.skip_dataless && meta.as_ref().is_some_and(is_dataless) {
+                    continue;
+                }
                 self.process_candidate(
                     &mut ctx,
                     entry.path(),

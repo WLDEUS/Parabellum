@@ -57,6 +57,14 @@
     "background_qos": true,
     "pause_on_battery_below": 20
   },
+  "full_scan": {
+    "auto": true,
+    "clamav": false,
+    "external_volumes": false,
+    "idle_minutes": 10,
+    "interval_days": 7,
+    "require_ac_power": true
+  },
   "guard": {
     "kill_on_detection": true,
     "ransomware_detection": true,

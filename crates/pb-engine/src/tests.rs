@@ -448,6 +448,25 @@ fn walk_excludes_cache_risky_types_and_cancel() {
     let (_, totals) = collect(&e, std::slice::from_ref(&d), &o);
     assert_eq!(totals.files, 1);
 
+    // Full scans: only directories on the allowed file systems are entered (roots are not checked).
+    o.recursive = true;
+    let dev = std::fs::metadata(&d).unwrap().dev();
+    o.allowed_devices = vec![dev];
+    let (_, totals) = collect(&e, std::slice::from_ref(&d), &o);
+    assert_eq!(totals.files, 3);
+    o.allowed_devices = vec![dev.wrapping_add(1)];
+    let (_, totals) = collect(&e, std::slice::from_ref(&d), &o);
+    assert_eq!(
+        totals.files, 1,
+        "sub/ is on another file system: only the root's own files"
+    );
+    o.allowed_devices.clear();
+    // No cloud-only file here: nothing skipped.
+    o.skip_dataless = true;
+    let (_, totals) = collect(&e, std::slice::from_ref(&d), &o);
+    assert_eq!(totals.files, 3);
+    assert!(!is_dataless(&std::fs::metadata(d.join("cat.jpg")).unwrap()));
+
     // Directory summary through scan_file.
     let mut o2 = opts();
     o2.exclude_prefixes = vec![d.join("skip")];

@@ -860,6 +860,8 @@ pub async fn start(ctx: &Arc<Ctx>) -> Result<String, IpcError> {
             recursive: false,
             only_risky_types: false,
             inert_text: false,
+            allowed_devices: Vec::new(),
+            skip_dataless: false,
         },
     };
     jobs::submit(ctx, spec).await

@@ -357,6 +357,13 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
         Request::RetroHunt { days } => json(&JobStarted {
             job_id: scheduler::start_retro_hunt(ctx, days).await?,
         }),
+        Request::FullScan {
+            use_clamav,
+            external_volumes,
+        } => json(&JobStarted {
+            job_id: crate::fullscan::start(ctx, ScanOrigin::FullScan, use_clamav, external_volumes)
+                .await?,
+        }),
         Request::SpywareScan => json(&JobStarted {
             job_id: crate::spyware::start(ctx).await?,
         }),
@@ -681,6 +688,19 @@ fn ci_starts_with(path: &std::path::Path, prefix: &std::path::Path) -> bool {
 /// Under `/Volumes`: no Time Machine backup (snapshots of every user's files), and on a volume holding
 /// macOS homes (`<volume>/Users/<x>`), the same protected stores as in the peer's own home. Other
 /// paths: allowed.
+/// Time Machine destination (by name or by its markers at the volume root).
+pub fn is_backup_volume(
+    vol_root: &std::path::Path,
+    exists: &dyn Fn(&std::path::Path) -> bool,
+) -> bool {
+    vol_root
+        .file_name()
+        .is_some_and(|n| n.to_string_lossy().starts_with("Backups of "))
+        || BACKUP_VOLUME_MARKERS
+            .iter()
+            .any(|m| exists(&vol_root.join(m)))
+}
+
 fn volume_scan_allowed(path: &std::path::Path, exists: &dyn Fn(&std::path::Path) -> bool) -> bool {
     let Ok(rel) = path.strip_prefix("/Volumes") else {
         return true;
@@ -695,13 +715,8 @@ fn volume_scan_allowed(path: &std::path::Path, exists: &dyn Fn(&std::path::Path)
     let Some(vol) = rel.iter().next() else {
         return false;
     };
-    let name = vol.to_string_lossy();
     let vol_root = std::path::Path::new("/Volumes").join(vol);
-    if name.starts_with("Backups of ")
-        || BACKUP_VOLUME_MARKERS
-            .iter()
-            .any(|m| exists(&vol_root.join(m)))
-    {
+    if is_backup_volume(&vol_root, exists) {
         return false;
     }
     let users = vol_root.join("Users");
@@ -779,6 +794,8 @@ async fn scan(
             recursive,
             only_risky_types: false,
             inert_text: false,
+            allowed_devices: Vec::new(),
+            skip_dataless: false,
         },
     };
     json(&JobStarted {
