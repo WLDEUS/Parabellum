@@ -8,12 +8,14 @@ struct ScanView: View {
     @State private var clamavInitialized = false
     @State private var isDropTargeted = false
     @State private var volumes: [URL] = []
+    @State private var confirmFullScan = false
 
     var body: some View {
         VSplitView {
             VStack(alignment: .leading, spacing: 14) {
                 dropZone
                 quickTargets
+                fullScanRow
                 if !model.activeJobs.isEmpty {
                     activeJobsView
                 }
@@ -123,6 +125,49 @@ struct ScanView: View {
             Spacer()
         }
         .disabled(model.isBusy("scan"))
+    }
+
+    private var fullScanRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "internaldrive")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Analyse complète du Mac").font(.headline)
+                Text(fullScanStatus)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Lancer l'analyse complète") {
+                confirmFullScan = true
+            }
+            .disabled(model.fullScanActive || model.isBusy("full-scan"))
+        }
+        .padding(10)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .confirmationDialog("Lancer une analyse complète du Mac ?", isPresented: $confirmFullScan) {
+            Button("Lancer") {
+                Task { await model.startFullScan() }
+            }
+            Button("Annuler", role: .cancel) {}
+        } message: {
+            Text("Tout le disque de démarrage, sauf le volume système scellé d'Apple. Compte en général plusieurs heures ; tu peux continuer à utiliser le Mac et annuler à tout moment. Le mot de passe administrateur est demandé, car la progression montre les chemins de tous les dossiers.")
+        }
+    }
+
+    private var fullScanStatus: String {
+        if model.fullScanActive {
+            return String(localized: "En cours (voir ci-dessous)")
+        }
+        let last = model.status?.lastFullScanDate.map {
+            String(localized: "Dernière : \(PBFormat.dateTime($0))")
+        } ?? String(localized: "Jamais faite")
+        guard let full = model.config?.fullScan else { return last }
+        let auto = full.auto
+            ? String(localized: "automatique tous les \(full.intervalDays) jour(s)")
+            : String(localized: "automatique désactivée")
+        return String(localized: "\(last) · \(auto)")
     }
 
     private func scan(_ path: String) {

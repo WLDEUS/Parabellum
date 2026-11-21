@@ -154,6 +154,8 @@ public enum ScanOrigin: String, TolerantEnum {
     case manual, downloads, volume, realtime, scheduled
     case retroHunt = "retro_hunt"
     case spyware
+    /// Whole-Mac scan asked by you; the automatic one is `.scheduled`.
+    case fullScan = "full_scan"
     case unknown
     public static let fallback: ScanOrigin = .unknown
     public init(from decoder: Decoder) throws { self = try Self.decodeTolerantly(from: decoder) }
@@ -744,6 +746,8 @@ public struct StatusInfo: Codable, Sendable, Hashable {
     public let openAlerts: Int
     public let quarantined: Int
     public let lastScan: Int64?
+    /// End of the last completed full scan (manual or automatic).
+    public let lastFullScan: Int64?
     public let dnsEnabled: Bool
     public let onBattery: Bool
     public let componentsNeedingAttention: Int
@@ -757,6 +761,7 @@ public struct StatusInfo: Codable, Sendable, Hashable {
 
     public var pausedUntilDate: Date? { pausedUntil.map(Date.init(unixSeconds:)) }
     public var lastScanDate: Date? { lastScan.map(Date.init(unixSeconds:)) }
+    public var lastFullScanDate: Date? { lastFullScan.map(Date.init(unixSeconds:)) }
 
     enum CodingKeys: String, CodingKey {
         case version, protection
@@ -765,6 +770,7 @@ public struct StatusInfo: Codable, Sendable, Hashable {
         case openAlerts = "open_alerts"
         case quarantined
         case lastScan = "last_scan"
+        case lastFullScan = "last_full_scan"
         case dnsEnabled = "dns_enabled"
         case onBattery = "on_battery"
         case componentsNeedingAttention = "components_needing_attention"
@@ -786,6 +792,7 @@ public struct StatusInfo: Codable, Sendable, Hashable {
         openAlerts = try c.decode(Int.self, forKey: .openAlerts)
         quarantined = try c.decode(Int.self, forKey: .quarantined)
         lastScan = try c.decodeIfPresent(Int64.self, forKey: .lastScan)
+        lastFullScan = try c.decodeIfPresent(Int64.self, forKey: .lastFullScan)
         dnsEnabled = try c.decode(Bool.self, forKey: .dnsEnabled)
         onBattery = try c.decode(Bool.self, forKey: .onBattery)
         componentsNeedingAttention = try c.decode(Int.self, forKey: .componentsNeedingAttention)

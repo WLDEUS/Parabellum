@@ -367,6 +367,8 @@ async fn flush_batch(ctx: &Arc<Ctx>, shared: &Arc<RealtimeShared>) {
             recursive: false,
             only_risky_types: false,
             inert_text: false,
+            allowed_devices: Vec::new(),
+            skip_dataless: false,
         },
     };
     if let Err(e) = jobs::submit(ctx, spec).await {

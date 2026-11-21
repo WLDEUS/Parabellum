@@ -64,9 +64,10 @@ extension ScanOrigin {
         case .downloads: return String(localized: "Téléchargements")
         case .volume: return String(localized: "Volume externe")
         case .realtime: return String(localized: "Temps réel")
-        case .scheduled: return String(localized: "Planifiée")
+        case .scheduled: return String(localized: "Complète (automatique)")
         case .retroHunt: return String(localized: "Rétro-chasse")
         case .spyware: return String(localized: "Anti-spyware")
+        case .fullScan: return String(localized: "Complète")
         case .unknown: return String(localized: "Autre")
         }
     }

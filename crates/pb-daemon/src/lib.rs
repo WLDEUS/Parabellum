@@ -23,6 +23,7 @@ pub mod bus;
 pub mod ctx;
 pub mod daemon;
 pub mod devices;
+pub mod fullscan;
 pub mod guard;
 pub mod ipc;
 pub mod jobs;

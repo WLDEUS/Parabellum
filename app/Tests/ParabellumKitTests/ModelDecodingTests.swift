@@ -21,6 +21,7 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(status.lastScan, 1_793_000_060)
         XCTAssertNil(status.pausedUntil)
         XCTAssertEqual(status.lastScanDate, Date(timeIntervalSince1970: 1_793_000_060))
+        XCTAssertEqual(status.lastFullScanDate, Date(timeIntervalSince1970: 1_792_900_000))
     }
 
     func testPosture() throws {

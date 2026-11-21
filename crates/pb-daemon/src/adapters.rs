@@ -106,6 +106,8 @@ impl EngineAdapter {
         o.recursive = opts.recursive;
         o.only_risky_types = opts.only_risky_types;
         o.scan_inert_text = opts.inert_text;
+        o.allowed_devices = opts.allowed_devices.clone();
+        o.skip_dataless = opts.skip_dataless;
         o
     }
 }

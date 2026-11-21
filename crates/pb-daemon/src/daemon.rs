@@ -202,6 +202,7 @@ pub async fn start(opts: DaemonOptions) -> anyhow::Result<Daemon> {
         tasks.push(tokio::spawn(scheduler::bootstrap_components(ctx.clone())));
         tasks.push(tokio::spawn(scheduler::dns_stats_loop(ctx.clone())));
         tasks.push(tokio::spawn(crate::spyware::schedule_loop(ctx.clone())));
+        tasks.push(tokio::spawn(crate::fullscan::schedule_loop(ctx.clone())));
         tasks.push(tokio::spawn(crate::posture::daily_loop(ctx.clone())));
         // Our own files against the installer's manifest (tripwire on the root folder).
         tasks.push(tokio::spawn(crate::own::integrity_loop(ctx.clone())));

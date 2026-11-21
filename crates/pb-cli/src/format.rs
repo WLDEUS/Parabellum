@@ -145,9 +145,10 @@ pub fn origin(o: ScanOrigin) -> &'static str {
         ScanOrigin::Downloads => "téléchargements",
         ScanOrigin::Volume => "volume",
         ScanOrigin::Realtime => "temps réel",
-        ScanOrigin::Scheduled => "planifiée",
+        ScanOrigin::Scheduled => "complète planifiée",
         ScanOrigin::RetroHunt => "rétro-chasse",
         ScanOrigin::Spyware => "anti-spyware",
+        ScanOrigin::FullScan => "complète",
     }
 }
 

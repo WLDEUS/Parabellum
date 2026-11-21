@@ -21,6 +21,8 @@ pub enum ConfigError {
 #[serde(default)]
 pub struct Config {
     pub scan: ScanConfig,
+    /// Whole-Mac scan: on demand and automatic.
+    pub full_scan: FullScanConfig,
     pub realtime: RealtimeConfig,
     pub ml: MlConfig,
     pub dns: DnsConfig,
@@ -124,6 +126,16 @@ impl Config {
             return Err(ConfigError::Invalid(
                 "security.spyware_scan_hour must be 0..23".into(),
             ));
+        }
+        if !(1..=FULL_SCAN_MAX_INTERVAL_DAYS).contains(&self.full_scan.interval_days) {
+            return Err(ConfigError::Invalid(format!(
+                "full_scan.interval_days must be 1..{FULL_SCAN_MAX_INTERVAL_DAYS}"
+            )));
+        }
+        if self.full_scan.idle_minutes > FULL_SCAN_MAX_IDLE_MINUTES {
+            return Err(ConfigError::Invalid(format!(
+                "full_scan.idle_minutes must be <= {FULL_SCAN_MAX_IDLE_MINUTES}"
+            )));
         }
         if self.energy.pause_on_battery_below > 100 {
             return Err(ConfigError::Invalid(
@@ -321,7 +333,7 @@ pub struct ScanConfig {
     pub watch_paths: Vec<String>,
     /// Never scanned (prefix match after `~` expansion).
     pub exclude_paths: Vec<String>,
-    /// Run ClamAV (clamscan) for manual / volume / scheduled scans.
+    /// Run ClamAV (clamscan) for manual and volume scans (full scans: `full_scan.clamav`).
     pub clamav_on_demand: bool,
     /// Also run ClamAV on real-time events (batched). Costly in RAM, off by default.
     pub clamav_realtime: bool,
@@ -350,6 +362,47 @@ impl Default for ScanConfig {
             clamav_realtime: false,
             mount_dmg: true,
             expand_pkg: true,
+        }
+    }
+}
+
+/// Upper bound of `full_scan.interval_days`.
+pub const FULL_SCAN_MAX_INTERVAL_DAYS: u32 = 90;
+/// Upper bound of `full_scan.idle_minutes`.
+pub const FULL_SCAN_MAX_IDLE_MINUTES: u32 = 240;
+
+/// Whole-Mac scan. Walks everything on the startup disk except the sealed system volume (`/System`,
+/// signed by Apple and read-only) and other file systems (devfs, swap, network shares, backups);
+/// cloud-only files are skipped rather than downloaded. On demand: IPC `full_scan`. Automatic: at most
+/// every `interval_days`, started when the Mac is idle (and on mains power), at background QoS.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FullScanConfig {
+    /// Automatic full scan.
+    pub auto: bool,
+    /// Days between two completed full scans (manual ones count). 1..=90.
+    pub interval_days: u32,
+    /// The automatic scan starts only after this many minutes without keyboard / mouse input (0: any
+    /// time). It is not stopped when you come back (background QoS). 0..=240.
+    pub idle_minutes: u32,
+    /// The automatic scan starts only on mains power.
+    pub require_ac_power: bool,
+    /// Run ClamAV too. Off by default: `clamscan` reloads its database every 256 files, which turns a
+    /// whole-disk scan into hours or days; hash DB, YARA-X rules and ML still check every file.
+    pub clamav: bool,
+    /// Also scan mounted external volumes (local file systems only; never backups or network shares).
+    pub external_volumes: bool,
+}
+
+impl Default for FullScanConfig {
+    fn default() -> Self {
+        Self {
+            auto: true,
+            interval_days: 7,
+            idle_minutes: 10,
+            require_ac_power: true,
+            clamav: false,
+            external_volumes: false,
         }
     }
 }
@@ -1097,6 +1150,18 @@ mod tests {
         c.mail_agent.notes_dir = String::new();
         c.mail_agent.mailbox = "INBOX\"\r\nA1 DELETE".into();
         assert!(c.validate().is_err());
+    }
+
+    #[test]
+    fn full_scan_section_validates() {
+        let c = Config::default();
+        assert!(c.full_scan.auto && !c.full_scan.clamav && !c.full_scan.external_volumes);
+        assert_eq!(c.full_scan.interval_days, 7);
+        assert!(Config::from_toml("[full_scan]\ninterval_days = 0\n").is_err());
+        assert!(Config::from_toml("[full_scan]\ninterval_days = 91\n").is_err());
+        assert!(Config::from_toml("[full_scan]\nidle_minutes = 241\n").is_err());
+        let c = Config::from_toml("[full_scan]\nauto = false\ninterval_days = 30\n").unwrap();
+        assert!(!c.full_scan.auto && c.full_scan.require_ac_power);
     }
 
     #[test]

@@ -439,6 +439,26 @@ fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
                 )
             })?;
         }
+        Command::FullScan {
+            clamav,
+            no_clamav,
+            external,
+            no_external,
+            no_wait,
+        } => {
+            let flag = |yes: bool, no: bool| (yes || no).then_some(yes);
+            return run_job(
+                cli,
+                io,
+                &mut c,
+                Request::FullScan {
+                    use_clamav: flag(*clamav, *no_clamav),
+                    external_volumes: flag(*external, *no_external),
+                },
+                *no_wait,
+                "Analyse complète",
+            );
+        }
         Command::SpywareScan { no_wait } => {
             return run_job(
                 cli,

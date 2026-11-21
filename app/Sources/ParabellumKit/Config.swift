@@ -10,6 +10,8 @@ import Foundation
 
 public struct Config: Codable, Sendable, Hashable {
     public var scan = ScanConfig()
+    /// Whole-Mac scan, on demand and automatic (`[full_scan]`).
+    public var fullScan = FullScanConfig()
     public var realtime = RealtimeConfig()
     public var ml = MlConfig()
     public var dns = DnsConfig()
@@ -43,6 +45,7 @@ public struct Config: Codable, Sendable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case scan, realtime, ml, dns, devices, persistence, updates, energy, privacy, notifications, security
+        case fullScan = "full_scan"
         case vpn
         case behaviorGuard = "guard"
         case networkGuard = "network"
@@ -61,6 +64,7 @@ public struct Config: Codable, Sendable, Hashable {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
         scan = try c.decodeOr(.scan, scan)
+        fullScan = try c.decodeOr(.fullScan, fullScan)
         realtime = try c.decodeOr(.realtime, realtime)
         ml = try c.decodeOr(.ml, ml)
         dns = try c.decodeOr(.dns, dns)
@@ -112,6 +116,12 @@ public struct Config: Codable, Sendable, Hashable {
         }
         if security.spywareScanHour < 0 || security.spywareScanHour > 23 {
             errors.append(String(localized: "L'heure de l'analyse anti-spyware doit être comprise entre 0 et 23."))
+        }
+        if fullScan.intervalDays < 1 || fullScan.intervalDays > FullScanConfig.maxIntervalDays {
+            errors.append(String(localized: "L'intervalle de l'analyse complète doit être compris entre 1 et \(FullScanConfig.maxIntervalDays) jours."))
+        }
+        if fullScan.idleMinutes < 0 || fullScan.idleMinutes > FullScanConfig.maxIdleMinutes {
+            errors.append(String(localized: "Le délai d'inactivité de l'analyse complète doit être compris entre 0 et \(FullScanConfig.maxIdleMinutes) minutes."))
         }
         if persistence.fullScanIntervalMinutes < 0 {
             errors.append(String(localized: "L'intervalle d'énumération de la persistance ne peut pas être négatif."))
@@ -176,6 +186,47 @@ public struct ScanConfig: Codable, Sendable, Hashable {
         clamavRealtime = try c.decodeOr(.clamavRealtime, clamavRealtime)
         mountDmg = try c.decodeOr(.mountDmg, mountDmg)
         expandPkg = try c.decodeOr(.expandPkg, expandPkg)
+    }
+}
+
+/// Whole-Mac scan (`[full_scan]`): everything on the startup disk but the sealed system volume, cloud-only
+/// files skipped. Automatic: at most every `intervalDays`, started when the Mac is idle (and on mains power).
+public struct FullScanConfig: Codable, Sendable, Hashable {
+    /// Same bounds as `FULL_SCAN_MAX_INTERVAL_DAYS` / `FULL_SCAN_MAX_IDLE_MINUTES` in Rust.
+    public static let maxIntervalDays = 90
+    public static let maxIdleMinutes = 240
+
+    public var auto: Bool = true
+    /// Days between two completed full scans (manual ones count), 1…90.
+    public var intervalDays: Int = 7
+    /// Minutes without keyboard / mouse input before an automatic run starts (0: any time), 0…240.
+    public var idleMinutes: Int = 10
+    public var requireAcPower: Bool = true
+    /// ClamAV over the whole disk: hours to days (it reloads its database every 256 files).
+    public var clamav: Bool = false
+    /// Mounted external volumes too (local file systems, never Time Machine backups).
+    public var externalVolumes: Bool = false
+
+    public init() {}
+
+    enum CodingKeys: String, CodingKey {
+        case auto
+        case intervalDays = "interval_days"
+        case idleMinutes = "idle_minutes"
+        case requireAcPower = "require_ac_power"
+        case clamav
+        case externalVolumes = "external_volumes"
+    }
+
+    public init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        auto = try c.decodeOr(.auto, auto)
+        intervalDays = try c.decodeOr(.intervalDays, intervalDays)
+        idleMinutes = try c.decodeOr(.idleMinutes, idleMinutes)
+        requireAcPower = try c.decodeOr(.requireAcPower, requireAcPower)
+        clamav = try c.decodeOr(.clamav, clamav)
+        externalVolumes = try c.decodeOr(.externalVolumes, externalVolumes)
     }
 }
 

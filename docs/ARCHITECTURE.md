@@ -52,8 +52,18 @@
 ## Décisions clés
 
 - **Rust partout où on lit des données non fiables** (fichiers, archives, plists, flux réseau). Swift seulement pour l'UI.
-- **Pas de `clamd`** (≈ 1 Go de RAM résident) : `clamscan` par lots pour les analyses à la demande, volumes et
-  planifiées. Le temps réel passe par hash DB + YARA-X + ML (< 200 ms par fichier de moins de 10 Mo).
+- **Pas de `clamd`** (≈ 1 Go de RAM résident) : `clamscan` par lots pour les analyses à la demande et des volumes.
+  Le temps réel passe par hash DB + YARA-X + ML (< 200 ms par fichier de moins de 10 Mo).
+- **Analyse complète** (`crates/pb-daemon/src/fullscan.rs`) : racines = dossiers de premier niveau de `/` sauf
+  `/System` (volume scellé, signé par Apple, et qui contient `/System/Volumes/Data`, soit `/Users` une 2e fois),
+  `/Volumes`, `/dev`, `/cores` et les entrées cachées ; le parcours n'entre que dans les dossiers des volumes du disque
+  de démarrage (`st_dev`), donc ni devfs, ni swap, ni partages réseau, ni images montées dans un dossier perso ; les
+  fichiers iCloud non téléchargés (`SF_DATALESS`) sont sautés. Sans ClamAV par défaut (`clamscan` recharge sa base
+  tous les 256 fichiers : des heures à des jours sur un disque entier). Un emplacement à part dans la file des
+  analyses : elle ne bloque ni n'attend les autres. Automatique : au plus tous les `full_scan.interval_days`
+  (7 j), quand le Mac est inactif et sur secteur, en QoS background ; une analyse complète terminée, manuelle ou
+  automatique, repousse la suivante ; une automatique interrompue est retentée après 20 h. Manuelle : mot de
+  passe administrateur (la progression montre tous les chemins, dossiers protégés et autres comptes compris).
 - **Pas d'entitlement Endpoint Security** (compte gratuit) : `eslogger` (outil Apple, observation seule) +
   FSEvents. On détecte et on met en quarantaine juste après, sans bloquer avant l'exécution.
 - **Composants tiers installés depuis leurs releases officielles**, signature vérifiée (Team ID Apple ou minisign)

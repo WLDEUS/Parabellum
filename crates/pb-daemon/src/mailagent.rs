@@ -86,7 +86,7 @@ pub async fn request_run(ctx: &Arc<Ctx>) -> Result<MailAgentStatus, IpcError> {
 // ----- idle & power ---------------------------------------------------------------------------------
 
 /// Seconds since the last keyboard / mouse input (`HIDIdleTime`, ns). Non-macOS: always idle.
-async fn idle_seconds() -> Option<u64> {
+pub(crate) async fn idle_seconds() -> Option<u64> {
     if !cfg!(target_os = "macos") {
         return Some(u64::MAX);
     }
@@ -108,7 +108,7 @@ pub fn parse_idle(out: &str) -> Option<u64> {
         .map(|ns| ns / 1_000_000_000)
 }
 
-async fn on_ac_power() -> bool {
+pub(crate) async fn on_ac_power() -> bool {
     if !cfg!(target_os = "macos") {
         return true;
     }
