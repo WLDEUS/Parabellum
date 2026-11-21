@@ -184,6 +184,24 @@ public struct VpnStatus: Codable, Sendable, Hashable {
 // MARK: - Behaviour guard & snapshots
 
 /// APFS local snapshot (`tmutil listlocalsnapshots /`).
+/// Result of `purge_snapshots`.
+public struct SnapshotPurge: Codable, Sendable, Hashable {
+    public let deleted: [String]
+    public let failed: [String]
+    public let kept: Int
+
+    enum CodingKeys: String, CodingKey {
+        case deleted, failed, kept
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        deleted = try c.decodeIfPresent([String].self, forKey: .deleted) ?? []
+        failed = try c.decodeIfPresent([String].self, forKey: .failed) ?? []
+        kept = try c.decodeIfPresent(Int.self, forKey: .kept) ?? 0
+    }
+}
+
 public struct SnapshotInfo: Codable, Sendable, Hashable, Identifiable {
     /// Full name, e.g. `com.apple.TimeMachine.2026-10-29-120000.local`.
     public let name: String

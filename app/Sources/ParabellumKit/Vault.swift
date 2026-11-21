@@ -294,6 +294,36 @@ public struct VaultLocation: Sendable, Hashable {
     }
 }
 
+/// Result of `parabellum vault encrypt-folder`.
+public struct FolderEncryption: Codable, Sendable, Hashable {
+    public let source: String
+    public let package: String
+    public let bundle: String
+    public let volumeName: String
+    public let capacity: Int
+    public let files: Int
+    public let bytes: Int
+    public let verified: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case source, package, bundle, capacity, files, bytes, verified
+        case volumeName = "volume_name"
+    }
+}
+
+/// `.coffre` packages: folders encrypted from the Finder.
+public enum CoffrePackage {
+    public static let fileExtension = "coffre"
+
+    public static func isPackage(_ url: URL) -> Bool {
+        url.pathExtension.lowercased() == fileExtension
+    }
+
+    public static func location(_ url: URL) -> VaultLocation {
+        VaultLocation(bundle: url.path)
+    }
+}
+
 /// `parabellum vault …` as the current user.
 public enum VaultCLI {
     /// Decodes `T`, or throws the CLI's `VaultCLIError` when it printed one.
@@ -371,6 +401,11 @@ public enum VaultCLI {
 
     public static func shred(_ location: VaultLocation, paths: [String], dryRun: Bool) async throws -> [ShredReport] {
         try await call([ShredReport].self, location, ["shred"] + (dryRun ? ["--dry-run"] : []) + ["--"] + paths, timeout: 3600)
+    }
+
+    /// Encrypts a folder into `<folder>.coffre` (verified copy; the folder itself is left alone).
+    public static func encryptFolder(source: String, password: String) async throws -> FolderEncryption {
+        try await call(FolderEncryption.self, VaultLocation(), ["encrypt-folder", "--", source], passwords: [password], timeout: 6 * 3600)
     }
 
     public static func emptyTrash(_ location: VaultLocation, dryRun: Bool) async throws -> [ShredReport] {

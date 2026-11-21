@@ -96,6 +96,23 @@ final class TravelShortcutsTests: XCTestCase {
         }
     }
 
+    func testFinderURLActions() {
+        XCTAssertEqual(action("parabellum://clean?path=/Users/me/a.jpg&path=/Users/me/b.pdf"),
+                       .cleanMetadata(paths: ["/Users/me/a.jpg", "/Users/me/b.pdf"]))
+        XCTAssertEqual(action("parabellum://encrypt?path=/Users/me/Projets"), .encrypt(path: "/Users/me/Projets"))
+        XCTAssertEqual(action("parabellum://shred?path=/Users/me/secret.txt"), .shred(paths: ["/Users/me/secret.txt"]))
+        XCTAssertEqual(action("parabellum://coffre/open?path=/Users/me/Projets.coffre"), .openCoffre(path: "/Users/me/Projets.coffre"))
+        XCTAssertEqual(action("parabellum://coffre/lock?path=/Users/me/Projets.coffre"), .lockCoffre(path: "/Users/me/Projets.coffre"))
+        rejected("parabellum://encrypt?path=/a&path=/b")
+        rejected("parabellum://encrypt")
+        rejected("parabellum://shred?path=relative")
+        rejected("parabellum://shred?path=/Users/me/../etc")
+        rejected("parabellum://clean?path=/a&force=1")
+        // A link alone never destroys: no confirmation policy needed, each opens its own window.
+        XCTAssertNil(ParabellumURLAction.shred(paths: ["/x"]).protectionLoweringRequest)
+        XCTAssertFalse(ParabellumURLAction.encrypt(path: "/x").policy.requiresConfirmation)
+    }
+
     func testURLActions() {
         XCTAssertEqual(action("parabellum://scan/downloads"), .scanDownloads)
         XCTAssertEqual(action("PARABELLUM://Scan/Downloads"), .scanDownloads)

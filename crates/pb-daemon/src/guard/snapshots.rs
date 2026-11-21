@@ -8,7 +8,7 @@
 use crate::ctx::Ctx;
 use crate::system::run_command;
 use pb_core::ipc::{ErrorCode, IpcError};
-use pb_core::model::SnapshotInfo;
+use pb_core::model::{SnapshotInfo, SnapshotPurge};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -136,6 +136,46 @@ pub async fn list(ctx: &Arc<Ctx>) -> Result<Vec<SnapshotInfo>, IpcError> {
             Ok(parse_list(&out.stdout, &ours))
         })
         .await
+}
+
+/// Snapshots that may hold a file that existed from `since` on: those taken at or after it (an older one
+/// predates the file). A snapshot whose date cannot be read is purged too: it might hold the file.
+pub fn select_for_purge(list: &[SnapshotInfo], since: i64) -> (Vec<&SnapshotInfo>, u32) {
+    let (purge, keep): (Vec<&SnapshotInfo>, Vec<&SnapshotInfo>) = list
+        .iter()
+        .partition(|s| s.created_at.is_none_or(|t| t >= since));
+    (purge, keep.len() as u32)
+}
+
+/// Delete the local snapshots that may still hold files deleted for good (see [`select_for_purge`]).
+pub async fn purge_since(ctx: &Arc<Ctx>, since: i64) -> Result<SnapshotPurge, IpcError> {
+    LIST_CACHE.invalidate();
+    let all = list(ctx).await?;
+    let (purge, kept) = select_for_purge(&all, since);
+    let mut res = SnapshotPurge {
+        kept,
+        ..Default::default()
+    };
+    for s in purge {
+        let Some(date) = snapshot_date(&s.name) else {
+            continue;
+        };
+        match run_command(TMUTIL, &["deletelocalsnapshots", date], CMD_TIMEOUT).await {
+            Ok(out) if out.success() => res.deleted.push(s.name.clone()),
+            Ok(out) => res
+                .failed
+                .push(format!("{}: {}", s.name, out.stderr.trim())),
+            Err(e) => res.failed.push(format!("{}: {e}", s.name)),
+        }
+    }
+    LIST_CACHE.invalidate();
+    tracing::info!(
+        deleted = res.deleted.len(),
+        failed = res.failed.len(),
+        kept,
+        "local snapshots purged after a secure deletion"
+    );
+    Ok(res)
 }
 
 /// Create a snapshot now.
@@ -371,6 +411,27 @@ async fn stage_and_hand_over(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn purge_selects_snapshots_taken_since_the_file_existed() {
+        let snap = |name: &str, at: Option<i64>| SnapshotInfo {
+            name: name.into(),
+            created_at: at,
+            ours: false,
+        };
+        let list = vec![
+            snap("com.apple.TimeMachine.2026-11-21-040000.local", Some(400)),
+            snap("com.apple.TimeMachine.2026-11-21-030000.local", Some(300)),
+            snap("com.apple.TimeMachine.2026-11-21-020000.local", Some(200)),
+        ];
+        let (purge, kept) = select_for_purge(&list, 300);
+        assert_eq!(purge.len(), 2);
+        assert_eq!(kept, 1);
+        let (purge, kept) = select_for_purge(&list, 500);
+        assert!(purge.is_empty());
+        assert_eq!(kept, 3);
+    }
+
     use super::*;
 
     #[test]

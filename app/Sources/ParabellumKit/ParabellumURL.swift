@@ -23,6 +23,16 @@ public enum ParabellumURLAction: Equatable, Sendable {
     case update(target: UpdateTarget)
     /// `parabellum://open/<section>` (the app checks the section exists); `parabellum://open` = dashboard.
     case open(section: String?)
+    /// `parabellum://clean?path=…` (repeatable): copies without metadata next to the files.
+    case cleanMetadata(paths: [String])
+    /// `parabellum://encrypt?path=/folder`: opens the « Chiffrer » window (nothing happens without it).
+    case encrypt(path: String)
+    /// `parabellum://shred?path=…` (repeatable): opens the « Supprimer définitivement » confirmation.
+    case shred(paths: [String])
+    /// `parabellum://coffre/open?path=/x.coffre`
+    case openCoffre(path: String)
+    /// `parabellum://coffre/lock?path=/x.coffre`
+    case lockCoffre(path: String)
 }
 
 public struct ParabellumURLError: Error, Equatable, LocalizedError, Sendable {
@@ -78,7 +88,42 @@ public enum ParabellumURL {
             return .success(action)
         }
 
+        /// `path` parameters (1…maxPaths, absolute, validated).
+        func pathList(_ hint: String) -> Result<[String], ParabellumURLError> {
+            if let e = only(["path"]) {
+                return .failure(e)
+            }
+            let paths = query["path"] ?? []
+            if paths.isEmpty {
+                return .failure(ParabellumURLError(hint))
+            }
+            if paths.count > maxPaths {
+                return .failure(ParabellumURLError(String(localized: "Au plus \(maxPaths) chemins par lien.")))
+            }
+            for p in paths {
+                if let e = validatePath(p) {
+                    return .failure(e)
+                }
+            }
+            return .success(paths)
+        }
+        func singlePath(_ hint: String) -> Result<String, ParabellumURLError> {
+            pathList(hint).flatMap { paths in
+                paths.count == 1 ? .success(paths[0]) : .failure(ParabellumURLError(String(localized: "Un seul chemin pour cette action.")))
+            }
+        }
+
         switch segments {
+        case ["clean"]:
+            return pathList(String(localized: "Indiquez les fichiers : parabellum://clean?path=/chemin/absolu")).map { .cleanMetadata(paths: $0) }
+        case ["encrypt"]:
+            return singlePath(String(localized: "Indiquez le dossier : parabellum://encrypt?path=/chemin/absolu")).map { .encrypt(path: $0) }
+        case ["shred"]:
+            return pathList(String(localized: "Indiquez les éléments : parabellum://shred?path=/chemin/absolu")).map { .shred(paths: $0) }
+        case ["coffre", "open"]:
+            return singlePath(String(localized: "Indiquez le dossier chiffré : parabellum://coffre/open?path=/x.coffre")).map { .openCoffre(path: $0) }
+        case ["coffre", "lock"]:
+            return singlePath(String(localized: "Indiquez le dossier chiffré : parabellum://coffre/lock?path=/x.coffre")).map { .lockCoffre(path: $0) }
         case ["scan"]:
             if let e = only(["path"]) {
                 return .failure(e)
@@ -199,7 +244,10 @@ extension ParabellumURLAction {
         case .vpnDisconnect: return .vpnDisconnect
         case .travelOff: return .travelDisable
         case .pause(let minutes): return .setProtection(pausedMinutes: minutes)
-        case .scan, .scanDownloads, .vpnConnect, .travelOn, .resume, .update, .open: return nil
+        // The Finder actions never act on a link alone: each opens its own window (encrypt, shred) or
+        // only creates copies (clean) / opens or locks an encrypted folder.
+        case .scan, .scanDownloads, .vpnConnect, .travelOn, .resume, .update, .open,
+             .cleanMetadata, .encrypt, .shred, .openCoffre, .lockCoffre: return nil
         }
     }
 

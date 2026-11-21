@@ -145,6 +145,41 @@ impl Runner for Fake {
         }
         Ok(match key.as_str() {
             "hdiutil info" => ok(&info_xml(self.attached.borrow().as_ref())),
+            // Attach on a custom mount point (encrypt-folder): mounted there.
+            "hdiutil attach" if args.iter().any(|a| a == "-mountpoint") => {
+                let i = args.iter().position(|a| a == "-mountpoint").unwrap();
+                let (mp, bundle) = (args[i + 1].clone(), args.last().unwrap().clone());
+                *self.attached.borrow_mut() = Some((bundle, mp.clone()));
+                ok(&attach_xml(&mp))
+            }
+            "hdiutil detach" => {
+                // Unmounted: a private mount point (encrypt-folder) is an empty folder again.
+                if let Some((_, mp)) = self.attached.borrow_mut().take() {
+                    if mp.contains("parabellum-coffre-") {
+                        for e in std::fs::read_dir(&mp).into_iter().flatten().flatten() {
+                            let p = e.path();
+                            if p.is_dir() {
+                                std::fs::remove_dir_all(p).unwrap();
+                            } else {
+                                std::fs::remove_file(p).unwrap();
+                            }
+                        }
+                    }
+                }
+                ok("")
+            }
+            // `ditto src dst`: a real copy, unless the test broke it.
+            _ if tool == "ditto" => {
+                let broken = self
+                    .queued
+                    .borrow_mut()
+                    .get_mut("ditto")
+                    .and_then(VecDeque::pop_front);
+                if broken.is_none() {
+                    copy_tree(Path::new(&args[0]), Path::new(&args[1]));
+                }
+                ok("")
+            }
             "fdesetup status" => ok("FileVault is On.\n"),
             _ => fail(1, "unexpected call"),
         })
@@ -886,4 +921,119 @@ fn fixtures_match_serde() {
         let parsed: serde_json::Value = serde_json::from_str(&on_disk).unwrap();
         assert_eq!(parsed, value, "{name} is stale: PB_UPDATE_FIXTURES=1");
     }
+}
+
+fn copy_tree(src: &Path, dst: &Path) {
+    for e in walkdir::WalkDir::new(src).min_depth(1) {
+        let e = e.unwrap();
+        let to = dst.join(e.path().strip_prefix(src).unwrap());
+        if e.file_type().is_dir() {
+            std::fs::create_dir_all(&to).unwrap();
+        } else if e.file_type().is_symlink() {
+            std::os::unix::fs::symlink(std::fs::read_link(e.path()).unwrap(), &to).unwrap();
+        } else {
+            std::fs::copy(e.path(), &to).unwrap();
+        }
+    }
+}
+
+fn project(home: &Path) -> PathBuf {
+    let src = home.join("Projets");
+    std::fs::create_dir_all(src.join("sous/dossier")).unwrap();
+    std::fs::write(src.join("a.txt"), b"alpha").unwrap();
+    std::fs::write(src.join("sous/dossier/b.bin"), vec![3u8; 300_000]).unwrap();
+    std::os::unix::fs::symlink("a.txt", src.join("lien")).unwrap();
+    src
+}
+
+#[test]
+fn encrypt_folder_copies_verifies_and_locks() {
+    let e = env();
+    let f = Fake::default();
+    f.queue(
+        "hdiutil create",
+        ok("<plist><array><string>x</string></array></plist>"),
+    );
+    let src = project(&e.home);
+    let r = folder::encrypt_folder(&f, &e.home, &src, None, &pw(GOOD)).unwrap();
+    assert!(r.verified);
+    assert_eq!(r.files, 2);
+    assert_eq!(r.bytes, 300_005);
+    assert_eq!(
+        r.package,
+        e.home.join("Projets.coffre").display().to_string()
+    );
+    assert!(r.bundle.ends_with("Projets.coffre/Contenu.sparsebundle"));
+    assert_eq!(r.volume_name, "Projets");
+    assert_eq!(r.capacity, 1 << 30);
+    // Password on stdin only; created encrypted; mounted privately, then locked; original untouched.
+    let create = &f.calls_to("create")[0];
+    assert!(create.args.iter().any(|a| a == "AES-256"));
+    assert!(!create.args.iter().any(|a| a.contains(GOOD)));
+    assert!(create
+        .stdin
+        .as_deref()
+        .unwrap()
+        .starts_with(GOOD.as_bytes()));
+    let attach = &f.calls_to("attach")[0];
+    let mp = &attach.args[attach.args.iter().position(|a| a == "-mountpoint").unwrap() + 1];
+    assert!(!mp.starts_with("/Volumes"));
+    assert!(!Path::new(mp).exists(), "temporary mount point removed");
+    assert_eq!(f.calls_to("detach").len(), 1);
+    assert!(src.join("sous/dossier/b.bin").exists());
+    // `--bundle x.coffre` stands for its image.
+    assert_eq!(
+        folder::resolve_bundle(&e.home.join("Projets.coffre")),
+        e.home.join("Projets.coffre/Contenu.sparsebundle")
+    );
+    // Twice: refused, nothing overwritten.
+    assert!(matches!(
+        folder::encrypt_folder(&f, &e.home, &src, None, &pw(GOOD)),
+        Err(VaultError::AlreadyExists(_))
+    ));
+}
+
+#[test]
+fn encrypt_folder_removes_its_package_when_the_copy_differs() {
+    let e = env();
+    let f = Fake::default();
+    f.queue(
+        "hdiutil create",
+        ok("<plist><array><string>x</string></array></plist>"),
+    );
+    // ditto "succeeds" but copies nothing.
+    f.queue("ditto", ok(""));
+    let src = project(&e.home);
+    let err = folder::encrypt_folder(&f, &e.home, &src, None, &pw(GOOD)).unwrap_err();
+    assert!(err.to_string().contains("vérification"), "{err}");
+    assert!(
+        !e.home.join("Projets.coffre").exists(),
+        "half-made package removed"
+    );
+    assert!(src.join("a.txt").exists());
+    assert_eq!(f.calls_to("detach").len(), 1, "locked again");
+}
+
+#[test]
+fn encrypt_folder_refuses_unsafe_sources() {
+    let e = env();
+    let f = Fake::default();
+    std::fs::create_dir_all(e.home.join("Documents")).unwrap();
+    for (p, why) in [
+        (e.home.clone(), "dossier personnel"),
+        (e.home.join("Documents"), "dossier système"),
+        (PathBuf::from("/usr"), "hors de votre dossier"),
+    ] {
+        let err = folder::encrypt_folder(&f, &e.home, &p, None, &pw(GOOD)).unwrap_err();
+        assert!(err.to_string().contains(why), "{p:?}: {err}");
+    }
+    let file = e.home.join("note.txt");
+    std::fs::write(&file, b"x").unwrap();
+    assert!(folder::encrypt_folder(&f, &e.home, &file, None, &pw(GOOD)).is_err());
+    // Weak password: refused before anything is created.
+    let src = project(&e.home);
+    assert!(folder::encrypt_folder(&f, &e.home, &src, None, &pw("court")).is_err());
+    assert!(!e.home.join("Projets.coffre").exists());
+    assert!(f.calls_to("create").is_empty());
+    assert_eq!(folder::capacity_for(3 << 30), 6 << 30);
 }

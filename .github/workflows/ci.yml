@@ -177,6 +177,12 @@ jobs:
             echo "::warning::desktop widget not built (optional): see ci-logs/widget.log"
             exit 1
           }
+      # Finder extension (FinderSync, built with swiftc): must compile; the app falls back to Quick Actions
+      # only when a local build environment cannot build it.
+      - name: Finder extension
+        run: |
+          set -o pipefail
+          scripts/build-finder-extension.sh --check 2>&1 | tee ci-logs/finder-extension.log
       # Stable code-signing identity (keeps Full Disk Access across updates). Not on PRs: PR builds
       # never see the signing key and are signed ad hoc.
       - name: Code-signing identity (certificate from secrets, else ad hoc)

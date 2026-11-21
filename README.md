@@ -11,6 +11,9 @@ Antivirus personnel et open source pour **macOS 14+ sur Apple Silicon**. Un seul
 | Domaine | Ce que fait Parabellum | Briques |
 |---|---|---|
 | Analyse à la demande | Fichiers, dossiers, DMG (montés en lecture seule), PKG (dépaquetés), ZIP | Base de hash, YARA-X, ClamAV (`clamscan`) |
+| Clic droit dans le Finder | Sous-menu « Parabellum » (extension Finder) et Actions rapides : analyser, supprimer les métadonnées (copie nettoyée), chiffrer un dossier, supprimer définitivement | Extension FinderSync + `NSServices` |
+| Dossiers chiffrés | Un dossier devient `<nom>.coffre` : image disque APFS AES-256, copie vérifiée (SHA-256) avant suppression définitive de l'original ; ouverture par double-clic avec Touch ID (clé de la Secure Enclave), fichier clé ou mot de passe (secours, même sans Parabellum) | `hdiutil`, CryptoKit |
+| Suppression définitive | Réécriture aléatoire, renommage, suppression, puis suppression des instantanés Time Machine locaux pris depuis la création des fichiers (option, admin). Limites du SSD expliquées dans l'app ; FileVault reste la vraie garantie | `tmutil` |
 | Analyse complète | Tout le disque de démarrage (sauf le volume système scellé d'Apple), à la demande (`parabellum full-scan`) et automatiquement (par défaut chaque semaine, Mac inactif et sur secteur) ; fichiers iCloud non téléchargés ignorés ; volumes externes en option | Moteur Parabellum (ClamAV en option) |
 | Temps réel | Téléchargements, Bureau, Documents, Applications, programmes lancés : analyse puis quarantaine juste après | FSEvents, `eslogger` (observation seule) |
 | Persistance | Nouveaux LaunchAgents/Daemons et éléments de connexion, chasse quotidienne | Moniteur maison, osquery, BlockBlock (option) |

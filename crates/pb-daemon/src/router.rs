@@ -426,6 +426,9 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
             }
             json(&crate::guard::snapshots::create(ctx).await?)
         }
+        Request::PurgeSnapshots { since } => {
+            json(&crate::guard::snapshots::purge_since(ctx, since).await?)
+        }
         Request::RestoreFromSnapshot { snapshot, path } => {
             let dest = crate::guard::snapshots::restore(ctx, &snapshot, &path).await?;
             Ok(serde_json::json!({ "restored_to": dest }))

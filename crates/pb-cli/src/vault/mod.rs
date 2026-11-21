@@ -11,6 +11,7 @@
 //! - [`command`]: `parabellum vault …` subcommands (JSON for the app, French text for humans).
 
 pub mod command;
+pub mod folder;
 pub mod shred;
 pub mod tools;
 

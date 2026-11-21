@@ -222,6 +222,10 @@ pub enum Request {
     /// `~/Parabellum-Restauration/<snapshot>/<path relative to home>`; nothing is overwritten. Admin.
     /// -> `{"restored_to": String}`
     RestoreFromSnapshot { snapshot: String, path: String },
+    /// Delete the local snapshots taken at or after `since` (Unix time): after « Supprimer
+    /// définitivement », they may still hold the deleted files. Older ones cannot. Admin (it also
+    /// removes restore points, Parabellum's anti-ransomware ones included). -> [`SnapshotPurge`]
+    PurgeSnapshots { since: i64 },
 
     // ----- Privacy -----
     /// The identity used for GDPR requests, masked unless `reveal` (admin). -> [`IdentityProfile`]
@@ -382,6 +386,7 @@ impl Request {
             | Request::VpnImportProfile { .. }
             | Request::VpnRemoveProfile
             | Request::RestoreFromSnapshot { .. }
+            | Request::PurgeSnapshots { .. }
             | Request::PrivacySetProfile { .. }
             | Request::PrivacyDraft { .. }
             | Request::PrivacyComplaint { .. }

@@ -20,6 +20,7 @@ struct SettingsView: View {
                 Form {
                     LanguageSettingsSection()
                     scanSection
+                    finderSection
                     fullScanSection
                     realtimeSection
                     mlSection
@@ -174,6 +175,22 @@ struct SettingsView: View {
             Text("Analyse")
         } footer: {
             Text("Au-delà de la taille max., les fichiers sont seulement hachés. Les limites d'archives protègent contre les bombes de décompression.")
+        }
+    }
+
+    private var finderSection: some View {
+        Section {
+            LabeledContent("Menu « Parabellum » du clic droit") {
+                Text(FinderExtensionSupport.isEnabled ? String(localized: "activé") : String(localized: "désactivé"))
+                    .foregroundStyle(FinderExtensionSupport.isEnabled ? Color.green : Color.secondary)
+            }
+            Button("Réglages des extensions du Finder…") {
+                FinderExtensionSupport.openSettings()
+            }
+        } header: {
+            Text("Finder")
+        } footer: {
+            Text("Clic droit sur un fichier ou un dossier › Parabellum : analyser, supprimer les métadonnées, chiffrer, supprimer définitivement. Les mêmes actions sont aussi dans Clic droit › Actions rapides (ou Services).")
         }
     }
 

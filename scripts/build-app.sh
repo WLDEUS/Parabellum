@@ -11,6 +11,7 @@
 #   Contents/Resources/AppIcon.icns      drawn by installer/app/make-icon.swift (skipped on failure)
 #   Contents/Resources/*.bundle          SwiftPM resource bundles, if any
 #   Contents/PlugIns/ParabellumWidget.appex  desktop widget (optional, scripts/build-widget.sh)
+#   Contents/PlugIns/ParabellumFinder.appex  Finder right-click menu (optional, scripts/build-finder-extension.sh)
 #
 # Signing: the "Parabellum Local Signing" certificate (make codesign-cert) when present, or
 # $PARABELLUM_SIGN_IDENTITY, otherwise ad hoc. See pb_resolve_sign_identity in lib/common.sh.
@@ -149,6 +150,19 @@ if [[ "${PARABELLUM_WIDGET:-1}" != "0" ]]; then
     else
         pb_warn "widget non construit : l'app est livrée sans (facultatif)"
         rm -rf "$app/Contents/PlugIns/ParabellumWidget.appex"
+        rmdir "$app/Contents/PlugIns" 2>/dev/null || true
+    fi
+fi
+
+# Finder extension (Finder › clic droit › Parabellum), optional: the Quick Actions (NSServices of the app)
+# offer the same actions without it. PARABELLUM_FINDER_EXTENSION=0 skips it.
+if [[ "${PARABELLUM_FINDER_EXTENSION:-1}" != "0" ]]; then
+    pb_info "Extension Finder (facultative)"
+    if PARABELLUM_SIGN_IDENTITY="$PB_SIGN_IDENTITY" "$PB_REPO_ROOT/scripts/build-finder-extension.sh" "$app"; then
+        pb_ok "extension Finder intégrée"
+    else
+        pb_warn "extension Finder non construite : les Actions rapides restent disponibles"
+        rm -rf "$app/Contents/PlugIns/ParabellumFinder.appex"
         rmdir "$app/Contents/PlugIns" 2>/dev/null || true
     fi
 fi

@@ -520,6 +520,7 @@ private struct ShredConfirmSheet: View {
     @ObservedObject var store: VaultStore
     let plan: VaultStore.ShredPlan
     let filevault: FileVaultState
+    @State private var purgeSnapshots = true
 
     private var title: String {
         switch plan.source {
@@ -563,6 +564,15 @@ private struct ShredConfirmSheet: View {
                 }
                 .padding(12)
                 .glassSurface(cornerRadius: 14, tint: filevault == .on ? .green : .orange)
+                Toggle(isOn: $purgeSnapshots) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Supprimer aussi les instantanés Time Machine locaux qui peuvent en garder une copie")
+                        Text("Seulement ceux pris depuis la création de ces fichiers (les plus anciens ne peuvent pas les contenir). Mot de passe administrateur. Cela retire aussi ces points de restauration, y compris ceux de la protection anti-rançongiciel.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
             HStack {
                 Spacer()
@@ -572,7 +582,7 @@ private struct ShredConfirmSheet: View {
                 }
                 .keyboardShortcut(.cancelAction)
                 Button(role: .destructive) {
-                    Task { await store.executeShred(plan) }
+                    Task { await store.executeShred(plan, purgeSnapshots: plan.touchesOutsideVault && purgeSnapshots) }
                     dismiss()
                 } label: {
                     Text("Supprimer définitivement")

@@ -553,13 +553,19 @@ final class VaultStore: ObservableObject {
         }
     }
 
-    /// Deletes exactly the items the user confirmed.
-    func executeShred(_ plan: ShredPlan) async {
+    /// Deletes exactly the items the user confirmed; with `purgeSnapshots`, then the local Time Machine
+    /// snapshots taken since the oldest of them was created (they may still hold a copy). Admin.
+    func executeShred(_ plan: ShredPlan, purgeSnapshots: Bool = false) async {
         shredPlan = nil
-        let paths = plan.actionable.map(\.path)
-        guard !paths.isEmpty else { return }
+        let paths = plan.actionable.filter { $0.zone != .vault }.map(\.path)
+        let allPaths = plan.actionable.map(\.path)
+        guard !allPaths.isEmpty else { return }
+        // Before deleting: afterwards, the creation dates are gone.
+        let since: Date? = purgeSnapshots && !paths.isEmpty
+            ? await Task.detached(priority: .userInitiated) { Self.earliestCreation(paths) }.value
+            : nil
         let result = await model.perform("vault-shred") {
-            try await VaultCLI.shred(self.location, paths: paths, dryRun: false)
+            try await VaultCLI.shred(self.location, paths: allPaths, dryRun: false)
         }
         guard let reports = result else { return }
         lastShred = reports
@@ -575,6 +581,52 @@ final class VaultStore: ObservableObject {
         if reports.contains(where: { $0.zone == .vault }) {
             await refresh()
         }
+        if let since, !deleted.isEmpty {
+            await purgeLocalSnapshots(since: since)
+        }
+    }
+
+    /// Oldest creation date among `paths` and everything inside them (bounded walk).
+    nonisolated static func earliestCreation(_ paths: [String], limit: Int = 200_000) -> Date? {
+        var earliest: Date?
+        var seen = 0
+        let keys: [URLResourceKey] = [.creationDateKey]
+        func consider(_ url: URL) {
+            if let d = try? url.resourceValues(forKeys: Set(keys)).creationDate, d < (earliest ?? .distantFuture) {
+                earliest = d
+            }
+        }
+        for path in paths {
+            let url = URL(fileURLWithPath: path)
+            consider(url)
+            guard let walker = FileManager.default.enumerator(at: url, includingPropertiesForKeys: keys, options: []) else { continue }
+            for case let item as URL in walker {
+                consider(item)
+                seen += 1
+                if seen >= limit {
+                    // Too many to look at: purge every local snapshot.
+                    return .distantPast
+                }
+            }
+        }
+        return earliest
+    }
+
+    private func purgeLocalSnapshots(since: Date) async {
+        let ts = Int64(max(0, since.timeIntervalSince1970))
+        let result = await model.perform("snapshot-purge") {
+            try await self.model.call(.purgeSnapshots(since: ts), as: SnapshotPurge.self)
+        }
+        guard let result else { return }
+        let message: String
+        if !result.failed.isEmpty {
+            message = String(localized: "Instantanés locaux : \(result.deleted.count) supprimé(s), \(result.failed.count) en échec (\(result.failed[0])).")
+        } else if result.deleted.isEmpty {
+            message = String(localized: "Aucun instantané Time Machine local ne contenait ces fichiers.")
+        } else {
+            message = String(localized: "\(result.deleted.count) instantané(s) Time Machine local(aux) supprimé(s).")
+        }
+        model.banner = Banner(message: message, isError: !result.failed.isEmpty)
     }
 
     // MARK: - Settings
