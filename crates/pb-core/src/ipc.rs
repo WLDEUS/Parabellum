@@ -84,6 +84,24 @@ pub enum Request {
         #[serde(default)]
         include_resolved: bool,
     },
+    /// Full alert report, rendered by the daemon (one implementation for the app and the CLI). Dates are
+    /// local days `YYYY-MM-DD` (`to` inclusive); none = everything. -> [`AlertExport`]
+    ExportAlerts {
+        #[serde(default)]
+        format: AlertExportFormat,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        from: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        to: Option<String>,
+        /// Resolved and acknowledged alerts too (a full report: yes).
+        #[serde(default = "default_true")]
+        include_resolved: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_severity: Option<Severity>,
+        /// `fr` (default) or `en`: labels and headings.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        lang: Option<String>,
+    },
     /// Apply one of the alert's `actions`. -> [`Alert`] (updated)
     ResolveAlert { alert_id: i64, action: AlertAction },
     /// -> `Vec<QuarantineEntry>`
@@ -433,6 +451,7 @@ impl Request {
                 | Request::ListJobs { .. }
                 | Request::GetJob { .. }
                 | Request::ListAlerts { .. }
+                | Request::ExportAlerts { .. }
                 | Request::ListQuarantine
                 | Request::ListPersistence { .. }
                 | Request::ListDevices { .. }

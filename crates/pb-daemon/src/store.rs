@@ -509,6 +509,34 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
+    /// Alerts with `start <= ts < end`, newest first, at most `limit` (+ how many match in all).
+    pub fn alerts_between(
+        &self,
+        start: i64,
+        end: i64,
+        include_resolved: bool,
+        limit: u32,
+    ) -> Result<(Vec<Alert>, u32)> {
+        let conn = self.lock();
+        let status = if include_resolved {
+            ""
+        } else {
+            " AND status = 'open'"
+        };
+        let total: u32 = conn.query_row(
+            &format!("SELECT COUNT(*) FROM alerts WHERE ts >= ?1 AND ts < ?2{status}"),
+            params![start, end],
+            |r| r.get(0),
+        )?;
+        let mut stmt = conn.prepare(&format!(
+            "SELECT json FROM alerts WHERE ts >= ?1 AND ts < ?2{status} ORDER BY ts DESC, id DESC LIMIT ?3"
+        ))?;
+        let rows = stmt.query_map(params![start, end, limit], |r| {
+            from_json::<Alert>(&r.get::<_, String>(0)?)
+        })?;
+        Ok((rows.collect::<rusqlite::Result<Vec<_>>>()?, total))
+    }
+
     /// Most recent alert with the same sha256 + path since `since` (dedupe).
     pub fn find_recent_alert(&self, sha256: &str, path: &str, since: i64) -> Result<Option<Alert>> {
         let conn = self.lock();
@@ -1388,6 +1416,33 @@ mod tests {
         s.prune(now).unwrap();
         assert_eq!(s.verdict_get("k1").unwrap(), None);
         assert!(s.verdict_get("k2").unwrap().is_some());
+    }
+
+    #[test]
+    fn alerts_between_filters_by_time_and_status() {
+        let s = Store::open_in_memory().unwrap();
+        let ids: Vec<i64> = [100, 200, 300, 400]
+            .iter()
+            .map(|ts| {
+                s.insert_alert(&alert(&format!("/f{ts}"), "aa", *ts), None)
+                    .unwrap()
+                    .id
+            })
+            .collect();
+        let mut resolved = s.get_alert(ids[2]).unwrap().unwrap();
+        resolved.status = AlertStatus::Resolved;
+        s.update_alert(&resolved).unwrap();
+        // [200, 400): newest first, end excluded.
+        let (l, total) = s.alerts_between(200, 400, true, 10).unwrap();
+        assert_eq!(l.iter().map(|a| a.ts).collect::<Vec<_>>(), vec![300, 200]);
+        assert_eq!(total, 2);
+        let (l, total) = s.alerts_between(200, 400, false, 10).unwrap();
+        assert_eq!(l.iter().map(|a| a.ts).collect::<Vec<_>>(), vec![200]);
+        assert_eq!(total, 1);
+        // Limit: the newest, total still counts everything.
+        let (l, total) = s.alerts_between(i64::MIN, i64::MAX, true, 2).unwrap();
+        assert_eq!(l.iter().map(|a| a.ts).collect::<Vec<_>>(), vec![400, 300]);
+        assert_eq!(total, 4);
     }
 
     #[test]

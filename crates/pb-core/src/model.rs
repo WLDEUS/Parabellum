@@ -912,6 +912,55 @@ pub struct SnapshotInfo {
     pub ours: bool,
 }
 
+/// Format of an alert report (`export_alerts`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AlertExportFormat {
+    /// Self-contained page (also the source of the PDF made by the app).
+    #[default]
+    Html,
+    /// One row per alert: RFC 4180, UTF-8 with BOM (Excel), cells neutralised against formula injection.
+    Csv,
+    Json,
+    Markdown,
+}
+
+impl AlertExportFormat {
+    pub fn extension(self) -> &'static str {
+        match self {
+            Self::Html => "html",
+            Self::Csv => "csv",
+            Self::Json => "json",
+            Self::Markdown => "md",
+        }
+    }
+
+    pub fn mime(self) -> &'static str {
+        match self {
+            Self::Html => "text/html",
+            Self::Csv => "text/csv",
+            Self::Json => "application/json",
+            Self::Markdown => "text/markdown",
+        }
+    }
+}
+
+/// Result of `export_alerts`: the rendered report.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AlertExport {
+    pub format: AlertExportFormat,
+    /// Suggested name, e.g. `Parabellum – alertes 2026-11-21.csv`.
+    pub file_name: String,
+    pub mime: String,
+    pub content: String,
+    /// Alerts in the report.
+    pub count: u32,
+    /// Alerts matching the filters (more than `count` when truncated).
+    pub total: u32,
+    /// Only the most recent `count` fit in one answer.
+    pub truncated: bool,
+}
+
 /// Result of `purge_snapshots`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct SnapshotPurge {

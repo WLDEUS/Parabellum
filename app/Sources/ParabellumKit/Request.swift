@@ -73,6 +73,9 @@ public enum Request: Sendable, Equatable {
     case spywareScan
     /// Whole-Mac scan; nil = the `[full_scan]` setting. Administrator approval. → `JobStarted`
     case fullScan(useClamav: Bool? = nil, externalVolumes: Bool? = nil)
+    /// Full alert report rendered by the daemon; days `YYYY-MM-DD` (`to` inclusive). → `AlertExport`
+    case exportAlerts(format: AlertExportFormat, from: String? = nil, to: String? = nil,
+                      includeResolved: Bool = true, minSeverity: Severity? = nil, lang: String? = nil)
     /// Local snapshots taken since `since` (Unix time), after a secure deletion. Admin. → `SnapshotPurge`
     case purgeSnapshots(since: Int64)
     /// macOS security settings; `refresh` re-runs the checks. → `[PostureCheck]`
@@ -222,6 +225,7 @@ public enum Request: Sendable, Equatable {
         case .spywareScan: return "spyware_scan"
         case .fullScan: return "full_scan"
         case .purgeSnapshots: return "purge_snapshots"
+        case .exportAlerts: return "export_alerts"
         case .posture: return "posture"
         case .subscribe: return "subscribe"
         case .vpnStatus: return "vpn_status"
@@ -400,6 +404,13 @@ public enum Request: Sendable, Equatable {
             if let useClamav {
                 o["use_clamav"] = .bool(useClamav)
             }
+        case let .exportAlerts(format, from, to, includeResolved, minSeverity, lang):
+            o["format"] = .string(format.rawValue)
+            if let from { o["from"] = .string(from) }
+            if let to { o["to"] = .string(to) }
+            o["include_resolved"] = .bool(includeResolved)
+            if let minSeverity { o["min_severity"] = .string(minSeverity.rawValue) }
+            if let lang { o["lang"] = .string(lang) }
         case let .purgeSnapshots(since):
             o["since"] = .int(since)
         case let .fullScan(useClamav, externalVolumes):

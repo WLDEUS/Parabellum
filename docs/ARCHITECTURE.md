@@ -54,6 +54,12 @@
 - **Rust partout où on lit des données non fiables** (fichiers, archives, plists, flux réseau). Swift seulement pour l'UI.
 - **Pas de `clamd`** (≈ 1 Go de RAM résident) : `clamscan` par lots pour les analyses à la demande et des volumes.
   Le temps réel passe par hash DB + YARA-X + ML (< 200 ms par fichier de moins de 10 Mo).
+- **Rapport des alertes** (`crates/pb-daemon/src/alert_export.rs`) : un seul rendu (HTML, CSV, JSON, Markdown ; FR/EN)
+  pour l'app et le CLI, par IPC `export_alerts` (lecture seule). Les textes d'alerte viennent de ce qui a été analysé
+  (noms de fichiers, processus, réseaux) : HTML échappé et page sans aucune ressource externe (CSP `default-src 'none'`),
+  cellules CSV neutralisées contre l'injection de formules (`=`, `+`, `-`, `@` → `'`), cellules Markdown sans `|`,
+  backtick ni saut de ligne. Au plus 50 000 alertes, contenu < 5 Mo (les plus récentes, signalé « tronqué »). Le PDF
+  est fait par l'app : HTML mis en page par WebKit (JavaScript coupé, stockage éphémère), découpé en A4 par l'impression.
 - **Actions du Finder** : `app/FinderExtension` (FinderSync, bac à sable, `scripts/build-finder-extension.sh`) ne
   fait que construire le sous-menu et ouvrir des liens `parabellum://clean|encrypt|shred|coffre/open|coffre/lock` ;
   les Actions rapides (`NSServices`, `ServicesProvider.swift`) appellent les mêmes fonctions (`FinderActions.swift`).

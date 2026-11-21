@@ -72,11 +72,14 @@
 "1 résultat" = "1 result";
 "1. Ouvre Réglages Système › Confidentialité et sécurité › Accès complet au disque." = "1. Open System Settings › Privacy & Security › Full Disk Access.";
 "12 caractères au minimum (une phrase de plusieurs mots est idéale)." = "12 characters minimum (a sentence of several words is ideal).";
+"12 derniers mois" = "Last 12 months";
 "15 min" = "15 min";
 "15 minutes" = "15 minutes";
 "2. Clique sur « + », puis ⌘⇧G et colle le chemin du service." = "2. Click “+”, then ⌘⇧G and paste the service path.";
 "3. Active l'interrupteur de parabellumd, puis reviens ici et vérifie." = "3. Turn on the parabellumd switch, then come back here and check.";
+"30 derniers jours" = "Last 30 days";
 "4 heures" = "4 hours";
+"7 derniers jours" = "Last 7 days";
 "Abonnement refusé" = "Subscription refused";
 "Absent des fuites connues." = "Not in known breaches.";
 "Accessibilité, enregistrement de l'écran, accès complet au disque, surveillance du clavier… accordés à une app non signée ou signée « ad hoc » déclenchent une alerte." = "Accessibility, screen recording, full disk access, input monitoring… granted to an unsigned or ad hoc signed app trigger an alert.";
@@ -246,6 +249,7 @@
 "Attend un moment d'inactivité" = "Waiting for an idle moment";
 "Attention : cette image n'est pas chiffrée." = "Warning: this image is not encrypted.";
 "au" = "to";
+"Au" = "To";
 "Au moins %lld caractères." = "At least %lld characters.";
 "Au plus %lld chemins par lien." = "At most %lld paths per link.";
 "Au plus tous les" = "At most every";
@@ -487,6 +491,7 @@
 "Créer un alias" = "Create an alias";
 "Créer un instantané maintenant" = "Create a snapshot now";
 "Créée le %@.\n\nCette clé ouvre le coffre si le trousseau est perdu (nouveau Mac, réinstallation). Quiconque la possède avec l'image du coffre peut le lire : rangez cette feuille en lieu sûr, hors de l'ordinateur, et ne la photographiez pas." = "Created on %@.\n\nThis key opens the vault if the keychain is lost (new Mac, reinstallation). Anyone who has it along with the vault image can read it: keep this sheet in a safe place, away from the computer, and do not photograph it.";
+"CSV (Excel, Numbers)" = "CSV (Excel, Numbers)";
 "Dans l'app Raccourcis : action « Ouvrir l'URL » avec un lien ci-dessous, ou « Exécuter un script shell » avec une commande. Les actions qui réduisent la protection demandent toujours votre mot de passe." = "In the Shortcuts app: “Open URL” action with a link below, or “Run Shell Script” with a command. Actions that lower the protection always ask for your password.";
 "dans la corbeille" = "in the Trash";
 "dans le coffre : suppression simple" = "in the vault: simple deletion";
@@ -630,9 +635,14 @@
 "exemple : paypa1-securite.com" = "example: paypa1-security.com";
 "exemple.fr ou *.exemple.fr" = "example.com or *.example.com";
 "Export depuis Chrome, Safari, Firefox ou Bitwarden. Supprime le fichier (et vide la Corbeille) après la vérification : il contient tes mots de passe en clair." = "Export from Chrome, Safari, Firefox or Bitwarden. Delete the file (and empty the Trash) after the check: it contains your passwords in plain text.";
+"Export impossible : %@" = "Export failed: %@";
 "Export PDF impossible : %@" = "PDF export failed: %@";
 "Exporter ce rapport en PDF" = "Export this report as PDF";
 "Exporter en PDF" = "Export as PDF";
+"Exporter un rapport complet des alertes (PDF, HTML, CSV, JSON, Markdown)" = "Export a full alert report (PDF, HTML, CSV, JSON, Markdown)";
+"Exporter un rapport des alertes" = "Export an Alert Report";
+"Exporter un rapport…" = "Export a Report…";
+"Exporter…" = "Export…";
 "Extension de navigateur" = "Browser extension";
 "Extension du noyau" = "Kernel extension";
 "Extension système" = "System extension";
@@ -677,6 +687,7 @@
 "Flux vidéo (RTSP)" = "Video stream (RTSP)";
 "Forcer le verrouillage" = "Force the lock";
 "Forcer le verrouillage (veille, écran) même si des fichiers sont ouverts" = "Force the lock (sleep, screen) even if files are open";
+"Format" = "Format";
 "Formulaire" = "Form";
 "Formulaire exigé" = "Form required";
 "Formulaire web" = "Web form";
@@ -697,6 +708,7 @@
 "Heuristique" = "Heuristic";
 "Hors boutique" = "Outside the store";
 "Hors ligne" = "Offline";
+"HTML (page web autonome)" = "HTML (self-contained web page)";
 "Identifiant" = "User name";
 "Identifiant de réseau invalide : %@" = "Invalid network identifier: %@";
 "Identifiant SMTP" = "SMTP user name";
@@ -720,6 +732,7 @@
 "Imprimer / PDF…" = "Print / PDF…";
 "Inactif" = "Inactive";
 "Inclure ClamAV (plus lent, plus complet)" = "Include ClamAV (slower, more thorough)";
+"Inclure les alertes vues et résolues" = "Include acknowledged and resolved alerts";
 "Inclure les volumes externes montés" = "Include mounted external volumes";
 "Inconnu" = "Unknown";
 "Inconnue" = "Unknown";
@@ -767,6 +780,7 @@
 "Je connais cet appareil" = "I know this device";
 "Jeton GitHub (dépôt privé, optionnel)" = "GitHub token (private repository, optional)";
 "Jour" = "Day";
+"JSON (outils, scripts)" = "JSON (tools, scripts)";
 "k-anonymat : seuls les 5 premiers caractères de l'empreinte SHA-1 quittent le Mac, jamais le mot de passe." = "k-anonymity: only the first 5 characters of the SHA-1 hash leave the Mac, never the password.";
 "Kill switch : %@" = "Kill switch: %@";
 "Kill switch : bloquer tout trafic hors du tunnel quand le VPN doit être actif" = "Kill switch: block all traffic outside the tunnel when the VPN should be active";
@@ -853,8 +867,10 @@
 "Le port SMTP doit être compris entre 1 et 65 535." = "The SMTP port must be between 1 and 65,535.";
 "Le profil (clés comprises) reste dans le dossier du service, lisible par root uniquement. Importer ou supprimer un profil demande une autorisation administrateur." = "The profile (keys included) stays in the service folder, readable by root only. Importing or removing a profile requires administrator authorization.";
 "Le ranger dans le trousseau (Touch ID la prochaine fois)" = "Keep it in the keychain (Touch ID next time)";
+"Le rapport contient un résumé (par gravité, statut et type) puis chaque alerte avec sa date, son message, le fichier, l'empreinte SHA-256 et le processus en cause. Il ne quitte pas ce Mac : rien n'est envoyé." = "The report contains a summary (by severity, status and kind) then every alert with its date, message, file, SHA-256 hash and the process involved. It stays on this Mac: nothing is sent.";
 "Le renouvellement des demandes doit être 0 (jamais) ou compris entre 30 et 730 jours." = "Request renewal must be 0 (never) or between 30 and 730 days.";
 "Le serveur SMTP est requis en mode envoi automatique." = "The SMTP server is required for automatic sending.";
+"Le service n'a pas pu préparer le rapport." = "The service could not prepare the report.";
 "Le service ne répond pas" = "The service is not responding";
 "Le service Parabellum (parabellumd) ne répond pas." = "The Parabellum service (parabellumd) is not responding.";
 "Le service Parabellum n'a pas pu lire les permissions." = "The Parabellum service could not read the permissions.";
@@ -907,6 +923,7 @@
 "Malware" = "Malware";
 "Manuel" = "Manual";
 "Manuelle" = "Manual";
+"Markdown (notes, Obsidian)" = "Markdown (notes, Obsidian)";
 "Marquer" = "Mark";
 "Marquer comme vue" = "Mark as seen";
 "Masquer" = "Hide";
@@ -1085,6 +1102,7 @@
 "Pause" = "Pause";
 "Pays" = "Country";
 "Pays de résidence (code ISO, ex. FR)" = "Country of residence (ISO code, e.g. FR)";
+"PDF (à imprimer ou partager)" = "PDF (to print or share)";
 "Permission refusée" = "Permission denied";
 "Permissions" = "Permissions";
 "Persistance" = "Persistence";
@@ -1130,6 +1148,7 @@
 "Protection temps réel" = "Real-time protection";
 "Protocole" = "Protocol";
 "Précédent" = "Previous";
+"Préparation du rapport…" = "Preparing the report…";
 "Préparer les e-mails à envoyer" = "Prepare the e-mails to send";
 "préparer un e-mail de demande d'effacement (il contient ton identité)" = "prepare an erasure request e-mail (it contains your identity)";
 "préparer une plainte CNIL (elle contient ton identité)" = "prepare a CNIL complaint (it contains your identity)";
@@ -1143,6 +1162,7 @@
 "Puis supprimer définitivement les originaux (avec confirmation)" = "Then permanently delete the originals (with confirmation)";
 "Période" = "Period";
 "Période d'apprentissage" = "Learning period";
+"Période personnalisée" = "Custom period";
 "Périphérique" = "Device";
 "Périphériques" = "Devices";
 "Quand" = "When";
@@ -1159,6 +1179,8 @@
 "Rapport de la semaine du %@" = "Report for the week of %@";
 "Rapport du %@ au %@" = "Report from %@ to %@";
 "Rapport exporté : %@" = "Report exported: %@";
+"Rapport exporté : %lld alerte(s)." = "Report exported: %lld alert(s).";
+"Rapport exporté : %lld alertes les plus récentes sur %lld (réduisez la période pour le reste)." = "Report exported: the %lld most recent alerts out of %lld (narrow the period for the rest).";
 "Rapport indisponible" = "Report unavailable";
 "Rapport indisponible (le service est-il à jour ?)." = "Report unavailable (is the service up to date?).";
 "Recherche de ce qui peut être nettoyé…" = "Looking for what can be cleaned…";
@@ -1407,6 +1429,7 @@
 "Toutes ces alertes sont déjà résolues." = "All these alerts are already resolved.";
 "toutes les %@" = "every %@";
 "Toutes les %lld h" = "Every %lld h";
+"Toutes les alertes" = "All alerts";
 "Transport" = "Transport";
 "Tri" = "Sort";
 "Tri : %@" = "Sort: %@";

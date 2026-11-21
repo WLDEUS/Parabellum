@@ -67,6 +67,31 @@ pub enum Command {
         #[arg(long, default_value_t = 50)]
         limit: u32,
     },
+    /// Exporter un rapport complet des alertes (HTML, CSV, JSON ou Markdown). Par défaut toutes les
+    /// alertes, ouvertes, vues et résolues.
+    ExportAlerts {
+        /// Format du rapport.
+        #[arg(long, value_enum, default_value_t = ExportFormatArg::Html)]
+        format: ExportFormatArg,
+        /// Fichier de sortie (`-` : sortie standard). Défaut : nom proposé par Parabellum, dossier courant.
+        #[arg(short, long, value_name = "FICHIER")]
+        output: Option<std::path::PathBuf>,
+        /// Premier jour inclus (AAAA-MM-JJ).
+        #[arg(long, value_name = "AAAA-MM-JJ")]
+        from: Option<String>,
+        /// Dernier jour inclus (AAAA-MM-JJ).
+        #[arg(long, value_name = "AAAA-MM-JJ")]
+        to: Option<String>,
+        /// Seulement les alertes ouvertes.
+        #[arg(long)]
+        open_only: bool,
+        /// Gravité minimale (info, low, medium, high, critical).
+        #[arg(long, value_name = "GRAVITÉ")]
+        min_severity: Option<String>,
+        /// Langue du rapport (fr, en).
+        #[arg(long, default_value = "fr")]
+        lang: String,
+    },
     /// Appliquer une action à une alerte (acknowledge, quarantine, allow, restore, trust-device,
     /// block-device, approve-persistence, remove-persistence, report-false-positive, kill-process,
     /// resume-process, trust-network, dismiss).
@@ -470,6 +495,27 @@ pub enum VpnCmd {
     },
 }
 
+/// `export-alerts --format`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ExportFormatArg {
+    Html,
+    Csv,
+    Json,
+    #[value(alias = "md")]
+    Markdown,
+}
+
+impl From<ExportFormatArg> for pb_core::model::AlertExportFormat {
+    fn from(f: ExportFormatArg) -> Self {
+        match f {
+            ExportFormatArg::Html => Self::Html,
+            ExportFormatArg::Csv => Self::Csv,
+            ExportFormatArg::Json => Self::Json,
+            ExportFormatArg::Markdown => Self::Markdown,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum VpnModeArg {
     /// Jamais automatiquement.
@@ -788,6 +834,26 @@ mod tests {
             }
         ));
         assert!(parse(&["full-scan", "--clamav", "--no-clamav"]).is_err());
+        assert!(matches!(
+            parse(&[
+                "export-alerts",
+                "--format",
+                "md",
+                "-o",
+                "-",
+                "--from",
+                "2026-11-01",
+                "--open-only"
+            ])
+            .unwrap()
+            .command,
+            Command::ExportAlerts {
+                format: ExportFormatArg::Markdown,
+                open_only: true,
+                ..
+            }
+        ));
+        assert!(parse(&["export-alerts", "--format", "docx"]).is_err());
         assert!(matches!(
             parse(&["spyware-scan", "--no-wait"]).unwrap().command,
             Command::SpywareScan { no_wait: true }

@@ -1424,6 +1424,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             from: Some("2026-10-01".into()),
             to: Some("2026-10-15".into()),
         },
+        // ----- Alert report -----
+        Request::ExportAlerts {
+            format: AlertExportFormat::Csv,
+            from: Some("2026-11-01".into()),
+            to: Some("2026-11-21".into()),
+            include_resolved: true,
+            min_severity: Some(Severity::High),
+            lang: Some("en".into()),
+        },
+        Request::ExportAlerts {
+            format: AlertExportFormat::Html,
+            from: None,
+            to: None,
+            include_resolved: false,
+            min_severity: None,
+            lang: None,
+        },
         // ----- Secure deletion -----
         Request::PurgeSnapshots {
             since: 1_792_900_000,

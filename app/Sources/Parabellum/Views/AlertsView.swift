@@ -21,6 +21,7 @@ struct AlertsView: View {
     @State private var severities: Set<Severity> = Set(Severity.known)
     @State private var sort: AlertSort = .severity
     @State private var selection: Set<Int64> = []
+    @State private var showExport = false
 
     /// Kind filter only (the severity chips show their counts for it).
     private var kindFiltered: [SecurityAlert] {
@@ -83,10 +84,22 @@ struct AlertsView: View {
         .navigationTitle("Alertes")
         .toolbar {
             ToolbarItem {
+                Button {
+                    showExport = true
+                } label: {
+                    Label("Exporter un rapport…", systemImage: "square.and.arrow.up")
+                }
+                .help("Exporter un rapport complet des alertes (PDF, HTML, CSV, JSON, Markdown)")
+            }
+            ToolbarItem {
                 RefreshButton(isLoading: model.isBusy("alerts")) {
                     Task { await model.refresh(section: .alerts, force: true) }
                 }
             }
+        }
+        .sheet(isPresented: $showExport) {
+            AlertExportSheet()
+                .environmentObject(model)
         }
         .onAppear {
             if let id = model.selectedAlertId { selection = [id] }

@@ -100,6 +100,9 @@ final class ProtocolTests: XCTestCase {
             // Activity report
             .report(period: .month, offset: 1),
             .report(period: .custom, offset: 0, from: "2026-10-01", to: "2026-10-15"),
+            // Alert report
+            .exportAlerts(format: .csv, from: "2026-11-01", to: "2026-11-21", includeResolved: true, minSeverity: .high, lang: "en"),
+            .exportAlerts(format: .html, includeResolved: false),
             // Secure deletion
             .purgeSnapshots(since: 1_792_900_000),
             // Full scan
