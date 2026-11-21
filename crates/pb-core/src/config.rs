@@ -132,6 +132,11 @@ impl Config {
                 "full_scan.interval_days must be 1..{FULL_SCAN_MAX_INTERVAL_DAYS}"
             )));
         }
+        if self.scan.threads > SCAN_MAX_THREADS {
+            return Err(ConfigError::Invalid(format!(
+                "scan.threads must be 0 (automatic) or 1..{SCAN_MAX_THREADS}"
+            )));
+        }
         if self.full_scan.idle_minutes > FULL_SCAN_MAX_IDLE_MINUTES {
             return Err(ConfigError::Invalid(format!(
                 "full_scan.idle_minutes must be <= {FULL_SCAN_MAX_IDLE_MINUTES}"
@@ -341,7 +346,13 @@ pub struct ScanConfig {
     pub mount_dmg: bool,
     /// Expand PKG (`pkgutil --expand-full`) and scan scripts + payload.
     pub expand_pkg: bool,
+    /// Analysis threads of folder scans (manual, full, volumes…): 0 = automatic (half the cores, at most
+    /// 6), else 1..=16. One thread walks, the others analyse; ClamAV and heavy files stay one at a time.
+    pub threads: u32,
 }
+
+/// Upper bound of `scan.threads`.
+pub const SCAN_MAX_THREADS: u32 = 16;
 
 impl Default for ScanConfig {
     fn default() -> Self {
@@ -362,6 +373,7 @@ impl Default for ScanConfig {
             clamav_realtime: false,
             mount_dmg: true,
             expand_pkg: true,
+            threads: 0,
         }
     }
 }
@@ -1160,6 +1172,9 @@ mod tests {
         assert!(Config::from_toml("[full_scan]\ninterval_days = 0\n").is_err());
         assert!(Config::from_toml("[full_scan]\ninterval_days = 91\n").is_err());
         assert!(Config::from_toml("[full_scan]\nidle_minutes = 241\n").is_err());
+        assert_eq!(Config::default().scan.threads, 0);
+        assert!(Config::from_toml("[scan]\nthreads = 17\n").is_err());
+        assert!(Config::from_toml("[scan]\nthreads = 8\n").is_ok());
         let c = Config::from_toml("[full_scan]\nauto = false\ninterval_days = 30\n").unwrap();
         assert!(!c.full_scan.auto && c.full_scan.require_ac_power);
     }

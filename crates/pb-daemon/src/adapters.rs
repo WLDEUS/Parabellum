@@ -108,6 +108,10 @@ impl EngineAdapter {
         o.scan_inert_text = opts.inert_text;
         o.allowed_devices = opts.allowed_devices.clone();
         o.skip_dataless = opts.skip_dataless;
+        o.workers = match cfg.scan.threads {
+            0 => pb_engine::auto_workers(),
+            n => (n as usize).min(pb_engine::MAX_WORKERS),
+        };
         o
     }
 }

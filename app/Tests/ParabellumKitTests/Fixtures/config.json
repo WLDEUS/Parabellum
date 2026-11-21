@@ -149,6 +149,7 @@
     "expand_pkg": true,
     "max_file_size_mb": 200,
     "mount_dmg": true,
+    "threads": 0,
     "watch_paths": [
       "~/Downloads",
       "~/Desktop",

@@ -54,6 +54,11 @@
 - **Rust partout où on lit des données non fiables** (fichiers, archives, plists, flux réseau). Swift seulement pour l'UI.
 - **Pas de `clamd`** (≈ 1 Go de RAM résident) : `clamscan` par lots pour les analyses à la demande et des volumes.
   Le temps réel passe par hash DB + YARA-X + ML (< 200 ms par fichier de moins de 10 Mo).
+- **Parcours et threads** (`crates/pb-engine/src/walk.rs`) : chaque objet n'est vu qu'une fois (racines
+  dédoublonnées par `st_dev`+`st_ino` : même dossier deux fois, `/tmp` et `/private/tmp`, racine incluse dans une
+  autre, fichier racine rencontré par le parcours, liens suivis qui reviennent dans l'arbre). Un thread parcourt,
+  `scan.threads` threads analysent (0 = auto : la moitié des cœurs, 6 max), à la QoS de l'appelant ; ClamAV reste
+  un seul `clamscan` à la fois et les fichiers lourds (≥ 8 Mo, DMG, PKG, archives) un à la fois.
 - **Analyse complète** (`crates/pb-daemon/src/fullscan.rs`) : racines = dossiers de premier niveau de `/` sauf
   `/System` (volume scellé, signé par Apple, et qui contient `/System/Volumes/Data`, soit `/Users` une 2e fois),
   `/Volumes`, `/dev`, `/cores` et les entrées cachées ; le parcours n'entre que dans les dossiers des volumes du disque

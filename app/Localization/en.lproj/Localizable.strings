@@ -38,6 +38,7 @@
 "%lld dont %lld en échec" = "%lld including %lld failed";
 "%lld e-mail(s) prêts dans Téléchargements › Parabellum-RGPD : ouvre chacun dans Mail et envoie-le, puis marque les demandes comme envoyées." = "%lld e-mail(s) ready in Downloads › Parabellum-RGPD: open each one in Mail and send it, then mark the requests as sent.";
 "%lld en place" = "%lld in place";
+"%lld fil(s)" = "%lld thread(s)";
 "%lld fuite(s) de données trouvée(s) : %@" = "%lld data breach(es) found: %@";
 "%lld Go" = "%lld GB";
 "%lld jour(s)" = "%lld day(s)";
@@ -177,6 +178,7 @@
 "Analyse complète lancée. Elle dure en général plusieurs heures : tu peux continuer à utiliser le Mac." = "Full scan started. It usually takes several hours: you can keep using the Mac.";
 "Analyse comportementale désactivée" = "Behaviour analysis off";
 "Analyse en cours…" = "Scan in progress…";
+"Analyse en parallèle" = "Parallel scanning";
 "Analyse impossible" = "Scan failed";
 "Analyse passive" = "Passive scan";
 "Analyse passive : seuls les appareils qui ont échangé récemment avec ce Mac apparaissent." = "Passive scan: only devices that recently exchanged traffic with this Mac appear.";
@@ -298,6 +300,7 @@
 "Audit toutes les" = "Audit every";
 "Auditer régulièrement les permissions des apps" = "Audit app permissions regularly";
 "Authentification impossible : %@" = "Authentication failed: %@";
+"automatique" = "automatic";
 "automatique désactivée" = "automatic off";
 "automatique tous les %lld jour(s)" = "automatic every %lld day(s)";
 "Autorisation administrateur refusée." = "Administrator authorization denied.";
@@ -809,6 +812,7 @@
 "Le nom est évalué localement par le modèle, sans être consulté ni enregistré." = "The name is evaluated locally by the model, without being visited or recorded.";
 "Le nombre d'alertes d'anomalie par jour doit être compris entre 1 et 100." = "The number of anomaly alerts per day must be between 1 and 100.";
 "Le nombre d'e-mails par jour doit être compris entre 1 et 200." = "The number of e-mails per day must be between 1 and 200.";
+"Le nombre de fils d'analyse doit être compris entre 0 (automatique) et %lld." = "The number of scan threads must be between 0 (automatic) and %lld.";
 "Le port SMTP doit être compris entre 1 et 65 535." = "The SMTP port must be between 1 and 65,535.";
 "Le profil (clés comprises) reste dans le dossier du service, lisible par root uniquement. Importer ou supprimer un profil demande une autorisation administrateur." = "The profile (keys included) stays in the service folder, readable by root only. Importing or removing a profile requires administrator authorization.";
 "Le ranger dans le trousseau (Touch ID la prochaine fois)" = "Keep it in the keychain (Touch ID next time)";
