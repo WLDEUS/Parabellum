@@ -100,6 +100,8 @@ final class ProtocolTests: XCTestCase {
             // Activity report
             .report(period: .month, offset: 1),
             .report(period: .custom, offset: 0, from: "2026-10-01", to: "2026-10-15"),
+            // Secure deletion
+            .purgeSnapshots(since: 1_792_900_000),
             // Full scan
             .fullScan(),
             .fullScan(useClamav: true, externalVolumes: false),

@@ -70,6 +70,16 @@ enum URLActionRunner {
             await model.setProtection(pausedMinutes: 0)
         case .update(let target):
             await model.updateNow(target)
+        case .cleanMetadata(let paths):
+            await FinderActions.shared.cleanMetadata(paths.map { URL(fileURLWithPath: $0) })
+        case .encrypt(let path):
+            FinderActions.shared.encrypt(URL(fileURLWithPath: path))
+        case .shred(let paths):
+            await FinderActions.shared.shred(paths.map { URL(fileURLWithPath: $0) })
+        case .openCoffre(let path):
+            await FinderActions.shared.openCoffre(URL(fileURLWithPath: path))
+        case .lockCoffre(let path):
+            await FinderActions.shared.lockCoffre(URL(fileURLWithPath: path))
         case .open(let name):
             guard let name else {
                 model.showMainWindow(section: .dashboard)

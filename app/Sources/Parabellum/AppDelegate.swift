@@ -5,6 +5,8 @@ import ParabellumKit
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let services = ServicesProvider()
+
     /// `parabellum://` links: Apple Event handler installed before launch events are processed (so a link
     /// that launches the app is not lost); `application(_:open:)` covers the case where AppKit / SwiftUI
     /// keeps its own handler.
@@ -30,6 +32,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func open(_ url: URL) {
+        // Double-click on a folder encrypted from the Finder.
+        if url.isFileURL, CoffrePackage.isPackage(url) {
+            AppModel.shared.start()
+            Task { await FinderActions.shared.openCoffre(url.standardizedFileURL) }
+            return
+        }
         guard url.scheme?.lowercased() == ParabellumURL.scheme else { return }
         AppModel.shared.start()
         Task { await URLActionRunner.handle(url, model: AppModel.shared) }
@@ -41,6 +49,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Menu bar app: no Dock icon unless the main window is open (also covers `swift run`,
         // where there is no Info.plist with LSUIElement).
         NSApp.setActivationPolicy(.accessory)
+        // Finder › Actions rapides / Services.
+        NSApp.servicesProvider = services
+        NSUpdateDynamicServices()
+        FinderExtensionSupport.enableOnce()
         AppModel.shared.start()
         // Coffre: auto-lock observers (screen lock, sleep, idle) and first status.
         AppModel.shared.vault.start()

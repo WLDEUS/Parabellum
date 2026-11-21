@@ -912,6 +912,18 @@ pub struct SnapshotInfo {
     pub ours: bool,
 }
 
+/// Result of `purge_snapshots`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct SnapshotPurge {
+    /// Names of the deleted snapshots.
+    pub deleted: Vec<String>,
+    /// `name: error` of those `tmutil` could not delete.
+    #[serde(default)]
+    pub failed: Vec<String>,
+    /// Older snapshots left alone (taken before the files existed).
+    pub kept: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct GuardStatus {
     pub stealer_detection: bool,

@@ -73,6 +73,8 @@ public enum Request: Sendable, Equatable {
     case spywareScan
     /// Whole-Mac scan; nil = the `[full_scan]` setting. Administrator approval. → `JobStarted`
     case fullScan(useClamav: Bool? = nil, externalVolumes: Bool? = nil)
+    /// Local snapshots taken since `since` (Unix time), after a secure deletion. Admin. → `SnapshotPurge`
+    case purgeSnapshots(since: Int64)
     /// macOS security settings; `refresh` re-runs the checks. → `[PostureCheck]`
     case posture(refresh: Bool = false)
     /// Start receiving events on this connection. → `null`
@@ -219,6 +221,7 @@ public enum Request: Sendable, Equatable {
         case .retroHunt: return "retro_hunt"
         case .spywareScan: return "spyware_scan"
         case .fullScan: return "full_scan"
+        case .purgeSnapshots: return "purge_snapshots"
         case .posture: return "posture"
         case .subscribe: return "subscribe"
         case .vpnStatus: return "vpn_status"
@@ -299,7 +302,7 @@ public enum Request: Sendable, Equatable {
     public var requiresAdmin: Bool {
         switch self {
         case .restore, .deleteQuarantined, .reportFalsePositive, .setConfig, .quarantinePath, .setPersistenceStatus,
-             .fullScan:
+             .fullScan, .purgeSnapshots:
             return true
         case .vpnDisconnect, .vpnImportProfile, .vpnRemoveProfile, .restoreFromSnapshot, .privacySetProfile,
              .privacyDraft, .privacyComplaint, .privacyStartRemoval:
@@ -397,6 +400,8 @@ public enum Request: Sendable, Equatable {
             if let useClamav {
                 o["use_clamav"] = .bool(useClamav)
             }
+        case let .purgeSnapshots(since):
+            o["since"] = .int(since)
         case let .fullScan(useClamav, externalVolumes):
             if let useClamav {
                 o["use_clamav"] = .bool(useClamav)

@@ -1,0 +1,5 @@
+/* Finder › right-click › Quick Actions / Services (Info.plist NSServices). */
+"Analyser avec Parabellum" = "Scan with Parabellum";
+"Nettoyer les métadonnées (Parabellum)" = "Remove Metadata (Parabellum)";
+"Chiffrer avec Parabellum" = "Encrypt with Parabellum";
+"Supprimer définitivement (Parabellum)" = "Delete Permanently (Parabellum)";

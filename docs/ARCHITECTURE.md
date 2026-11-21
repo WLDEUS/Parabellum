@@ -54,6 +54,21 @@
 - **Rust partout où on lit des données non fiables** (fichiers, archives, plists, flux réseau). Swift seulement pour l'UI.
 - **Pas de `clamd`** (≈ 1 Go de RAM résident) : `clamscan` par lots pour les analyses à la demande et des volumes.
   Le temps réel passe par hash DB + YARA-X + ML (< 200 ms par fichier de moins de 10 Mo).
+- **Actions du Finder** : `app/FinderExtension` (FinderSync, bac à sable, `scripts/build-finder-extension.sh`) ne
+  fait que construire le sous-menu et ouvrir des liens `parabellum://clean|encrypt|shred|coffre/open|coffre/lock` ;
+  les Actions rapides (`NSServices`, `ServicesProvider.swift`) appellent les mêmes fonctions (`FinderActions.swift`).
+  Un lien seul ne détruit rien : chiffrer ouvre une fenêtre (mot de passe), supprimer ouvre la confirmation habituelle.
+- **Dossiers chiffrés** (`crates/pb-cli/src/vault/folder.rs`, `app/Sources/ParabellumKit/CoffreKeys.swift`) :
+  `<nom>.coffre` = `Contenu.sparsebundle` (APFS AES-256, mot de passe `hdiutil`) + `keys.json`. Copie `ditto` montée
+  hors `/Volumes`, comparée fichier par fichier (type, taille, SHA-256), image reverrouillée ; en cas d'écart, le paquet
+  est supprimé et l'original intact. `keys.json` scelle le mot de passe (AES-GCM) pour Touch ID (ECDH avec une clé
+  P-256 de la Secure Enclave, contrôle d'accès biométrique, CryptoKit : pas d'entitlement) et pour un fichier clé
+  (32 octets, HKDF-SHA256). Le mot de passe reste l'accès de secours, même sans Parabellum.
+- **Suppression définitive** : `vault shred` (réécriture, renommage, suppression via descripteurs `O_NOFOLLOW`), puis
+  en option `purge_snapshots` (daemon, admin) : `tmutil deletelocalsnapshots` pour les instantanés pris depuis la
+  création la plus ancienne des éléments supprimés. Sur un Mac Apple silicon, le volume de données est chiffré par une
+  clé de volume (pas de clé par fichier) : réécrire ne garantit rien au niveau des cellules du SSD, FileVault et le
+  chiffrement en amont (dossiers chiffrés) sont les vraies garanties.
 - **Parcours et threads** (`crates/pb-engine/src/walk.rs`) : chaque objet n'est vu qu'une fois (racines
   dédoublonnées par `st_dev`+`st_ino` : même dossier deux fois, `/tmp` et `/private/tmp`, racine incluse dans une
   autre, fichier racine rencontré par le parcours, liens suivis qui reviennent dans l'arbre). Un thread parcourt,

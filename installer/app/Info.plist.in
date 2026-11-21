@@ -71,6 +71,118 @@
 			<string>Viewer</string>
 		</dict>
 	</array>
+	<!-- Finder › clic droit › Actions rapides / Services (also in the Finder extension's submenu). Titles
+	     translated in <lang>.lproj/ServicesMenu.strings. Handled by ServicesProvider. -->
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Analyser avec Parabellum</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>scanFiles</string>
+			<key>NSPortName</key>
+			<string>Parabellum</string>
+			<key>NSRequiredContext</key>
+			<dict/>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.item</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Nettoyer les métadonnées (Parabellum)</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>cleanMetadata</string>
+			<key>NSPortName</key>
+			<string>Parabellum</string>
+			<key>NSRequiredContext</key>
+			<dict/>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Chiffrer avec Parabellum</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>encryptFolder</string>
+			<key>NSPortName</key>
+			<string>Parabellum</string>
+			<key>NSRequiredContext</key>
+			<dict/>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.folder</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Supprimer définitivement (Parabellum)</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>shredFiles</string>
+			<key>NSPortName</key>
+			<string>Parabellum</string>
+			<key>NSRequiredContext</key>
+			<dict/>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.item</string>
+			</array>
+		</dict>
+	</array>
+	<!-- Folders encrypted from the Finder: `<nom>.coffre` packages (encrypted disk image + keys.json),
+	     opened by Parabellum on double-click (Touch ID, password or key file). -->
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.wldeus.parabellum.coffre</string>
+			<key>UTTypeDescription</key>
+			<string>Dossier chiffré Parabellum</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>com.apple.package</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>coffre</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Dossier chiffré Parabellum</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSTypeIsPackage</key>
+			<true/>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.wldeus.parabellum.coffre</string>
+			</array>
+		</dict>
+	</array>
 	<!-- Travel mode can turn Bluetooth off (opt-in, IOBluetooth): required by TCC to touch Bluetooth. -->
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Le mode Voyage peut couper le Bluetooth pendant vos déplacements, puis le rallumer.</string>

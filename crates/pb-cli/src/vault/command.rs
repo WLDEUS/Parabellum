@@ -87,6 +87,15 @@ pub enum VaultCmd {
     },
     /// État de FileVault.
     Filevault,
+    /// Chiffrer un dossier : copie vérifiée dans une image chiffrée `<dossier>.coffre` à côté de lui ;
+    /// le dossier n'est pas touché. Mot de passe sur l'entrée standard.
+    EncryptFolder {
+        /// Dossier à chiffrer.
+        source: PathBuf,
+        /// Paquet à créer (défaut : `<dossier>.coffre` à côté du dossier).
+        #[arg(long, value_name = "CHEMIN")]
+        output: Option<PathBuf>,
+    },
 }
 
 /// Plain-language reminder printed after secure deletions.
@@ -156,7 +165,8 @@ pub fn run_with(
 ) -> Result<i32, CliError> {
     let paths = VaultPaths {
         bundle: match &a.bundle {
-            Some(b) => absolute(b)?,
+            // A `.coffre` package stands for its image.
+            Some(b) => super::folder::resolve_bundle(&absolute(b)?),
             None => VaultPaths::default_bundle(home),
         },
         mountpoint: a.mountpoint.as_deref().map(absolute).transpose()?,
@@ -306,6 +316,29 @@ fn execute(
         VaultCmd::EmptyTrash { dry_run } => {
             let targets = shred::trash_items(home)?;
             return shred_and_report(json, io, r, home, p, &targets, *dry_run);
+        }
+        VaultCmd::EncryptFolder { source, output } => {
+            let mut secrets =
+                pw.read(&["Mot de passe du dossier chiffré : ", "Confirmez : "], 1)?;
+            if secrets.len() == 2 {
+                if secrets[0].as_bytes() != secrets[1].as_bytes() {
+                    return Err(VaultError::WeakPassword(
+                        "les deux mots de passe diffèrent".into(),
+                    )
+                    .into());
+                }
+                secrets.truncate(1);
+            }
+            let source = absolute(source)?;
+            let output = output.as_deref().map(absolute).transpose()?;
+            let s =
+                super::folder::encrypt_folder(r, home, &source, output.as_deref(), &secrets[0])?;
+            emit(json, io, &s, |s| {
+                format!(
+                    "Dossier chiffré : {}\n{} fichier(s) vérifiés. L'original est intact : supprimez-le avec « parabellum vault shred » une fois le dossier chiffré ouvert et vérifié.\nNotez le mot de passe : sans lui, le contenu est irrécupérable.\n",
+                    s.package, s.files
+                )
+            })?;
         }
         VaultCmd::Filevault => {
             let f = super::filevault(r);

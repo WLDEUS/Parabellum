@@ -87,5 +87,6 @@
 {"id":87,"cmd":"resolve_alert","alert_id":40,"action":"enable_travel_mode"}
 {"id":88,"cmd":"report","period":"month","offset":1}
 {"id":89,"cmd":"report","period":"custom","offset":0,"from":"2026-10-01","to":"2026-10-15"}
-{"id":90,"cmd":"full_scan"}
-{"id":91,"cmd":"full_scan","use_clamav":true,"external_volumes":false}
+{"id":90,"cmd":"purge_snapshots","since":1792900000}
+{"id":91,"cmd":"full_scan"}
+{"id":92,"cmd":"full_scan","use_clamav":true,"external_volumes":false}

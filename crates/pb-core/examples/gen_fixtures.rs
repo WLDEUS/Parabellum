@@ -1424,6 +1424,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             from: Some("2026-10-01".into()),
             to: Some("2026-10-15".into()),
         },
+        // ----- Secure deletion -----
+        Request::PurgeSnapshots {
+            since: 1_792_900_000,
+        },
         // ----- Full scan -----
         Request::FullScan {
             use_clamav: None,

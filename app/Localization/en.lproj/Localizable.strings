@@ -33,14 +33,17 @@
 "%lld alertes sélectionnées" = "%lld alerts selected";
 "%lld autorisations accordées · audit %@ · bases lues : " = "%lld permissions granted · audit %@ · databases read: ";
 "%lld clavier(s)/HID non vérifié(s)" = "%lld unverified keyboard(s)/HID";
+"%lld copie(s) sans métadonnées créée(s) à côté des originaux." = "%lld copy(ies) without metadata created next to the originals.";
 "%lld demande(s) d'effacement abouties sur %lld — %lld envoyée(s) et %lld aboutie(s) sur la période." = "%lld erasure request(s) completed out of %lld — %lld sent and %lld completed over the period.";
 "%lld demande(s) d'effacement en file d'attente sur %lld." = "%lld erasure request(s) queued out of %lld.";
 "%lld dont %lld en échec" = "%lld including %lld failed";
 "%lld e-mail(s) prêts dans Téléchargements › Parabellum-RGPD : ouvre chacun dans Mail et envoie-le, puis marque les demandes comme envoyées." = "%lld e-mail(s) ready in Downloads › Parabellum-RGPD: open each one in Mail and send it, then mark the requests as sent.";
 "%lld en place" = "%lld in place";
+"%lld fichier(s) nettoyé(s), %lld en échec : %@" = "%lld file(s) cleaned, %lld failed: %@";
 "%lld fil(s)" = "%lld thread(s)";
 "%lld fuite(s) de données trouvée(s) : %@" = "%lld data breach(es) found: %@";
 "%lld Go" = "%lld GB";
+"%lld instantané(s) Time Machine local(aux) supprimé(s)." = "%lld local Time Machine snapshot(s) deleted.";
 "%lld jour(s)" = "%lld day(s)";
 "%lld menace(s)" = "%lld threat(s)";
 "%lld min" = "%lld min";
@@ -83,6 +86,7 @@
 "Accès pas encore accordé (le service peut mettre quelques secondes à le détecter)" = "Access not granted yet (the service may take a few seconds to detect it)";
 "Accès puissants à vérifier" = "Powerful access to review";
 "Accès refusé au socket du service Parabellum." = "Access denied to the Parabellum service socket.";
+"Accès sans mot de passe non enregistrés : %@" = "Password-free access not saved: %@";
 "Actif" = "Active";
 "Actif (automatique)" = "On (automatic)";
 "Actif depuis" = "Active since";
@@ -106,6 +110,7 @@
 "Activité" = "Activity";
 "Activité quotidienne" = "Daily activity";
 "Activé" = "On";
+"activé" = "on";
 "Activé : tout le disque est chiffré. Les fichiers supprimés restent illisibles, même sur un SSD." = "On: the whole disk is encrypted. Deleted files stay unreadable, even on an SSD.";
 "Activé automatiquement, le blocage DNS attend qu'Internet réponde (portail de connexion du Wi-Fi) et le coupe-circuit la connexion du VPN. De retour sur un réseau approuvé (VPN > Réseaux), une alerte vous propose de le désactiver : un réseau piégé peut imiter le vôtre." = "Turned on automatically, DNS blocking waits until the Internet answers (Wi-Fi login portal) and the kill switch waits for the VPN to connect. Back on an approved network (VPN > Networks), an alert offers to turn it off: a rogue network can imitate yours.";
 "Activée" = "On";
@@ -183,6 +188,7 @@
 "Analyse passive" = "Passive scan";
 "Analyse passive : seuls les appareils qui ont échangé récemment avec ce Mac apparaissent." = "Passive scan: only devices that recently exchanged traffic with this Mac appear.";
 "Analyse rapide" = "Quick scan";
+"Analyser" = "Scan";
 "Analyser complètement ce réseau ?" = "Fully scan this network?";
 "Analyser le contenu des DMG (montage en lecture seule)" = "Scan the contents of DMGs (read-only mount)";
 "Analyser le contenu des PKG (scripts et charge utile)" = "Scan the contents of PKGs (scripts and payload)";
@@ -240,6 +246,7 @@
 "Attend un moment d'inactivité" = "Waiting for an idle moment";
 "Attention : cette image n'est pas chiffrée." = "Warning: this image is not encrypted.";
 "au" = "to";
+"Au moins %lld caractères." = "At least %lld characters.";
 "Au plus %lld chemins par lien." = "At most %lld paths per link.";
 "Au plus tous les" = "At most every";
 "Au plus une passe toutes les" = "At most one run every";
@@ -257,6 +264,7 @@
 "Aucun e-mail à préparer pour l'instant." = "No e-mail to prepare for now.";
 "Aucun fichier suspect ni erreur dans cette analyse." = "No suspicious file and no error in this scan.";
 "Aucun instantané local pour l'instant." = "No local snapshot yet.";
+"Aucun instantané Time Machine local ne contenait ces fichiers." = "No local Time Machine snapshot contained these files.";
 "Aucun modèle chargé." = "No model loaded.";
 "Aucun mot de passe de l'export n'apparaît dans les fuites connues." = "None of the exported passwords appears in known breaches.";
 "Aucun nouvel élément" = "Nothing new";
@@ -349,6 +357,9 @@
 "Campagne d'effacement" = "Erasure campaign";
 "Caméra" = "Camera";
 "Catégorie" = "Category";
+"Ce dossier chiffré ne s'ouvre pas avec Touch ID sur ce Mac." = "This encrypted folder does not open with Touch ID on this Mac.";
+"Ce fichier clé n'ouvre pas ce dossier chiffré." = "This key file does not open this encrypted folder.";
+"Ce fichier n'est pas un fichier clé Parabellum." = "This file is not a Parabellum key file.";
 "Ce lien n'est pas un lien parabellum://." = "This link is not a parabellum:// link.";
 "Ce Mac" = "This Mac";
 "Ce Mac est sous surveillance comportementale" = "This Mac is under behaviour monitoring";
@@ -379,15 +390,24 @@
 "Chemin invalide (caractère de contrôle)." = "Invalid path (control character).";
 "Chemin non normalisé refusé : %@" = "Non-normalised path refused: %@";
 "Chiffrement du disque en cours." = "Disk encryption in progress.";
+"Chiffrement et vérification…" = "Encrypting and verifying…";
+"Chiffrer" = "Encrypt";
+"Chiffrer un dossier" = "Encrypt a Folder";
+"Chiffrer « %@ »" = "Encrypt “%@”";
+"Chiffrer…" = "Encrypt…";
 "Choisir des fichiers…" = "Choose files…";
+"Choisir le fichier clé" = "Choose the Key File";
 "Choisir…" = "Choose…";
 "Choisis les fichiers ou dossiers à analyser" = "Choose the files or folders to scan";
+"Choisissez des fichiers (photos, PDF, documents) : les dossiers ne sont pas nettoyés." = "Choose files (photos, PDFs, documents): folders are not cleaned.";
+"Choisissez un dossier à chiffrer." = "Choose a folder to encrypt.";
 "Cible de mise à jour inconnue : %@ (db, components, app, all)." = "Unknown update target: %@ (db, components, app, all).";
 "Cibles rapides :" = "Quick targets:";
 "ClamAV" = "ClamAV";
 "Classifieur ML" = "ML classifier";
 "Classifieur ML sur les exécutables Mach-O" = "ML classifier on Mach-O executables";
 "Claviers, souris et HID" = "Keyboards, mice and HID";
+"Clic droit sur un fichier ou un dossier › Parabellum : analyser, supprimer les métadonnées, chiffrer, supprimer définitivement. Les mêmes actions sont aussi dans Clic droit › Actions rapides (ou Services)." = "Right-click a file or folder › Parabellum: scan, remove metadata, encrypt, delete permanently. The same actions are also in Right-click › Quick Actions (or Services).";
 "Clé" = "Key";
 "Clé API" = "API key";
 "Clé API Have I Been Pwned" = "Have I Been Pwned API key";
@@ -417,6 +437,7 @@
 "Composants à traiter" = "Components to handle";
 "Confidentialité" = "Privacy";
 "Confirmation" = "Confirmation";
+"Confirmez le mot de passe" = "Confirm the password";
 "Connecte ce Mac à un réseau pour voir ses appareils." = "Connect this Mac to a network to see its devices.";
 "Connecter" = "Connect";
 "Connecter le VPN" = "Connect the VPN";
@@ -461,6 +482,7 @@
 "Courtiers : %@" = "Brokers: %@";
 "Critique" = "Critical";
 "Création…" = "Creating…";
+"Créer aussi un fichier clé (à garder ailleurs, sur une clé USB par exemple)" = "Also create a key file (keep it elsewhere, on a USB drive for example)";
 "Créer le coffre" = "Create the vault";
 "Créer un alias" = "Create an alias";
 "Créer un instantané maintenant" = "Create a snapshot now";
@@ -509,6 +531,8 @@
 "Données exposées" = "Exposed data";
 "Données locales uniquement" = "Local data only";
 "Dossier" = "Folder";
+"Dossier chiffré : %@ (%lld fichier(s) vérifié(s))." = "Encrypted folder: %@ (%lld file(s) verified).";
+"Dossier chiffré verrouillé : %@" = "Encrypted folder locked: %@";
 "Dossier du nouveau coffre, ou coffre existant (.sparsebundle). Évitez les dossiers synchronisés (iCloud Drive, Dropbox)." = "Folder of the new vault, or an existing vault (.sparsebundle). Avoid synced folders (iCloud Drive, Dropbox).";
 "Dossiers surveillés (~ = ton dossier personnel)" = "Watched folders (~ = your home folder)";
 "Du" = "From";
@@ -586,6 +610,7 @@
 "Enceinte" = "Speaker";
 "Enregistrer" = "Save";
 "Enregistrer demande une autorisation administrateur" = "Saving requires administrator authorization";
+"Enregistrer le fichier clé" = "Save the Key File";
 "Entrées max. par archive" = "Max. entries per archive";
 "Envoi" = "Sending";
 "Envoi automatique par SMTP" = "Automatic sending via SMTP";
@@ -630,6 +655,8 @@
 "Fermer" = "Close";
 "Fermez ces fichiers (ou quittez ces apps) puis verrouillez. Forcer peut faire perdre les modifications non enregistrées." = "Close these files (or quit these apps) then lock. Forcing may lose unsaved changes.";
 "Fichier" = "File";
+"Fichier clé non créé : %@" = "Key file not created: %@";
+"Fichier clé…" = "Key File…";
 "Fichier illisible ou trop gros (1 Mo maximum)." = "Unreadable or too large file (1 MB maximum).";
 "Fichier ou dossier de ton dossier personnel à récupérer tel qu'il était dans l'instantané" = "File or folder from your home folder to recover as it was in the snapshot";
 "Fichier restauré : %@" = "File restored: %@";
@@ -646,6 +673,7 @@
 "FileVault n'est pas activé : activez-le, c'est la seule vraie garantie que les anciens blocs restent illisibles." = "FileVault is not on: turn it on, it is the only real guarantee that old blocks stay unreadable.";
 "Filtre" = "Filter";
 "Filtres : %@" = "Filters: %@";
+"Finder" = "Finder";
 "Flux vidéo (RTSP)" = "Video stream (RTSP)";
 "Forcer le verrouillage" = "Force the lock";
 "Forcer le verrouillage (veille, écran) même si des fichiers sont ouverts" = "Force the lock (sleep, screen) even if files are open";
@@ -696,7 +724,12 @@
 "Inconnu" = "Unknown";
 "Inconnue" = "Unknown";
 "Inconnus" = "Unknown";
+"Indiquez le dossier : parabellum://encrypt?path=/chemin/absolu" = "Give the folder: parabellum://encrypt?path=/absolute/path";
+"Indiquez le dossier chiffré : parabellum://coffre/lock?path=/x.coffre" = "Give the encrypted folder: parabellum://coffre/lock?path=/x.coffre";
+"Indiquez le dossier chiffré : parabellum://coffre/open?path=/x.coffre" = "Give the encrypted folder: parabellum://coffre/open?path=/x.coffre";
 "Indiquez le fichier à analyser : parabellum://scan?path=/chemin/absolu" = "Give the file to scan: parabellum://scan?path=/absolute/path";
+"Indiquez les fichiers : parabellum://clean?path=/chemin/absolu" = "Give the files: parabellum://clean?path=/absolute/path";
+"Indiquez les éléments : parabellum://shred?path=/chemin/absolu" = "Give the items: parabellum://shred?path=/absolute/path";
 "Indisponible" = "Unavailable";
 "Info" = "Info";
 "Informations demandées" = "Information requested";
@@ -712,6 +745,7 @@
 "Instantanés APFS" = "APFS snapshots";
 "Instantanés APFS automatiques" = "Automatic APFS snapshots";
 "Instantanés automatiques désactivés dans les réglages." = "Automatic snapshots turned off in the settings.";
+"Instantanés locaux : %lld supprimé(s), %lld en échec (%@)." = "Local snapshots: %lld deleted, %lld failed (%@).";
 "Intelligence" = "Intelligence";
 "Intelligence indisponible" = "Intelligence unavailable";
 "Interface" = "Interface";
@@ -766,6 +800,7 @@
 "L'élément est déchargé et son fichier mis en quarantaine (restaurable). Mot de passe administrateur requis." = "The item is unloaded and its file quarantined (restorable). Administrator password required.";
 "L'élément « %@ » sera déchargé, et son plist et son programme mis en quarantaine (restaurables)." = "The item “%@” will be unloaded, and its plist and program quarantined (restorable).";
 "La base est vérifiée (signature minisign) avant d'être activée ; la version précédente est gardée pour revenir en arrière." = "The database is checked (minisign signature) before it is activated; the previous version is kept to roll back.";
+"La clé Touch ID de ce dossier chiffré n'existe pas sur ce Mac : utilisez le mot de passe." = "This encrypted folder's Touch ID key does not exist on this Mac: use the password.";
 "La connexion au service Parabellum a été interrompue." = "The connection to the Parabellum service was interrupted.";
 "La corbeille actuelle sera vidée définitivement." = "The current Trash will be emptied permanently.";
 "La Corbeille est déjà vide." = "The Trash is already empty.";
@@ -800,6 +835,7 @@
 "Le coffre est ouvert : il sera verrouillé de force (modifications non enregistrées perdues)." = "The vault is open: it will be force-locked (unsaved changes lost).";
 "Le coffre est vide." = "The vault is empty.";
 "Le contenu de chaque fichier est remplacé une fois par des données aléatoires, puis le fichier est renommé et supprimé. Sur un SSD, cela ne garantit pas que les anciennes données soient physiquement effacées : le disque écrit les nouvelles données ailleurs, et macOS peut en garder des copies (instantanés Time Machine locaux, copies APFS). Les fichiers compressés par macOS ou restés dans iCloud sont seulement supprimés." = "The content of each file is replaced once with random data, then the file is renamed and deleted. On an SSD, this does not guarantee that the old data is physically erased: the disk writes new data elsewhere, and macOS may keep copies (local Time Machine snapshots, APFS copies). Files compressed by macOS or left in iCloud are only deleted.";
+"Le contenu est copié dans « %@.coffre », une image disque chiffrée (AES-256), puis vérifié fichier par fichier. Double-cliquez dessus pour l'ouvrir comme un dossier normal." = "The content is copied into “%@.coffre”, an encrypted disk image (AES-256), then verified file by file. Double-click it to open it like a normal folder.";
 "Le dossier des notes doit être dans ton dossier personnel (~/…)." = "The notes folder must be in your home folder (~/…).";
 "Le dossier ~/Coffre est retiré à chaque verrouillage, pour que rien n'y soit enregistré en clair." = "The ~/Coffre folder is removed at each lock, so nothing is saved there in plain text.";
 "Le délai d'inactivité de l'analyse complète doit être compris entre 0 et %lld minutes." = "The full scan idle delay must be between 0 and %lld minutes.";
@@ -808,6 +844,7 @@
 "Le kill switch coupe Internet tant que le tunnel n'est pas rétabli. Déconnecte le VPN pour retrouver l'accès direct." = "The kill switch cuts the Internet until the tunnel is back. Disconnect the VPN to get direct access again.";
 "Le ML ne rend jamais un fichier « malveillant » et ne met rien en quarantaine : il signale seulement des fichiers suspects." = "ML never marks a file “malicious” and never quarantines anything: it only flags suspicious files.";
 "Le mot de passe du trousseau ne correspond plus au coffre : saisissez-le (ou la clé de récupération)." = "The keychain password no longer matches the vault: enter it (or the recovery key).";
+"Le mot de passe enregistré pour Touch ID ne fonctionne plus : saisissez-le." = "The password saved for Touch ID no longer works: type it.";
 "Le nom du VPN macOS est invalide." = "The macOS VPN name is invalid.";
 "Le nom est évalué localement par le modèle, sans être consulté ni enregistré." = "The name is evaluated locally by the model, without being visited or recorded.";
 "Le nombre d'alertes d'anomalie par jour doit être compris entre 1 et 100." = "The number of anomaly alerts per day must be between 1 and 100.";
@@ -835,6 +872,7 @@
 "Lecture du réseau local…" = "Reading the local network…";
 "Lecture en cours…" = "Reading…";
 "Lecture passive seulement" = "Passive reading only";
+"Les accès du dossier chiffré sont illisibles : utilisez le mot de passe." = "The encrypted folder's access data is unreadable: use the password.";
 "Les alertes ne s'affichent que dans l'app. Autorise les notifications de Parabellum dans Réglages Système." = "Alerts only show in the app. Allow Parabellum notifications in System Settings.";
 "Les applications ouvertes gardent leurs fichiers : quitte-les pour un nettoyage complet." = "Open apps keep their files: quit them for a complete cleanup.";
 "Les binaires Apple et les applications signées par un Team ID de confiance ne sont jamais arrêtés." = "Apple binaries and apps signed by a trusted Team ID are never stopped.";
@@ -877,6 +915,7 @@
 "Masquer les détails" = "Hide details";
 "Me rappeler chaque mois ce qui est récupérable" = "Remind me every month of what can be recovered";
 "menaces détectées" = "threats detected";
+"Menu « Parabellum » du clic droit" = "“Parabellum” right-click menu";
 "Mettre en pause" = "Pause";
 "Mettre en quarantaine" = "Quarantine";
 "Mettre en quarantaine « %@ » ?" = "Quarantine “%@”?";
@@ -920,11 +959,13 @@
 "Modèles" = "Models";
 "Mois" = "Month";
 "Mon propre mot de passe" = "My own password";
+"Mot de passe" = "Password";
 "Mot de passe (12 caractères minimum)" = "Password (12 characters minimum)";
 "Mot de passe du coffre" = "Vault password";
 "mot de passe du coffre" = "vault password";
 "Mot de passe du coffre absent du trousseau : saisissez-le (ou la clé de récupération)." = "Vault password missing from the keychain: enter it (or the recovery key).";
 "Mot de passe du coffre changé." = "Vault password changed.";
+"Mot de passe incorrect." = "Wrong password.";
 "Mot de passe ou clé de récupération" = "Password or recovery key";
 "Mot de passe refusé : saisissez le mot de passe actuel (ou la clé de récupération)." = "Password rejected: enter the current password (or the recovery key).";
 "Mot de passe refusé. Réessayez (la clé de récupération fonctionne aussi)." = "Password rejected. Try again (the recovery key works too).";
@@ -968,6 +1009,7 @@
 "Normal" = "Normal";
 "notarisé" = "notarized";
 "Notes Obsidian (dossier, vide = aucune)" = "Obsidian notes (folder, empty = none)";
+"Notez-le : c'est l'accès de secours, il ouvre le dossier même sans Parabellum. Sans lui (ni Touch ID, ni fichier clé), le contenu est perdu." = "Write it down: it is the fallback, it opens the folder even without Parabellum. Without it (and without Touch ID or a key file), the content is lost.";
 "Notifications" = "Notifications";
 "Notifications autorisées" = "Notifications allowed";
 "Notifications désactivées" = "Notifications off";
@@ -997,10 +1039,13 @@
 "Ouvrez Parabellum une fois pour afficher l'état." = "Open Parabellum once to show the status.";
 "Ouvrir" = "Open";
 "Ouvrir %@" = "Open %@";
+"Ouvrir aussi avec Touch ID sur ce Mac" = "Also open with Touch ID on this Mac";
 "Ouvrir dans ~/Coffre plutôt que dans /Volumes" = "Open in ~/Coffre rather than in /Volumes";
 "Ouvrir l'administration du routeur sur un réseau non fiable ?" = "Open the router administration on an untrusted network?";
 "Ouvrir la configuration du routeur" = "Open the router settings";
 "ouvrir le coffre" = "open the vault";
+"Ouvrir le dossier chiffré" = "Open the Encrypted Folder";
+"ouvrir le dossier chiffré « %@ »" = "open the encrypted folder “%@”";
 "Ouvrir le formulaire" = "Open the form";
 "Ouvrir le Store" = "Open the Store";
 "Ouvrir le volet de Réglages Système correspondant" = "Open the matching System Settings pane";
@@ -1011,6 +1056,7 @@
 "Ouvrir Raccourcis" = "Open Shortcuts";
 "Ouvrir Réglages" = "Open Settings";
 "Ouvrir Réglages Système" = "Open System Settings";
+"Ouvrir un dossier chiffré" = "Open an Encrypted Folder";
 "Ouvrir « %@ »" = "Open “%@”";
 "Page %lld / %lld" = "Page %lld / %lld";
 "Paquet d'installation (PKG)" = "Installer package (PKG)";
@@ -1107,6 +1153,7 @@
 "Qui a accès à quoi" = "Who has access to what";
 "Quitter" = "Quit";
 "Raccourcis" = "Shortcuts";
+"Rangez-le ailleurs que le dossier chiffré : qui a ce fichier peut l'ouvrir." = "Keep it somewhere other than the encrypted folder: whoever has this file can open it.";
 "Rançongiciels" = "Ransomware";
 "Rapport" = "Report";
 "Rapport de la semaine du %@" = "Report for the week of %@";
@@ -1180,6 +1227,7 @@
 "Région de courtiers inconnue : %@" = "Unknown broker region: %@";
 "Réglages" = "Settings";
 "Réglages de la détection" = "Detection settings";
+"Réglages des extensions du Finder…" = "Finder Extension Settings…";
 "Réglages du coffre" = "Vault settings";
 "Réglages du VPN" = "VPN settings";
 "Réglages enregistrés." = "Settings saved.";
@@ -1245,6 +1293,7 @@
 "Seuil « suspect »" = "“Suspicious” threshold";
 "Seule l'adresse e-mail est envoyée au service, jamais de mot de passe." = "Only the e-mail address is sent to the service, never a password.";
 "Seule l'empreinte SHA-256 est envoyée, jamais le fichier. Désactivé par défaut." = "Only the SHA-256 hash is sent, never the file. Off by default.";
+"Seulement ceux pris depuis la création de ces fichiers (les plus anciens ne peuvent pas les contenir). Mot de passe administrateur. Cela retire aussi ces points de restauration, y compris ceux de la protection anti-rançongiciel." = "Only those taken since these files were created (older ones cannot contain them). Administrator password. This also removes these restore points, including the anti-ransomware ones.";
 "Seulement les binaires non signés, ad hoc ou non notarisés" = "Only unsigned, ad hoc or non-notarized binaries";
 "Seulement les nouveaux éléments" = "Only new items";
 "Seulement sur secteur" = "Only on power adapter";
@@ -1273,16 +1322,20 @@
 "Suivant" = "Next";
 "Suppression définitive pour : %@. Le reste va à la corbeille." = "Permanent deletion for: %@. The rest goes to the Trash.";
 "Supprimer" = "Delete";
+"Supprimer aussi les instantanés Time Machine locaux qui peuvent en garder une copie" = "Also delete the local Time Machine snapshots that may keep a copy";
 "Supprimer cet élément de persistance ?" = "Delete this persistence item?";
 "Supprimer définitivement" = "Delete permanently";
 "Supprimer définitivement (sans passer par la corbeille)" = "Delete permanently (without going through the Trash)";
 "Supprimer définitivement ?" = "Delete permanently?";
 "Supprimer définitivement ce fichier ?" = "Permanently delete this file?";
+"Supprimer définitivement le dossier d'origine après vérification" = "Permanently delete the original folder after verification";
 "Supprimer définitivement les originaux ?" = "Permanently delete the originals?";
 "supprimer définitivement un fichier en quarantaine" = "permanently delete a quarantined file";
+"Supprimer définitivement…" = "Delete Permanently…";
 "Supprimer l'élément" = "Delete the item";
 "supprimer le profil VPN" = "delete the VPN profile";
 "Supprimer le profil VPN ?" = "Delete the VPN profile?";
+"Supprimer les métadonnées" = "Remove Metadata";
 "Supprimer…" = "Delete…";
 "Supprimé" = "Deleted";
 "Sur batterie" = "On battery";
@@ -1329,6 +1382,9 @@
 "Tester un domaine" = "Test a domain";
 "Thunderbolt" = "Thunderbolt";
 "Ton Mac est propre" = "Your Mac is clean";
+"Touch ID" = "Touch ID";
+"Touch ID n'est pas disponible sur ce Mac (ou aucune empreinte n'est enregistrée)." = "Touch ID is not available on this Mac (or no fingerprint is enrolled).";
+"Touch ID non ajouté : %@" = "Touch ID not added: %@";
 "Toujours autoriser" = "Always allow";
 "Toujours bloquer" = "Always block";
 "Toujours connecté" = "Always connected";
@@ -1377,6 +1433,7 @@
 "Un petit modèle local (Ollama, environ 2,5 Go) démarre seulement quand le Mac est inactif, lit les réponses de la boîte dédiée sans les marquer comme lues et met les demandes à jour. Il ne répond jamais à ta place : pièce d'identité, informations ou formulaire te sont signalés. Utilise une adresse réservée aux demandes RGPD." = "A small local model (Ollama, about 2.5 GB) only starts when the Mac is idle, reads the replies in the dedicated mailbox without marking them as read and updates the requests. It never replies on your behalf: ID documents, information or forms are flagged to you. Use an address reserved for GDPR requests.";
 "Un périphérique qui se déclare clavier peut taper des commandes à ta place (attaque BadUSB). Réponds avec la souris." = "A device that claims to be a keyboard can type commands for you (BadUSB attack). Answer with the mouse.";
 "Un réseau est reconnu par l'adresse matérielle de sa box (pas besoin de la localisation). En mode « réseaux non fiables », le VPN s'active partout sauf sur les réseaux de confiance. Parabellum signale aussi une usurpation de la box (ARP spoofing) ou un faux point d'accès." = "A network is recognised by its router's hardware address (no need for location). In “untrusted networks” mode, the VPN turns on everywhere except on trusted networks. Parabellum also reports router spoofing (ARP spoofing) or a fake access point.";
+"Un seul chemin pour cette action." = "Only one path for this action.";
 "Une adresse différente pour chaque inscription : elle redirige vers ta vraie boîte, et tu la coupes si elle reçoit du spam ou fuit. Moins de données arrivent chez les courtiers." = "A different address for each sign-up: it forwards to your real mailbox, and you turn it off if it gets spam or leaks. Less data reaches the brokers.";
 "Une clé de 32 caractères est générée ; elle s'affichera une seule fois comme clé de récupération à imprimer ou noter." = "A 32-character key is generated; it will be shown only once as a recovery key to print or write down.";
 "Uniquement à ta demande : quelques connexions TCP vers cet appareil, rien d'autre." = "Only when you ask: a few TCP connections to this device, nothing else.";
@@ -1385,6 +1442,7 @@
 "Utiliser ClamAV (beaucoup plus lent sur un disque entier)" = "Use ClamAV (much slower over a whole disk)";
 "Utiliser ClamAV pour les analyses manuelles et des volumes" = "Use ClamAV for manual and volume scans";
 "Utiliser ClamAV pour les analyses manuelles, volumes et planifiées" = "Use ClamAV for manual, volume and scheduled scans";
+"Utiliser le mot de passe" = "Use the Password";
 "Utilisé" = "Used";
 "Valeur JSON non reconnue" = "Unrecognised JSON value";
 "Valider" = "Confirm";
@@ -1392,6 +1450,7 @@
 "Verrouiller" = "Lock";
 "Verrouiller après" = "Lock after";
 "Verrouiller en quittant Parabellum" = "Lock when quitting Parabellum";
+"Verrouiller le dossier chiffré" = "Lock the Encrypted Folder";
 "Verrouiller quand l'écran se verrouille ou s'éteint" = "Lock when the screen locks or turns off";
 "Verrouiller quand le Mac se met en veille" = "Lock when the Mac goes to sleep";
 "Verrouillé" = "Locked";
@@ -1419,6 +1478,7 @@
 "Volume externe" = "External volume";
 "Volumes" = "Volumes";
 "Volumes, claviers, USB, Bluetooth, Thunderbolt, interfaces et réseaux Wi-Fi apparaîtront ici." = "Volumes, keyboards, USB, Bluetooth, Thunderbolt, interfaces and Wi-Fi networks will appear here.";
+"Vous confirmerez la suppression dans la fenêtre suivante." = "You will confirm the deletion in the next window.";
 "VPN" = "VPN";
 "VPN %@" = "VPN %@";
 "VPN configuré dans macOS" = "VPN configured in macOS";
