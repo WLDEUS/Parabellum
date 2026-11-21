@@ -582,7 +582,7 @@ final class VaultStore: ObservableObject {
             await refresh()
         }
         if let since, !deleted.isEmpty {
-            await purgeSnapshots(since: since)
+            await purgeLocalSnapshots(since: since)
         }
     }
 
@@ -612,7 +612,7 @@ final class VaultStore: ObservableObject {
         return earliest
     }
 
-    private func purgeSnapshots(since: Date) async {
+    private func purgeLocalSnapshots(since: Date) async {
         let ts = Int64(max(0, since.timeIntervalSince1970))
         let result = await model.perform("snapshot-purge") {
             try await self.model.call(.purgeSnapshots(since: ts), as: SnapshotPurge.self)
