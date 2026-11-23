@@ -3,7 +3,7 @@ import SwiftUI
 
 /// VPN: state, profile, kill switch, leak test and known networks.
 struct VpnView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var showImport = false
 
     var body: some View {
@@ -38,7 +38,7 @@ struct VpnView: View {
         }
         .sheet(isPresented: $showImport) {
             VpnImportSheet()
-                .environmentObject(model)
+                .environment(model)
         }
         .onAppear {
             model.revalidateSection(.vpn)
@@ -47,7 +47,7 @@ struct VpnView: View {
 }
 
 private struct VpnStatusCard: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let status: VpnStatus
 
     var body: some View {
@@ -165,7 +165,7 @@ private struct VpnStatusCard: View {
 }
 
 private struct VpnProfileCard: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let status: VpnStatus
     @Binding var showImport: Bool
     @State private var confirmRemove = false
@@ -222,7 +222,7 @@ private struct VpnProfileCard: View {
 }
 
 private struct VpnExternalCard: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let status: VpnStatus
 
     var body: some View {
@@ -315,7 +315,7 @@ private struct LeakTestCard: View {
 }
 
 private struct NetworksCard: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         Card(title: String(localized: "Réseaux connus"), symbol: "wifi") {
@@ -340,7 +340,7 @@ private struct NetworksCard: View {
 }
 
 private struct NetworkRow: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let network: NetworkInfo
 
     var body: some View {
@@ -376,7 +376,7 @@ private struct NetworkRow: View {
 
 /// Paste a share link, a subscription or a WireGuard configuration.
 private struct VpnImportSheet: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
 

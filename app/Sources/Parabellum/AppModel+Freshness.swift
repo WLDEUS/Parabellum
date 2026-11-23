@@ -118,11 +118,12 @@ extension AppModel {
         }
         switch section {
         case .dashboard:
-            let status = due("status"), posture = due("posture")
+            let status = due("status"), posture = due("posture"), daily = due("daily-report")
             await concurrently(
                 { if status { await self.refreshStatus() } },
                 { await self.refreshNotificationStatus() },
-                { if posture { await self.loadPosture() } }
+                { if posture { await self.loadPosture() } },
+                { if daily { await self.loadDailyReport() } }
             )
         case .scan:
             if due("jobs") { await loadJobs() }

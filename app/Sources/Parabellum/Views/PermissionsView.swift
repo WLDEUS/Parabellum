@@ -4,7 +4,7 @@ import SwiftUI
 
 /// "Permissions": who holds the sensitive privacy permissions, and the browser extensions.
 struct PermissionsView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @ObservedObject var store: PermissionsStore
     @State private var pendingReset: TccGrant?
 
@@ -227,7 +227,7 @@ private struct PermissionGroupCard: View {
 }
 
 private struct GrantRow: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let grant: TccGrant
     @ObservedObject var store: PermissionsStore
     let onReset: (TccGrant) -> Void

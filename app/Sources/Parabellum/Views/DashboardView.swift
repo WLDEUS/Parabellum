@@ -3,13 +3,14 @@ import SwiftUI
 import UserNotifications
 
 struct DashboardView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         ScrollView {
             if let status = model.status {
                 VStack(alignment: .leading, spacing: 18) {
                     protectionCard(status)
+                    DailyReportCard()
                     statTiles(status)
                     if !status.issues.isEmpty || !status.realtime.fullDiskAccess {
                         issuesCard(status)

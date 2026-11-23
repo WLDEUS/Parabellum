@@ -197,11 +197,12 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
         Request::ListAlerts {
             limit,
             include_resolved,
+            before_id,
         } => {
             let limit = limit.clamp(1, 10_000);
             json(
                 &ctx.store
-                    .run(move |s| s.list_alerts(limit, include_resolved))
+                    .run(move |s| s.list_alerts_page(limit, include_resolved, before_id))
                     .await?,
             )
         }
@@ -370,6 +371,11 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
         Request::SetProtection { paused_minutes } => {
             json(&set_protection(ctx, paused_minutes).await?)
         }
+        Request::DailyReport { date } => json(&crate::daily::get(ctx, date).await?),
+        Request::ListDailyReports { limit } => {
+            json(&ctx.store.run(move |s| s.list_daily_reports(limit)).await?)
+        }
+        Request::GenerateDailyReport => json(&crate::daily::generate(ctx).await?),
         Request::WeeklyReport { week_offset } => {
             json(&crate::report::weekly(ctx, week_offset).await?)
         }

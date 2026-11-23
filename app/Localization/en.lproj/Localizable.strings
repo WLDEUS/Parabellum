@@ -411,7 +411,7 @@
 "Classifieur ML" = "ML classifier";
 "Classifieur ML sur les exécutables Mach-O" = "ML classifier on Mach-O executables";
 "Claviers, souris et HID" = "Keyboards, mice and HID";
-"Clic droit sur un fichier ou un dossier › Parabellum : analyser, supprimer les métadonnées, chiffrer, supprimer définitivement. Les mêmes actions sont aussi dans Clic droit › Actions rapides (ou Services)." = "Right-click a file or folder › Parabellum: scan, remove metadata, encrypt, delete permanently. The same actions are also in Right-click › Quick Actions (or Services).";
+"Clic droit sur un fichier ou un dossier › Parabellum : analyser, supprimer les métadonnées, chiffrer, supprimer définitivement. Les mêmes actions sont aussi dans Clic droit › Services." = "Right-click a file or folder › Parabellum: scan, remove metadata, encrypt, delete permanently. The same actions are also in Right-click › Services.";
 "Clé" = "Key";
 "Clé API" = "API key";
 "Clé API Have I Been Pwned" = "Have I Been Pwned API key";
@@ -1571,3 +1571,22 @@
 "Événements observés" = "Observed events";
 "… et %lld autres" = "… and %lld others";
 "⌘-clic ou ⇧-clic pour en sélectionner plusieurs, ⌘A pour toutes." = "⌘-click or ⇧-click to select several, ⌘A for all.";
+
+/* Finder extension status (Settings › Finder) */
+"Réparer le menu du Finder" = "Repair the Finder Menu";
+"vérification…" = "checking…";
+"désactivé dans les Réglages" = "turned off in System Settings";
+"en attente d'activation" = "waiting to be turned on";
+"non enregistré par macOS" = "not registered by macOS";
+"absent de cette version de l'app" = "not included in this build of the app";
+"Chargement des alertes plus anciennes…" = "Loading older alerts…";
+
+/* Daily report */
+"Rapport du jour" = "Daily Report";
+"Le premier rapport sera prêt demain matin." = "The first report will be ready tomorrow morning.";
+"Non vues" = "Not seen";
+"Résumé rédigé par le modèle local" = "Summary written by the local model";
+"Historique…" = "History…";
+"Générer maintenant" = "Generate Now";
+"Rapports des 30 derniers jours" = "Reports of the Last 30 Days";
+"Aucun rapport" = "No Reports";

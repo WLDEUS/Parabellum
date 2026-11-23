@@ -227,6 +227,7 @@ fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
             let l: Vec<Alert> = c.call(Request::ListAlerts {
                 limit: *limit,
                 include_resolved: *all,
+                before_id: None,
             })?;
             emit(cli, io, &l, |l| format::alerts(l))?;
         }

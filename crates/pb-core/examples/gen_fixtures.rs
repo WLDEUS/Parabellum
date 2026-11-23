@@ -1224,6 +1224,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Request::ListAlerts {
             limit: 50,
             include_resolved: false,
+            before_id: None,
         },
         Request::ResolveAlert {
             alert_id: 12,

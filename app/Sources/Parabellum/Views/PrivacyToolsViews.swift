@@ -8,7 +8,7 @@ import UniformTypeIdentifiers
 // MARK: - Breaches
 
 struct BreachesTab: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -95,7 +95,7 @@ private struct BreachRow: View {
 }
 
 private struct PasswordCheckCard: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var password = ""
     @State private var result: Int?
     @State private var exportResults: [LeakedPasswordEntry]?
@@ -195,7 +195,7 @@ private struct PasswordCheckCard: View {
 // MARK: - Aliases
 
 struct AliasesTab: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var label = ""
 
     private var provider: AliasProvider {
@@ -279,7 +279,7 @@ struct AliasesTab: View {
 // MARK: - Local tools
 
 struct PrivacyToolsTab: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var reports: [CleanReport] = []
     @State private var dropTargeted = false
 

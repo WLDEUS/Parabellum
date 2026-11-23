@@ -4,7 +4,7 @@ import SwiftUI
 
 /// "Nettoyage": what can be reclaimed, by category, with a reviewable selection. Runs as the user.
 struct CleaningView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @ObservedObject var store: CleaningStore
     @State private var confirming = false
     @State private var startupToDisable: PersistenceItem?
@@ -267,7 +267,7 @@ enum CleaningPalette {
 
 /// One category: tri-state checkbox, size, safety, expandable item list.
 private struct CleaningCategoryCard: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @ObservedObject var store: CleaningStore
     let category: CleanCategoryReport
     private static let maxShown = 200

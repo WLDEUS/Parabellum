@@ -4,7 +4,7 @@ import UserNotifications
 
 /// First-launch guide: daemon, Full Disk Access, recommended components, DNS, notifications.
 struct OnboardingView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var step = 0
     private let lastStep = 4
 

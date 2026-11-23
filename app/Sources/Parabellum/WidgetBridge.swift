@@ -14,7 +14,7 @@ final class WidgetBridge {
 
     func start(model: AppModel) {
         guard subscription == nil else { return }
-        subscription = Publishers.CombineLatest3(model.$status, model.$vpnStatus, model.$connection)
+        subscription = Publishers.CombineLatest3(model.statusPublisher, model.vpnPublisher, model.connectionPublisher)
             .debounce(for: .seconds(2), scheduler: RunLoop.main)
             .sink { [weak self] status, vpn, connection in
                 MainActor.assumeIsolated {

@@ -215,6 +215,8 @@ pub async fn start(opts: DaemonOptions) -> anyhow::Result<Daemon> {
         tasks.push(tokio::spawn(crate::mailagent::run_loop(ctx.clone())));
         // Activity report: VPN uptime / leak test sampling, monthly announcement.
         tasks.push(tokio::spawn(crate::report::monthly_loop(ctx.clone())));
+        // Daily report on the Mac's situation (+ local AI summary when idle on mains power).
+        tasks.push(tokio::spawn(crate::daily::run_loop(ctx.clone())));
     }
     let c2 = ctx.clone();
     tokio::spawn(async move {

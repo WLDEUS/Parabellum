@@ -262,6 +262,36 @@ async fn run_once(ctx: &Arc<Ctx>, cfg: &Arc<Config>, yield_to_user: bool) -> boo
 struct Server {
     child: tokio::process::Child,
     client: Ollama,
+    /// One model server at a time (mail agent, daily report): released when the server stops.
+    _slot: tokio::sync::OwnedMutexGuard<()>,
+}
+
+fn model_slot() -> Arc<tokio::sync::Mutex<()>> {
+    static SLOT: std::sync::OnceLock<Arc<tokio::sync::Mutex<()>>> = std::sync::OnceLock::new();
+    SLOT.get_or_init(|| Arc::new(tokio::sync::Mutex::new(())))
+        .clone()
+}
+
+/// Runs `f` with the local model (installed / pulled if needed, started as `nobody` on loopback, stopped
+/// afterwards). `cancel` interrupts a model download when the Mac is used again. Used by the daily
+/// report; the mail agent drives [`LazyOllama`] itself.
+pub(crate) async fn with_local_model<T, F, Fut>(
+    ctx: &Arc<Ctx>,
+    cancel: Arc<AtomicBool>,
+    f: F,
+) -> Result<T, String>
+where
+    F: FnOnce(Ollama) -> Fut,
+    Fut: std::future::Future<Output = Result<T, String>>,
+{
+    let model = ctx.config().mail_agent.model.clone();
+    let lazy = LazyOllama::new(ctx.clone(), model, cancel);
+    let server = lazy.start().await?;
+    let client = server.client.clone();
+    *lazy.server.lock().await = Some(server);
+    let out = f(client).await;
+    lazy.stop().await;
+    out
 }
 
 /// Starts (installing it if needed) the model server the first time a message needs a label.
@@ -315,6 +345,7 @@ impl LazyOllama {
     }
 
     async fn start(&self) -> Result<Server, String> {
+        let slot = model_slot().lock_owned().await;
         let paths = &self.ctx.paths;
         if pb_updater::read_ollama_pin(paths).is_none() {
             refresh_db_for_pin(&self.ctx).await;
@@ -352,7 +383,11 @@ impl LazyOllama {
             .spawn()
             .map_err(|e| format!("lancement d'Ollama : {e}"))?;
         let client = Ollama::new(port, &self.model)?;
-        let mut server = Server { child, client };
+        let mut server = Server {
+            child,
+            client,
+            _slot: slot,
+        };
         let ready = async {
             server.client.wait_ready(Duration::from_secs(60)).await?;
             if !server.client.has_model().await? {

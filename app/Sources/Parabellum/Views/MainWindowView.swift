@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Main window: sidebar + one screen per section.
 struct MainWindowView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -55,10 +55,10 @@ struct MainWindowView: View {
                 .animation(.snappy(duration: 0.3), value: model.banner?.message)
         }
         .tint(Brand.accent)
-        .frame(minWidth: 900, minHeight: 600)
-        .sheet(isPresented: $model.showOnboarding) {
+        .frame(minWidth: 700, minHeight: 480)
+        .sheet(isPresented: Binding(get: { model.showOnboarding }, set: { model.showOnboarding = $0 })) {
             OnboardingView()
-                .environmentObject(model)
+                .environment(model)
         }
         .background(
             WindowAccessor { window in
@@ -126,7 +126,7 @@ struct MainWindowView: View {
 
 /// Shown over the current screen while the service is unreachable (it reconnects on its own).
 private struct DisconnectedBar: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -172,7 +172,7 @@ private struct DisconnectedBar: View {
 
 /// Shown when `parabellumd` cannot be reached.
 struct UnreachableView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let message: String
     let compact: Bool
 

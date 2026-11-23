@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Intelligence: behavioural baseline learnt on this Mac, phishing-domain model on DNS queries, models.
 struct IntelligenceView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @ObservedObject var store: IntelligenceStore
 
     var body: some View {
@@ -178,7 +178,7 @@ private struct IntelStats: View {
 // MARK: - Anomalies
 
 private struct AnomaliesCard: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @ObservedObject var store: IntelligenceStore
     let behavior: BehaviorStatus
 
@@ -241,7 +241,7 @@ private struct AnomaliesCard: View {
 // MARK: - Domains
 
 private struct FlaggedDomainsCard: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @ObservedObject var store: IntelligenceStore
     let domains: DomainIntelStatus
 
@@ -310,7 +310,7 @@ private struct FlaggedDomainsCard: View {
 }
 
 private struct DomainTestCard: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @ObservedObject var store: IntelligenceStore
 
     var body: some View {
@@ -437,7 +437,7 @@ private struct ModelsCard: View {
 // MARK: - Baseline
 
 private struct BaselineCard: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @ObservedObject var store: IntelligenceStore
     let behavior: BehaviorStatus
     @State private var confirmReset = false

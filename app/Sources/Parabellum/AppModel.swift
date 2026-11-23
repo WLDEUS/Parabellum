@@ -1,6 +1,8 @@
+import Combine
 import AppKit
 import Foundation
 import ParabellumKit
+import Observation
 import SwiftUI
 import UserNotifications
 
@@ -106,7 +108,8 @@ enum SidebarGroup: String, CaseIterable, Identifiable {
 
 /// Owns the daemon client and every piece of state shown by the UI. Views stay thin and call these methods.
 @MainActor
-final class AppModel: ObservableObject {
+@Observable
+final class AppModel {
     static let shared = AppModel()
     static let onboardingDefaultsKey = "onboardingSeen"
     static let mainWindowId = "main"
@@ -115,110 +118,129 @@ final class AppModel: ObservableObject {
     static let kickstartCommand = "sudo launchctl kickstart -k system/\(DaemonProtocol.daemonLabel)"
 
     let client: DaemonClient
+    // Combine feeds for the few non-SwiftUI observers (widget, travel mode): `@Observable` has no `$x`.
+    @ObservationIgnored private let statusSubject = CurrentValueSubject<StatusInfo?, Never>(nil)
+    @ObservationIgnored private let vpnSubject = CurrentValueSubject<VpnStatus?, Never>(nil)
+    @ObservationIgnored private let connectionSubject = CurrentValueSubject<ConnectionState, Never>(.connecting)
+    var statusPublisher: AnyPublisher<StatusInfo?, Never> { statusSubject.eraseToAnyPublisher() }
+    var vpnPublisher: AnyPublisher<VpnStatus?, Never> { vpnSubject.eraseToAnyPublisher() }
+    var connectionPublisher: AnyPublisher<ConnectionState, Never> { connectionSubject.eraseToAnyPublisher() }
     let authorizer: AdminAuthorizer
     let notifications: NotificationManager
     let keyboardPanels: KeyboardAlertPanelController
 
     // Connection & status
-    @Published private(set) var connection: ConnectionState = .connecting
-    @Published private(set) var status: StatusInfo?
+    private(set) var connection: ConnectionState = .connecting {
+        didSet { if connection != oldValue { connectionSubject.send(connection) } }
+    }
+    private(set) var status: StatusInfo? {
+        didSet { if status != oldValue { statusSubject.send(status) } }
+    }
 
     // Alerts
-    @Published private(set) var alerts: [SecurityAlert] = []
-    @Published var includeResolvedAlerts = false
-    @Published var selectedAlertId: Int64?
+    private(set) var alerts: [SecurityAlert] = []
+    var includeResolvedAlerts = false
+    var selectedAlertId: Int64?
+    /// More (older) alerts than the pages loaded so far.
+    private(set) var alertsHaveMore = false
+    private(set) var loadingMoreAlerts = false
 
     // Scans
-    @Published private(set) var liveJobs: [String: ScanJobSummary] = [:]
-    @Published private(set) var recentJobs: [ScanJobSummary] = []
-    @Published private(set) var jobDetails: [String: ScanJobDetail] = [:]
-    @Published var activeScanJobId: String?
-    @Published var selectedJobId: String?
+    private(set) var liveJobs: [String: ScanJobSummary] = [:]
+    private(set) var recentJobs: [ScanJobSummary] = []
+    private(set) var jobDetails: [String: ScanJobDetail] = [:]
+    var activeScanJobId: String?
+    var selectedJobId: String?
 
     // Lists
-    @Published private(set) var quarantine: [QuarantineEntry] = []
-    @Published private(set) var persistence: [PersistenceItem] = []
-    @Published private(set) var devices: [DeviceInfo] = []
-    @Published private(set) var components: [ComponentStatus] = []
-    @Published private(set) var installingComponents: Set<String> = []
-    @Published private(set) var adblock: AdblockStatus?
-    @Published private(set) var weeklyReport: WeeklyReport?
+    private(set) var quarantine: [QuarantineEntry] = []
+    private(set) var persistence: [PersistenceItem] = []
+    private(set) var devices: [DeviceInfo] = []
+    private(set) var components: [ComponentStatus] = []
+    private(set) var installingComponents: Set<String> = []
+    private(set) var adblock: AdblockStatus?
+    private(set) var weeklyReport: WeeklyReport?
+    /// Daily report shown on the dashboard (latest), and its history (30 days).
+    private(set) var dailyReport: DailyReport?
+    private(set) var dailyReports: [DailyReportSummary] = []
     /// macOS security settings (`posture`), shown on the dashboard.
-    @Published private(set) var posture: [PostureCheck] = []
-    @Published var reportWeekOffset = 0
+    private(set) var posture: [PostureCheck] = []
+    var reportWeekOffset = 0
 
     // VPN & networks
-    @Published var vpnStatus: VpnStatus?
-    @Published var networks: [NetworkInfo] = []
-    @Published var externalVpnServices: [ExternalVpnService] = []
+    var vpnStatus: VpnStatus? {
+        didSet { if vpnStatus != oldValue { vpnSubject.send(vpnStatus) } }
+    }
+    var networks: [NetworkInfo] = []
+    var externalVpnServices: [ExternalVpnService] = []
 
     // Behaviour guard & snapshots
-    @Published var guardStatus: GuardStatus?
-    @Published var snapshots: [SnapshotInfo] = []
+    var guardStatus: GuardStatus?
+    var snapshots: [SnapshotInfo] = []
 
     // Privacy
-    @Published var identity: IdentityProfile?
-    @Published var brokers: [BrokerInfo] = []
-    @Published var removalRequests: [RemovalRequest] = []
-    @Published var removalSummary: RemovalSummary?
-    @Published var mailAgent: MailAgentStatus?
-    @Published var breaches: [BreachFinding] = []
-    @Published var emailAliases: [EmailAlias] = []
+    var identity: IdentityProfile?
+    var brokers: [BrokerInfo] = []
+    var removalRequests: [RemovalRequest] = []
+    var removalSummary: RemovalSummary?
+    var mailAgent: MailAgentStatus?
+    var breaches: [BreachFinding] = []
+    var emailAliases: [EmailAlias] = []
 
     // Config (+ raw JSON to preserve unknown keys on save)
-    @Published private(set) var config: Config?
-    private(set) var rawConfig: JSONValue?
+    private(set) var config: Config?
+    @ObservationIgnored private(set) var rawConfig: JSONValue?
 
     // Updates
-    @Published private(set) var updateInProgress = false
+    private(set) var updateInProgress = false
     /// Target of the update this app started ("Tout mettre à jour" reports one event per step, then the
     /// combined result: only the latter ends the spinner).
-    private var requestedUpdateTarget: UpdateTarget?
-    @Published private(set) var lastUpdate: UpdateResult?
+    @ObservationIgnored private var requestedUpdateTarget: UpdateTarget?
+    private(set) var lastUpdate: UpdateResult?
 
     // UI
-    @Published var section: SidebarSection? = .dashboard
-    @Published var banner: Banner? {
+    var section: SidebarSection? = .dashboard
+    var banner: Banner? {
         didSet { bannerDidChange(oldValue) }
     }
-    @Published var showOnboarding = false
-    @Published private(set) var inFlight: Set<String> = []
-    @Published private(set) var notificationStatus: UNAuthorizationStatus = .notDetermined
+    var showOnboarding = false
+    private(set) var inFlight: Set<String> = []
+    private(set) var notificationStatus: UNAuthorizationStatus = .notDetermined
 
-    private var openWindowAction: OpenWindowAction?
-    private var pendingWindowOpen = false
-    private var mainWindowRequested = false
+    @ObservationIgnored private var openWindowAction: OpenWindowAction?
+    @ObservationIgnored private var pendingWindowOpen = false
+    @ObservationIgnored private var mainWindowRequested = false
     private let launchDate = Date()
-    private var eventTask: Task<Void, Never>?
-    private var refreshTask: Task<Void, Never>?
-    private var started = false
-    private var notifiedAlertIds: Set<Int64> = []
+    @ObservationIgnored private var eventTask: Task<Void, Never>?
+    @ObservationIgnored private var refreshTask: Task<Void, Never>?
+    @ObservationIgnored private var started = false
+    @ObservationIgnored private var notifiedAlertIds: Set<Int64> = []
     private static let maxRecentJobs = 50
 
     // Feature stores: one ObservableObject per feature, kept here so their data survives section switches.
     // Views observe them directly (`@ObservedObject var store: XStore`), passing `model.x`.
-    private(set) lazy var lan = LanStore(model: self)
-    private(set) lazy var permissionsAudit = PermissionsStore(model: self)
-    private(set) lazy var vault = VaultStore(model: self)
-    private(set) lazy var cleaning = CleaningStore(model: self)
-    private(set) lazy var intelligence = IntelligenceStore(model: self)
-    private(set) lazy var travel = TravelStore(model: self)
+    @ObservationIgnored private(set) lazy var lan = LanStore(model: self)
+    @ObservationIgnored private(set) lazy var permissionsAudit = PermissionsStore(model: self)
+    @ObservationIgnored private(set) lazy var vault = VaultStore(model: self)
+    @ObservationIgnored private(set) lazy var cleaning = CleaningStore(model: self)
+    @ObservationIgnored private(set) lazy var intelligence = IntelligenceStore(model: self)
+    @ObservationIgnored private(set) lazy var travel = TravelStore(model: self)
     // Activity report (period picker, PDF export).
-    private(set) lazy var reports = ReportStore(model: self)
+    @ObservationIgnored private(set) lazy var reports = ReportStore(model: self)
 
     // speed: stale-while-revalidate bookkeeping (AppModel+Freshness.swift). Deliberately not @Published:
     // it must never re-render the window.
-    var freshness = FreshnessTracker()
-    var prefetchTask: Task<Void, Never>?
+    @ObservationIgnored var freshness = FreshnessTracker()
+    @ObservationIgnored var prefetchTask: Task<Void, Never>?
 
     // review fixes: banner visibility / expiry, connection history.
     /// The main window is on screen (set by its appear / disappear hooks).
     private(set) var mainWindowVisible = false
     /// The menu bar window is open (set by MenuBarContentView).
-    var menuBarVisible = false
-    private var bannerExpiry: Task<Void, Never>?
+    @ObservationIgnored var menuBarVisible = false
+    @ObservationIgnored private var bannerExpiry: Task<Void, Never>?
     /// Connected at least once: on a later disconnection the screens stay mounted (unsaved edits kept).
-    @Published private(set) var hasConnectedOnce = false
+    private(set) var hasConnectedOnce = false
 
     init(client: DaemonClient = DaemonClient()) {
         self.client = client
@@ -313,12 +335,14 @@ final class AppModel: ObservableObject {
             return
         }
         mainWindowVisible = true
+        WindowFitter.shared.attach(window)
         NSApp.setActivationPolicy(.regular)
         NSApp.activate()
     }
 
     func mainWindowDisappeared() {
         mainWindowVisible = false
+        WindowFitter.shared.detach()
         NSApp.setActivationPolicy(.accessory)
     }
 
@@ -457,8 +481,44 @@ final class AppModel: ObservableObject {
             vpnStatus = newStatus
         case .lan(let lanStatus):
             lan.apply(lanStatus)
+        case .dailyReport(let summary):
+            handleDailyReport(summary)
         case .unknown:
             break
+        }
+    }
+
+    /// New daily report: reload it and post one notification with the key points.
+    private func handleDailyReport(_ summary: DailyReportSummary) {
+        Task { await loadDailyReport() }
+        guard config?.notifications.enabled ?? true else { return }
+        let body = ([summary.headline] + summary.highlights.prefix(2)).joined(separator: "\n")
+        let notifications = self.notifications
+        Task {
+            await notifications.postReminder(
+                identifier: "pb.daily." + summary.date,
+                title: String(localized: "Rapport du jour"),
+                body: body,
+                section: SidebarSection.dashboard.rawValue
+            )
+        }
+    }
+
+    /// Latest daily report (dashboard card) and the history list.
+    func loadDailyReport(date: String? = nil) async {
+        await fetch("daily-report", .dailyReport(date: date), as: DailyReport?.self) { report in
+            if self.dailyReport != report { self.dailyReport = report }
+        }
+        await fetch("daily-reports", .listDailyReports(limit: 30), as: [DailyReportSummary].self) { list in
+            if self.dailyReports != list { self.dailyReports = list }
+        }
+    }
+
+    /// « Générer maintenant ».
+    func generateDailyReport() async {
+        if let report = await perform("daily-generate", { try await self.call(.generateDailyReport, as: DailyReport.self) }) {
+            dailyReport = report
+            await loadDailyReport(date: report.date)
         }
     }
 
@@ -649,17 +709,40 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Alerts are loaded one page at a time (newest first; « Ouvertes » = not seen yet): the first page
+    /// is what matters, older ones come when the list is scrolled to its end (`loadMoreAlerts`).
+    static let alertPageSize = 100
+
     func loadAlerts() async {
         // Toggling "Ouvertes / Toutes" quickly starts overlapping loads: only the latest one applies.
-        let request = Request.listAlerts(limit: 200, includeResolved: includeResolvedAlerts)
+        // A refresh keeps what was already paged in (up to 1 000) instead of collapsing the list.
+        let size = min(max(Self.alertPageSize, alerts.count), 1_000)
+        let request = Request.listAlerts(limit: size, includeResolved: includeResolvedAlerts)
         await fetch("alerts", request, as: [SecurityAlert].self) { list in
             for alert in list {
                 self.notifiedAlertIds.insert(alert.id)
             }
+            self.alertsHaveMore = list.count >= size
             if self.alerts != list {
                 self.alerts = list
             }
         }
+    }
+
+    /// Next page, after the oldest alert shown. No-op while a page is loading or when all are there.
+    func loadMoreAlerts() async {
+        guard alertsHaveMore, !loadingMoreAlerts, let last = alerts.last else { return }
+        loadingMoreAlerts = true
+        defer { loadingMoreAlerts = false }
+        let resolved = includeResolvedAlerts
+        let request = Request.listAlerts(limit: Self.alertPageSize, includeResolved: resolved, beforeId: last.id)
+        guard let page = try? await call(request, as: [SecurityAlert].self),
+              resolved == includeResolvedAlerts else { return }
+        alertsHaveMore = page.count >= Self.alertPageSize
+        let known = Set(alerts.map(\.id))
+        let fresh = page.filter { !known.contains($0.id) }
+        for alert in fresh { notifiedAlertIds.insert(alert.id) }
+        if !fresh.isEmpty { alerts.append(contentsOf: fresh) }
     }
 
     /// `get_config`. Without auth the daemon redacts secrets (`DaemonProtocol.redactedSecret`);

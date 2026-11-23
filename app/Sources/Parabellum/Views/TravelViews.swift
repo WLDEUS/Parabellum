@@ -88,7 +88,7 @@ struct TravelDashboardTile: View {
 
 /// Card of the VPN section: what travel mode does / did, and the switch.
 struct TravelCard: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @ObservedObject var store: TravelStore
 
     var body: some View {
@@ -173,7 +173,7 @@ struct TravelSettingsSection: View {
 
 /// Settings: ready-to-copy links and commands for the Shortcuts app, Raycast, Alfred, scripts.
 struct ShortcutsSettingsSection: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
 
     private static let commands: [(title: String, command: String)] = [
         (String(localized: "État de la protection"), "/usr/local/bin/parabellum status"),

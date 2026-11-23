@@ -3,7 +3,7 @@ import ParabellumKit
 import SwiftUI
 
 struct ReportView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @ObservedObject var store: ReportStore
 
     var body: some View {

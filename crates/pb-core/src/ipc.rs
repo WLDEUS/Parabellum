@@ -83,6 +83,10 @@ pub enum Request {
         limit: u32,
         #[serde(default)]
         include_resolved: bool,
+        /// Keyset pagination: only alerts older than this one (same `ts DESC, id DESC` order). The app
+        /// loads one page at a time instead of everything at once.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        before_id: Option<i64>,
     },
     /// Full alert report, rendered by the daemon (one implementation for the app and the CLI). Dates are
     /// local days `YYYY-MM-DD` (`to` inclusive); none = everything. -> [`AlertExport`]
@@ -175,6 +179,18 @@ pub enum Request {
     },
     /// Pause real-time protection for `minutes` (0 = resume now). -> [`StatusInfo`]
     SetProtection { paused_minutes: u32 },
+    /// Daily report of `date` (`YYYY-MM-DD`), latest when absent. -> `Option<DailyReport>`
+    DailyReport {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        date: Option<String>,
+    },
+    /// Newest first (30 days kept). -> `Vec<DailyReportSummary>`
+    ListDailyReports {
+        #[serde(default = "default_daily_limit")]
+        limit: u32,
+    },
+    /// Build today's report now (replaces today's). -> [`DailyReport`]
+    GenerateDailyReport,
     /// `week_offset` 0 = current week, 1 = last week… -> [`WeeklyReport`]
     WeeklyReport {
         #[serde(default)]
@@ -380,6 +396,9 @@ fn default_true() -> bool {
 }
 fn default_limit() -> u32 {
     100
+}
+fn default_daily_limit() -> u32 {
+    30
 }
 fn default_retro_days() -> u32 {
     30
@@ -588,6 +607,8 @@ pub enum DaemonEvent {
     Vpn(VpnStatus),
     /// LAN scan progress / result.
     Lan(LanStatus),
+    /// A daily report was built (the app notifies with the key points).
+    DailyReport(DailyReportSummary),
 }
 
 /// Alias kept for documentation symmetry with the module docs.
@@ -642,7 +663,8 @@ mod tests {
             r.request,
             Request::ListAlerts {
                 limit: 100,
-                include_resolved: false
+                include_resolved: false,
+                before_id: None,
             }
         );
         let r: RequestEnvelope =

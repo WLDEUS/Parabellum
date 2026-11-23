@@ -794,6 +794,15 @@ pub fn event(ev: &DaemonEvent) -> String {
             ),
             (None, _) => format!("[{now}] réseau local : aucun réseau"),
         },
+        DaemonEvent::DailyReport(r) => format!(
+            "[{now}] rapport du jour {} : {}{}",
+            r.date,
+            r.headline,
+            r.highlights
+                .iter()
+                .map(|h| format!("\n    - {h}"))
+                .collect::<String>()
+        ),
     }
 }
 
