@@ -1217,6 +1217,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             paths: vec!["/Users/q/Downloads".into()],
             recursive: true,
             use_clamav: Some(true),
+            report_only: false,
         },
         Request::CancelScan { job_id: "j".into() },
         Request::ListJobs { limit: 20 },

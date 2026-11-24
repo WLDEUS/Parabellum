@@ -149,9 +149,27 @@ fn main() -> ExitCode {
                 return ExitCode::FAILURE;
             }
         };
-        wait_for_signal().await;
+        let mut d = d;
+        let crashed = tokio::select! {
+            _ = wait_for_signal() => None,
+            message = d.supervise() => Some(message),
+        };
+        if let Some(message) = &crashed {
+            tracing::error!(%message, "an internal task panicked: restarting the daemon");
+            let note = format!("{} {message}", pb_core::now_ts());
+            let _ = d
+                .ctx()
+                .store
+                .run(move |s| s.kv_set(daemon::KV_CRASH_NOTE, &note))
+                .await;
+        }
         d.shutdown().await;
-        ExitCode::SUCCESS
+        // Non-zero: launchd (KeepAlive) starts a fresh daemon.
+        if crashed.is_some() {
+            ExitCode::from(70)
+        } else {
+            ExitCode::SUCCESS
+        }
     });
     rt.shutdown_timeout(std::time::Duration::from_secs(2));
     code

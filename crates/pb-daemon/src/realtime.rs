@@ -356,6 +356,7 @@ async fn flush_batch(ctx: &Arc<Ctx>, shared: &Arc<RealtimeShared>) {
         return;
     }
     let spec = JobSpec {
+        report_only: false,
         paths: files
             .iter()
             .map(|p| p.to_string_lossy().into_owned())

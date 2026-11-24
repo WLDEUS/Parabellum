@@ -493,6 +493,7 @@ pub async fn start_retro_hunt(ctx: &Arc<Ctx>, days: u32) -> Result<String, IpcEr
     .map_err(|e| IpcError::new(ErrorCode::Internal, e.to_string()))?;
     let cfg = ctx.config();
     let spec = JobSpec {
+        report_only: false,
         paths: vec![format!(
             "Fichiers vus ces {days} derniers jours ({})",
             roots.len()

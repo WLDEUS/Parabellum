@@ -155,7 +155,8 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
             paths,
             recursive,
             use_clamav,
-        } => scan(ctx, peer, paths, recursive, use_clamav).await,
+            report_only,
+        } => scan(ctx, peer, paths, recursive, use_clamav, report_only).await,
         Request::CancelScan { job_id } => match ctx.jobs.cancel(&job_id) {
             CancelOutcome::Signalled => Ok(Value::Null),
             CancelOutcome::Dequeued(j) => {
@@ -771,6 +772,7 @@ async fn scan(
     paths: Vec<String>,
     recursive: bool,
     use_clamav: Option<bool>,
+    report_only: bool,
 ) -> Result<Value, IpcError> {
     if paths.is_empty() {
         return Err(bad("aucun chemin à analyser"));
@@ -814,6 +816,7 @@ async fn scan(
     }
     let cfg = ctx.config();
     let spec = JobSpec {
+        report_only,
         paths,
         roots,
         opts: ScanOpts {

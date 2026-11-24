@@ -873,6 +873,28 @@ pub fn activity_report(r: &ActivityReport) -> String {
     o
 }
 
+// ----- Daily report -----
+
+pub fn daily_report(r: &DailyReport) -> String {
+    let mut s = format!("Rapport du {} — {}\n", r.date, r.headline);
+    for h in &r.highlights {
+        s.push_str(&format!("  • {h}\n"));
+    }
+    s.push_str(&format!("\n{}\n", r.summary));
+    if r.summary_source == SummarySource::LocalAi {
+        if let Some(m) = &r.summary_model {
+            s.push_str(&format!("(résumé rédigé par le modèle local {m})\n"));
+        }
+    }
+    if !r.facts.top_unseen.is_empty() {
+        s.push_str("\nNon vues :\n");
+        for a in &r.facts.top_unseen {
+            s.push_str(&format!("  [{:?}] #{} {}\n", a.severity, a.id, a.title));
+        }
+    }
+    s
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -482,6 +482,37 @@ fn execute(cli: &Cli, io: &mut Output<'_>) -> Result<i32, CliError> {
                 emit(cli, io, &r, format::activity_report)?;
             }
         }
+        Command::DailyReport {
+            date,
+            list,
+            generate,
+        } => {
+            if *list {
+                let l: Vec<DailyReportSummary> = c.call(Request::ListDailyReports { limit: 30 })?;
+                emit(cli, io, &l, |l| {
+                    l.iter()
+                        .map(|r| {
+                            format!(
+                                "{}  {:<9}  {}\n",
+                                r.date,
+                                format!("{:?}", r.verdict),
+                                r.headline
+                            )
+                        })
+                        .collect()
+                })?;
+            } else {
+                let r: Option<DailyReport> = if *generate {
+                    Some(c.call(Request::GenerateDailyReport)?)
+                } else {
+                    c.call(Request::DailyReport { date: date.clone() })?
+                };
+                emit(cli, io, &r, |r| match r {
+                    None => "Aucun rapport du jour pour l'instant.\n".to_string(),
+                    Some(r) => format::daily_report(r),
+                })?;
+            }
+        }
         Command::RetroHunt { days } => {
             let j: JobStarted = c.call(Request::RetroHunt { days: *days })?;
             emit(cli, io, &j, |j| {
@@ -584,6 +615,7 @@ fn scan(cli: &Cli, io: &mut Output<'_>, c: &mut Client, a: &ScanArgs) -> Result<
         paths,
         recursive: !a.no_recursive,
         use_clamav,
+        report_only: a.report_only,
     };
     run_job(cli, io, c, req, a.no_wait, "Analyse")
 }

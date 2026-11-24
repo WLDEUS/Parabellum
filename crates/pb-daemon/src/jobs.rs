@@ -31,6 +31,9 @@ pub struct JobSpec {
     /// Files / directories handed to the engine.
     pub roots: Vec<PathBuf>,
     pub opts: ScanOpts,
+    /// Benchmarks / audits (`scan --report-only`): verdicts are recorded in the job, nothing is acted
+    /// upon (no quarantine, no alert, no process killed, local allowlist not applied).
+    pub report_only: bool,
 }
 
 /// A queued or running job with live counters.
@@ -469,6 +472,13 @@ async fn handle_finding(ctx: &Arc<Ctx>, job: &Arc<Job>, report: ScanReport, rc: 
         store_finding(ctx, job, report).await;
         return;
     }
+    if job.spec.report_only {
+        if report.verdict != Verdict::Clean {
+            job.threats.fetch_add(1, Ordering::Relaxed);
+        }
+        store_finding(ctx, job, report).await;
+        return;
+    }
     // On-disk item: the report path is exactly what the engine walked.
     let target = PathBuf::from(&report.path);
     let effective = actions::process_report(ctx, report.clone(), rc, &target).await;
@@ -498,6 +508,7 @@ mod tests {
 
     fn spec(origin: ScanOrigin) -> JobSpec {
         JobSpec {
+            report_only: false,
             paths: vec!["/x".into()],
             roots: vec![PathBuf::from("/x")],
             opts: ScanOpts {

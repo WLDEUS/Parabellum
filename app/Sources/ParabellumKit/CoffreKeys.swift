@@ -174,7 +174,9 @@ public enum CoffreKeys {
         guard let access = SecAccessControlCreateWithFlags(
             nil,
             kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-            [.privateKeyUsage, .biometryAny],
+            // Current set only: a fingerprint added later (by anyone who knows the Mac's login password)
+            // invalidates this key instead of opening the folder; the password / key file still work.
+            [.privateKeyUsage, .biometryCurrentSet],
             &error
         ) else {
             let message = error?.takeRetainedValue().localizedDescription ?? "SecAccessControl"

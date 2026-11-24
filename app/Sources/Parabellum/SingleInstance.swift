@@ -85,7 +85,7 @@ enum SingleInstance {
                .first(where: { $0.processIdentifier != me }) {
             other.activate()
         }
-        NSLog("Parabellum : une autre instance tourne déjà, celle-ci (pid %d) se ferme", me)
+        NSLog("Parabellum: another instance is already running, this one (pid %d) exits", me)
         // Let the notifications leave before exiting.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { exit(0) }
     }

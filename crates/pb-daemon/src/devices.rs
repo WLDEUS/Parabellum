@@ -301,6 +301,7 @@ async fn maybe_scan_volume(ctx: &Arc<Ctx>, cfg: &Config, dev: &DeviceInfo) {
         return;
     }
     let spec = JobSpec {
+        report_only: false,
         paths: vec![mp.clone()],
         roots: vec![PathBuf::from(&mp)],
         opts: ScanOpts {

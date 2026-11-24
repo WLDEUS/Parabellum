@@ -67,6 +67,10 @@ pub enum Request {
         /// Override `scan.clamav_on_demand` for this job.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         use_clamav: Option<bool>,
+        /// Record verdicts only: no quarantine, alert or process action (benchmarks, false-positive
+        /// audits of installed apps).
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        report_only: bool,
     },
     /// -> `null`
     CancelScan { job_id: String },
@@ -643,6 +647,7 @@ mod tests {
                 paths: vec!["/tmp".into()],
                 recursive: true,
                 use_clamav: None,
+                report_only: false,
             },
         };
         let s = serde_json::to_string(&r).unwrap();
@@ -712,7 +717,8 @@ mod tests {
         assert!(!Request::Scan {
             paths: vec![],
             recursive: true,
-            use_clamav: None
+            use_clamav: None,
+            report_only: false,
         }
         .requires_admin());
         // auth travels next to id/cmd and is omitted when absent
