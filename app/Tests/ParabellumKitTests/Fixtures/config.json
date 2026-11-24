@@ -12,6 +12,12 @@
     "hibp_api_key": null,
     "provider": "xposed_or_not"
   },
+  "daily_report": {
+    "ai_summary": true,
+    "enabled": true,
+    "hour": 8,
+    "notify": true
+  },
   "data_removal": {
     "enabled": false,
     "escalate_after_days": 15,

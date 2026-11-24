@@ -617,6 +617,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })?,
     )?;
     w("config", serde_json::to_value(Config::default())?)?;
+    let daily = DailyReport {
+        date: "2026-11-24".into(),
+        generated_at: 1_795_500_000,
+        verdict: DailyVerdict::Attention,
+        headline: "Quelques points à vérifier.".into(),
+        highlights: vec!["1 alerte élevée non vue(s).".into()],
+        summary: "Hier, Parabellum a analysé 1 234 fichiers et levé 2 alertes.".into(),
+        summary_source: SummarySource::LocalAi,
+        summary_model: Some("qwen3:4b".into()),
+        facts: DailyFacts {
+            period_start: 1_795_392_000,
+            period_end: 1_795_478_400,
+            protection_now: ProtectionState::Active,
+            unseen_high: 1,
+            top_unseen: vec![DailyAlertLine {
+                id: 42,
+                ts: 1_795_450_000,
+                severity: Severity::High,
+                kind: AlertKind::Persistence,
+                title: "Nouvel agent de lancement".into(),
+            }],
+            alerts_yesterday: 2,
+            files_scanned_yesterday: 1_234,
+            dns_blocked_yesterday: Some(250),
+            db_version: Some("2026.11.23.1".into()),
+            db_age_hours: Some(9),
+            ..Default::default()
+        },
+    };
+    w("daily_report", serde_json::to_value(&daily)?)?;
+    w(
+        "daily_reports",
+        serde_json::to_value(vec![daily.summary_line()])?,
+    )?;
     w(
         "weekly_report",
         serde_json::to_value(WeeklyReport {
