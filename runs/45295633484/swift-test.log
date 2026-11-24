@@ -1,0 +1,400 @@
+ 30 |     }
+[101/110] Compiling Parabellum ReportView.swift
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel+Freshness.swift:28:70: warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 21 | extension AppModel {
+ 22 |     /// Data younger than this is not reloaded when a screen appears (the refresh button always reloads).
+ 23 |     static let freshFor: TimeInterval = 30
+    |                `- note: static property declared here
+ 24 | 
+ 25 |     // MARK: - Freshness API (also for the feature stores)
+ 26 | 
+ 27 |     /// True when `key` was never loaded, was invalidated, or is older than `maxAge`.
+ 28 |     func needsRefresh(_ key: String, maxAge: TimeInterval = AppModel.freshFor) -> Bool {
+    |                                                                      `- warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 29 |         freshness.needsRefresh(key, maxAge: maxAge)
+ 30 |     }
+[102/110] Compiling Parabellum ScanView.swift
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel+Freshness.swift:28:70: warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 21 | extension AppModel {
+ 22 |     /// Data younger than this is not reloaded when a screen appears (the refresh button always reloads).
+ 23 |     static let freshFor: TimeInterval = 30
+    |                `- note: static property declared here
+ 24 | 
+ 25 |     // MARK: - Freshness API (also for the feature stores)
+ 26 | 
+ 27 |     /// True when `key` was never loaded, was invalidated, or is older than `maxAge`.
+ 28 |     func needsRefresh(_ key: String, maxAge: TimeInterval = AppModel.freshFor) -> Bool {
+    |                                                                      `- warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 29 |         freshness.needsRefresh(key, maxAge: maxAge)
+ 30 |     }
+[103/110] Compiling Parabellum SettingsView.swift
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel+Freshness.swift:28:70: warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 21 | extension AppModel {
+ 22 |     /// Data younger than this is not reloaded when a screen appears (the refresh button always reloads).
+ 23 |     static let freshFor: TimeInterval = 30
+    |                `- note: static property declared here
+ 24 | 
+ 25 |     // MARK: - Freshness API (also for the feature stores)
+ 26 | 
+ 27 |     /// True when `key` was never loaded, was invalidated, or is older than `maxAge`.
+ 28 |     func needsRefresh(_ key: String, maxAge: TimeInterval = AppModel.freshFor) -> Bool {
+    |                                                                      `- warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 29 |         freshness.needsRefresh(key, maxAge: maxAge)
+ 30 |     }
+[104/110] Compiling Parabellum TravelViews.swift
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel+Freshness.swift:28:70: warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 21 | extension AppModel {
+ 22 |     /// Data younger than this is not reloaded when a screen appears (the refresh button always reloads).
+ 23 |     static let freshFor: TimeInterval = 30
+    |                `- note: static property declared here
+ 24 | 
+ 25 |     // MARK: - Freshness API (also for the feature stores)
+ 26 | 
+ 27 |     /// True when `key` was never loaded, was invalidated, or is older than `maxAge`.
+ 28 |     func needsRefresh(_ key: String, maxAge: TimeInterval = AppModel.freshFor) -> Bool {
+    |                                                                      `- warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 29 |         freshness.needsRefresh(key, maxAge: maxAge)
+ 30 |     }
+[105/110] Compiling Parabellum VaultView.swift
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel+Freshness.swift:28:70: warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 21 | extension AppModel {
+ 22 |     /// Data younger than this is not reloaded when a screen appears (the refresh button always reloads).
+ 23 |     static let freshFor: TimeInterval = 30
+    |                `- note: static property declared here
+ 24 | 
+ 25 |     // MARK: - Freshness API (also for the feature stores)
+ 26 | 
+ 27 |     /// True when `key` was never loaded, was invalidated, or is older than `maxAge`.
+ 28 |     func needsRefresh(_ key: String, maxAge: TimeInterval = AppModel.freshFor) -> Bool {
+    |                                                                      `- warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 29 |         freshness.needsRefresh(key, maxAge: maxAge)
+ 30 |     }
+[106/110] Compiling Parabellum VpnView.swift
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel+Freshness.swift:28:70: warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 21 | extension AppModel {
+ 22 |     /// Data younger than this is not reloaded when a screen appears (the refresh button always reloads).
+ 23 |     static let freshFor: TimeInterval = 30
+    |                `- note: static property declared here
+ 24 | 
+ 25 |     // MARK: - Freshness API (also for the feature stores)
+ 26 | 
+ 27 |     /// True when `key` was never loaded, was invalidated, or is older than `maxAge`.
+ 28 |     func needsRefresh(_ key: String, maxAge: TimeInterval = AppModel.freshFor) -> Bool {
+    |                                                                      `- warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 29 |         freshness.needsRefresh(key, maxAge: maxAge)
+ 30 |     }
+[107/110] Compiling Parabellum WidgetBridge.swift
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel+Freshness.swift:28:70: warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 21 | extension AppModel {
+ 22 |     /// Data younger than this is not reloaded when a screen appears (the refresh button always reloads).
+ 23 |     static let freshFor: TimeInterval = 30
+    |                `- note: static property declared here
+ 24 | 
+ 25 |     // MARK: - Freshness API (also for the feature stores)
+ 26 | 
+ 27 |     /// True when `key` was never loaded, was invalidated, or is older than `maxAge`.
+ 28 |     func needsRefresh(_ key: String, maxAge: TimeInterval = AppModel.freshFor) -> Bool {
+    |                                                                      `- warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 29 |         freshness.needsRefresh(key, maxAge: maxAge)
+ 30 |     }
+[108/110] Compiling Parabellum WindowFitter.swift
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel+Freshness.swift:28:70: warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 21 | extension AppModel {
+ 22 |     /// Data younger than this is not reloaded when a screen appears (the refresh button always reloads).
+ 23 |     static let freshFor: TimeInterval = 30
+    |                `- note: static property declared here
+ 24 | 
+ 25 |     // MARK: - Freshness API (also for the feature stores)
+ 26 | 
+ 27 |     /// True when `key` was never loaded, was invalidated, or is older than `maxAge`.
+ 28 |     func needsRefresh(_ key: String, maxAge: TimeInterval = AppModel.freshFor) -> Bool {
+    |                                                                      `- warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 29 |         freshness.needsRefresh(key, maxAge: maxAge)
+ 30 |     }
+[108/111] Write Objects.LinkFileList
+[109/111] Linking Parabellum
+[110/111] Applying Parabellum
+Build complete! (33.93s)
+Test Suite 'All tests' started at 2026-11-24 00:24:01.168.
+Test Suite 'ParabellumPackageTests.xctest' started at 2026-11-24 00:24:01.170.
+Test Suite 'CleanReportTests' started at 2026-11-24 00:24:01.170.
+Test Case '-[ParabellumKitTests.CleanReportTests testActivityReportDecodes]' started.
+Test Case '-[ParabellumKitTests.CleanReportTests testActivityReportDecodes]' passed (0.008 seconds).
+Test Case '-[ParabellumKitTests.CleanReportTests testActivityReportToleratesMissingFields]' started.
+Test Case '-[ParabellumKitTests.CleanReportTests testActivityReportToleratesMissingFields]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.CleanReportTests testCleanApplyDecodes]' started.
+Test Case '-[ParabellumKitTests.CleanReportTests testCleanApplyDecodes]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.CleanReportTests testCleanPlanEncodesLikeSerde]' started.
+Test Case '-[ParabellumKitTests.CleanReportTests testCleanPlanEncodesLikeSerde]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.CleanReportTests testCleanScanDecodes]' started.
+Test Case '-[ParabellumKitTests.CleanReportTests testCleanScanDecodes]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.CleanReportTests testReportAlertCarriesSection]' started.
+Test Case '-[ParabellumKitTests.CleanReportTests testReportAlertCarriesSection]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.CleanReportTests testSectionLinkAndMonthOffset]' started.
+Test Case '-[ParabellumKitTests.CleanReportTests testSectionLinkAndMonthOffset]' passed (0.000 seconds).
+Test Suite 'CleanReportTests' passed at 2026-11-24 00:24:01.183.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.012 (0.013) seconds
+Test Suite 'ClientTests' started at 2026-11-24 00:24:01.183.
+Test Case '-[ParabellumKitTests.ClientTests testAuthIsSentAndAuthRequiredIsReported]' started.
+Test Case '-[ParabellumKitTests.ClientTests testAuthIsSentAndAuthRequiredIsReported]' passed (0.007 seconds).
+Test Case '-[ParabellumKitTests.ClientTests testCallRoundTrip]' started.
+Test Case '-[ParabellumKitTests.ClientTests testCallRoundTrip]' passed (0.002 seconds).
+Test Case '-[ParabellumKitTests.ClientTests testConcurrentCallsAreCorrelatedById]' started.
+Test Case '-[ParabellumKitTests.ClientTests testConcurrentCallsAreCorrelatedById]' passed (0.002 seconds).
+Test Case '-[ParabellumKitTests.ClientTests testLineBufferEnforcesMaxLine]' started.
+Test Case '-[ParabellumKitTests.ClientTests testLineBufferEnforcesMaxLine]' passed (0.002 seconds).
+Test Case '-[ParabellumKitTests.ClientTests testLineBufferSplitsAcrossChunks]' started.
+Test Case '-[ParabellumKitTests.ClientTests testLineBufferSplitsAcrossChunks]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ClientTests testNotRunning]' started.
+Test Case '-[ParabellumKitTests.ClientTests testNotRunning]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ClientTests testSubscriptionDeliversConnectedThenEvents]' started.
+Test Case '-[ParabellumKitTests.ClientTests testSubscriptionDeliversConnectedThenEvents]' passed (0.002 seconds).
+Test Case '-[ParabellumKitTests.ClientTests testSubscriptionReportsDisconnected]' started.
+Test Case '-[ParabellumKitTests.ClientTests testSubscriptionReportsDisconnected]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ClientTests testTimeout]' started.
+Test Case '-[ParabellumKitTests.ClientTests testTimeout]' passed (0.348 seconds).
+Test Case '-[ParabellumKitTests.ClientTests testVoidCallAndDaemonError]' started.
+Test Case '-[ParabellumKitTests.ClientTests testVoidCallAndDaemonError]' passed (0.003 seconds).
+Test Suite 'ClientTests' passed at 2026-11-24 00:24:01.550.
+	 Executed 10 tests, with 0 failures (0 unexpected) in 0.367 (0.367) seconds
+Test Suite 'CoffreKeysTests' started at 2026-11-24 00:24:01.550.
+Test Case '-[ParabellumKitTests.CoffreKeysTests testKeyFileSealsAndOpensThePassword]' started.
+Test Case '-[ParabellumKitTests.CoffreKeysTests testKeyFileSealsAndOpensThePassword]' passed (0.003 seconds).
+Test Case '-[ParabellumKitTests.CoffreKeysTests testKeysRoundTripOnDisk]' started.
+Test Case '-[ParabellumKitTests.CoffreKeysTests testKeysRoundTripOnDisk]' passed (0.012 seconds).
+Test Case '-[ParabellumKitTests.CoffreKeysTests testOtherKeyFilesAndGarbageAreRefused]' started.
+Test Case '-[ParabellumKitTests.CoffreKeysTests testOtherKeyFilesAndGarbageAreRefused]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.CoffreKeysTests testTouchIDSlotNeedsTheSecureEnclave]' started.
+Test Case '-[ParabellumKitTests.CoffreKeysTests testTouchIDSlotNeedsTheSecureEnclave]' passed (0.071 seconds).
+Test Suite 'CoffreKeysTests' passed at 2026-11-24 00:24:01.637.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.087 (0.088) seconds
+Test Suite 'FreshnessTests' started at 2026-11-24 00:24:01.637.
+Test Case '-[ParabellumKitTests.FreshnessTests testFailureState]' started.
+Test Case '-[ParabellumKitTests.FreshnessTests testFailureState]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.FreshnessTests testFreshUntilMaxAge]' started.
+Test Case '-[ParabellumKitTests.FreshnessTests testFreshUntilMaxAge]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.FreshnessTests testInvalidationKeepsDataDisplayable]' started.
+Test Case '-[ParabellumKitTests.FreshnessTests testInvalidationKeepsDataDisplayable]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.FreshnessTests testOnlyTheLatestLoadMayApply]' started.
+Test Case '-[ParabellumKitTests.FreshnessTests testOnlyTheLatestLoadMayApply]' passed (0.000 seconds).
+Test Suite 'FreshnessTests' passed at 2026-11-24 00:24:01.638.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'IntelligenceTests' started at 2026-11-24 00:24:01.638.
+Test Case '-[ParabellumKitTests.IntelligenceTests testConfigSectionAndClassification]' started.
+Test Case '-[ParabellumKitTests.IntelligenceTests testConfigSectionAndClassification]' passed (0.014 seconds).
+Test Case '-[ParabellumKitTests.IntelligenceTests testDefaultStatusAndVerdicts]' started.
+Test Case '-[ParabellumKitTests.IntelligenceTests testDefaultStatusAndVerdicts]' passed (0.004 seconds).
+Test Case '-[ParabellumKitTests.IntelligenceTests testIntelligenceStatus]' started.
+Test Case '-[ParabellumKitTests.IntelligenceTests testIntelligenceStatus]' passed (0.002 seconds).
+Test Suite 'IntelligenceTests' passed at 2026-11-24 00:24:01.658.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.020 (0.020) seconds
+Test Suite 'LanPermissionsTests' started at 2026-11-24 00:24:01.658.
+Test Case '-[ParabellumKitTests.LanPermissionsTests testConfigSectionsRoundTrip]' started.
+Test Case '-[ParabellumKitTests.LanPermissionsTests testConfigSectionsRoundTrip]' passed (0.006 seconds).
+Test Case '-[ParabellumKitTests.LanPermissionsTests testExtensionsAndResetDecode]' started.
+Test Case '-[ParabellumKitTests.LanPermissionsTests testExtensionsAndResetDecode]' passed (0.004 seconds).
+Test Case '-[ParabellumKitTests.LanPermissionsTests testLanEventDecodes]' started.
+Test Case '-[ParabellumKitTests.LanPermissionsTests testLanEventDecodes]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.LanPermissionsTests testLanStatusDecodes]' started.
+Test Case '-[ParabellumKitTests.LanPermissionsTests testLanStatusDecodes]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.LanPermissionsTests testPermissionsReportDecodes]' started.
+Test Case '-[ParabellumKitTests.LanPermissionsTests testPermissionsReportDecodes]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.LanPermissionsTests testRequestsClassification]' started.
+Test Case '-[ParabellumKitTests.LanPermissionsTests testRequestsClassification]' passed (0.000 seconds).
+Test Suite 'LanPermissionsTests' passed at 2026-11-24 00:24:01.672.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.013 (0.014) seconds
+Test Suite 'MlModelInfoTests' started at 2026-11-24 00:24:01.672.
+Test Case '-[ParabellumKitTests.MlModelInfoTests testMinimalModelInfo]' started.
+Test Case '-[ParabellumKitTests.MlModelInfoTests testMinimalModelInfo]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.MlModelInfoTests testOlderDaemonWithoutModels]' started.
+Test Case '-[ParabellumKitTests.MlModelInfoTests testOlderDaemonWithoutModels]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.MlModelInfoTests testStatusFixtureCarriesModels]' started.
+Test Case '-[ParabellumKitTests.MlModelInfoTests testStatusFixtureCarriesModels]' passed (0.000 seconds).
+Test Suite 'MlModelInfoTests' passed at 2026-11-24 00:24:01.673.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'ModelDecodingTests' started at 2026-11-24 00:24:01.673.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testAlerts]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testAlerts]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testComponentsDnsAdblock]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testComponentsDnsAdblock]' passed (0.002 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testDefaultedCollections]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testDefaultedCollections]' passed (0.004 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testDevices]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testDevices]' passed (0.002 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testEnumRawValuesMatchRust]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testEnumRawValuesMatchRust]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testFormatting]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testFormatting]' passed (0.005 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testJobs]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testJobs]' passed (0.002 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testPersistence]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testPersistence]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testPosture]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testPosture]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testQuarantine]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testQuarantine]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testScanReport]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testScanReport]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testStatus]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testStatus]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testUnknownEnumValuesAreTolerated]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testUnknownEnumValuesAreTolerated]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ModelDecodingTests testWeeklyReportAndPing]' started.
+Test Case '-[ParabellumKitTests.ModelDecodingTests testWeeklyReportAndPing]' passed (0.001 seconds).
+Test Suite 'ModelDecodingTests' passed at 2026-11-24 00:24:01.697.
+	 Executed 14 tests, with 0 failures (0 unexpected) in 0.022 (0.024) seconds
+Test Suite 'ProtectionTests' started at 2026-11-24 00:24:01.697.
+Test Case '-[ParabellumKitTests.ProtectionTests testBehaviorAlert]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testBehaviorAlert]' passed (0.003 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testCliOutputsDecode]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testCliOutputsDecode]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testComplaintBreachesAliases]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testComplaintBreachesAliases]' passed (0.003 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testGuardStatusAndSnapshots]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testGuardStatusAndSnapshots]' passed (0.002 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testIdentityAndBrokers]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testIdentityAndBrokers]' passed (0.002 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testMailDraftEml]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testMailDraftEml]' passed (0.006 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testNetworksAndServices]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testNetworksAndServices]' passed (0.003 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testNewRequestsClassification]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testNewRequestsClassification]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testOptionalRequestFieldsOmitted]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testOptionalRequestFieldsOmitted]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testProtectionConfigDefaults]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testProtectionConfigDefaults]' passed (0.005 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testProtectionValidationMirrorsRust]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testProtectionValidationMirrorsRust]' passed (0.003 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testPwnedPasswordsHashing]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testPwnedPasswordsHashing]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testRemovalRequestsAndSummary]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testRemovalRequestsAndSummary]' passed (0.002 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testSyntaxHelpers]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testSyntaxHelpers]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testVpnStatus]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testVpnStatus]' passed (0.002 seconds).
+Test Case '-[ParabellumKitTests.ProtectionTests testVpnStatusDefaultOmitsOptionals]' started.
+Test Case '-[ParabellumKitTests.ProtectionTests testVpnStatusDefaultOmitsOptionals]' passed (0.001 seconds).
+Test Suite 'ProtectionTests' passed at 2026-11-24 00:24:01.736.
+	 Executed 16 tests, with 0 failures (0 unexpected) in 0.037 (0.039) seconds
+Test Suite 'ProtocolTests' started at 2026-11-24 00:24:01.736.
+Test Case '-[ParabellumKitTests.ProtocolTests testAuthIsEncodedNextToId]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testAuthIsEncodedNextToId]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testConfigFixtureDecodesToRustDefaults]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testConfigFixtureDecodesToRustDefaults]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testConfigRoundTripKeepsEveryField]' started.
+/Users/runner/work/Parabellum/Parabellum/app/Tests/ParabellumKitTests/ProtocolTests.swift:236: error: -[ParabellumKitTests.ProtocolTests testConfigRoundTripKeepsEveryField] : XCTAssertTrue failed - attendu object(["updates": ParabellumKit.JSONValue.object(["daily_hour": ParabellumKit.JSONValue.int(3), "auto_update_components": ParabellumKit.JSONValue.bool(true), "freshclam": ParabellumKit.JSONValue.bool(true), "auto_update_app": ParabellumKit.JSONValue.bool(false), "github_token": ParabellumKit.JSONValue.null, "app_releases_api": ParabellumKit.JSONValue.string("https://api.github.com/repos/WLDEUS/Parabellum/releases"), "db_base_url": ParabellumKit.JSONValue.string("https://github.com/WLDEUS/Parabellum/releases/download/db-latest")]), "data_removal": ParabellumKit.JSONValue.object(["escalate_after_days": ParabellumKit.JSONValue.int(15), "max_emails_per_day": ParabellumKit.JSONValue.int(20), "smtp_host": ParabellumKit.JSONValue.string(""), "regions": ParabellumKit.JSONValue.array([ParabellumKit.JSONValue.string("eu"), ParabellumKit.JSONValue.string("global")]), "smtp_username": ParabellumKit.JSONValue.string(""), "language": ParabellumKit.JSONValue.string("fr"), "from_address": ParabellumKit.JSONValue.string(""), "send_mode": ParabellumKit.JSONValue.string("drafts"), "smtp_port": ParabellumKit.JSONValue.int(587), "reminder_after_days": ParabellumKit.JSONValue.int(30), "enabled": ParabellumKit.JSONValue.bool(false), "smtp_password": ParabellumKit.JSONValue.null, "repeat_every_days": ParabellumKit.JSONValue.int(180)]), "travel": ParabellumKit.JSONValue.object(["bluetooth_off": ParabellumKit.JSONValue.bool(false), "airdrop_off": ParabellumKit.JSONValue.bool(true), "suggest_on_untrusted": ParabellumKit.JSONValue.bool(true), "block_all_incoming": ParabellumKit.JSONValue.bool(false), "auto_enable": ParabellumKit.JSONValue.bool(false)]), "full_scan": ParabellumKit.JSONValue.object(["auto": ParabellumKit.JSONValue.bool(true), "interval_days": ParabellumKit.JSONValue.int(7), "external_volumes": ParabellumKit.JSONValue.bool(false), "require_ac_power": ParabellumKit.JSONValue.bool(true), "idle_minutes": ParabellumKit.JSONValue.int(10), "clamav": ParabellumKit.JSONValue.bool(false)]), "dns": ParabellumKit.JSONValue.object(["upstream_servers": ParabellumKit.JSONValue.array([ParabellumKit.JSONValue.string("cloudflare"), ParabellumKit.JSONValue.string("quad9-doh-ip4-port443-filter-pri")]), "enabled": ParabellumKit.JSONValue.bool(false), "block_malware": ParabellumKit.JSONValue.bool(true), "custom_block": ParabellumKit.JSONValue.array([]), "custom_allow": ParabellumKit.JSONValue.array([]), "block_ads": ParabellumKit.JSONValue.bool(true), "block_trackers": ParabellumKit.JSONValue.bool(true), "listen": ParabellumKit.JSONValue.string("127.0.0.1:53")]), "intelligence": ParabellumKit.JSONValue.object(["learning_days": ParabellumKit.JSONValue.int(7), "behavior_anomaly": ParabellumKit.JSONValue.bool(true), "anomaly_threshold": ParabellumKit.JSONValue.double(0.75), "domain_alerts": ParabellumKit.JSONValue.bool(true), "block_ml_domains": ParabellumKit.JSONValue.bool(false), "domain_allowlist": ParabellumKit.JSONValue.array([]), "max_anomaly_alerts_per_day": ParabellumKit.JSONValue.int(10), "domain_model": ParabellumKit.JSONValue.bool(true)]), "notifications": ParabellumKit.JSONValue.object(["enabled": ParabellumKit.JSONValue.bool(true), "min_severity": ParabellumKit.JSONValue.string("medium")]), "ml": ParabellumKit.JSONValue.object(["enabled": ParabellumKit.JSONValue.bool(true), "only_untrusted": ParabellumKit.JSONValue.bool(true), "suspicious_threshold": ParabellumKit.JSONValue.double(0.8500000238418579)]), "vpn": ParabellumKit.JSONValue.object(["external_server_addresses": ParabellumKit.JSONValue.array([]), "kill_switch": ParabellumKit.JSONValue.bool(false), "external_service": ParabellumKit.JSONValue.null, "backend": ParabellumKit.JSONValue.string("sing_box"), "mode": ParabellumKit.JSONValue.string("off"), "leak_test_interval_minutes": ParabellumKit.JSONValue.int(60), "allow_lan": ParabellumKit.JSONValue.bool(true), "trusted_networks": ParabellumKit.JSONValue.array([]), "tunnel_ipv6": ParabellumKit.JSONValue.bool(true)]), "breach": ParabellumKit.JSONValue.object(["emails": ParabellumKit.JSONValue.array([]), "provider": ParabellumKit.JSONValue.string("xposed_or_not"), "hibp_api_key": ParabellumKit.JSONValue.null, "check_interval_hours": ParabellumKit.JSONValue.int(168), "enabled": ParabellumKit.JSONValue.bool(false)]), "network": ParabellumKit.JSONValue.object(["poll_seconds": ParabellumKit.JSONValue.int(20), "enabled": ParabellumKit.JSONValue.bool(true)]), "realtime": ParabellumKit.JSONValue.object(["fsevents": ParabellumKit.JSONValue.bool(true), "kill_malicious_processes": ParabellumKit.JSONValue.bool(true), "eslogger": ParabellumKit.JSONValue.bool(true), "scan_on_exec": ParabellumKit.JSONValue.bool(true), "auto_quarantine": ParabellumKit.JSONValue.bool(true), "enabled": ParabellumKit.JSONValue.bool(true)]), "mail_agent": ParabellumKit.JSONValue.object(["imap_username": ParabellumKit.JSONValue.string(""), "require_ac_power": ParabellumKit.JSONValue.bool(true), "mailbox": ParabellumKit.JSONValue.string("INBOX"), "model": ParabellumKit.JSONValue.string("qwen3:4b"), "idle_minutes": ParabellumKit.JSONValue.int(10), "imap_host": ParabellumKit.JSONValue.string(""), "interval_hours": ParabellumKit.JSONValue.int(6), "imap_port": ParabellumKit.JSONValue.int(993), "max_messages_per_run": ParabellumKit.JSONValue.int(50), "notes_dir": ParabellumKit.JSONValue.string("~/Documents/Parabellum RGPD"), "enabled": ParabellumKit.JSONValue.bool(false), "imap_password": ParabellumKit.JSONValue.null]), "privacy": ParabellumKit.JSONValue.object(["virustotal_lookup": ParabellumKit.JSONValue.bool(false), "virustotal_api_key": ParabellumKit.JSONValue.null]), "scan": ParabellumKit.JSONValue.object(["max_file_size_mb": ParabellumKit.JSONValue.int(200), "clamav_realtime": ParabellumKit.JSONValue.bool(false), "threads": ParabellumKit.JSONValue.int(0), "expand_pkg": ParabellumKit.JSONValue.bool(true), "archive_max_entries": ParabellumKit.JSONValue.int(20000), "archive_max_depth": ParabellumKit.JSONValue.int(3), "archive_max_total_mb": ParabellumKit.JSONValue.int(1024), "exclude_paths": ParabellumKit.JSONValue.array([]), "watch_paths": ParabellumKit.JSONValue.array([ParabellumKit.JSONValue.string("~/Downloads"), ParabellumKit.JSONValue.string("~/Desktop"), ParabellumKit.JSONValue.string("~/Documents"), ParabellumKit.JSONValue.string("/Applications"), ParabellumKit.JSONValue.string("~/Applications")]), "mount_dmg": ParabellumKit.JSONValue.bool(true), "clamav_on_demand": ParabellumKit.JSONValue.bool(true)]), "security": ParabellumKit.JSONValue.object(["spyware_scan_weekday": ParabellumKit.JSONValue.int(3), "spyware_scan_weekly": ParabellumKit.JSONValue.bool(true), "spyware_scan_hour": ParabellumKit.JSONValue.int(13), "posture_checks": ParabellumKit.JSONValue.bool(true)]), "energy": ParabellumKit.JSONValue.object(["pause_on_battery_below": ParabellumKit.JSONValue.int(20), "background_qos": ParabellumKit.JSONValue.bool(true)]), "persistence": ParabellumKit.JSONValue.object(["enabled": ParabellumKit.JSONValue.bool(true), "osquery_hunting": ParabellumKit.JSONValue.bool(true), "full_scan_interval_minutes": ParabellumKit.JSONValue.int(360)]), "permissions": ParabellumKit.JSONValue.object(["alert_high_risk": ParabellumKit.JSONValue.bool(true), "enabled": ParabellumKit.JSONValue.bool(true), "interval_hours": ParabellumKit.JSONValue.int(24)]), "lan": ParabellumKit.JSONValue.object(["active_on_trusted": ParabellumKit.JSONValue.bool(true), "enabled": ParabellumKit.JSONValue.bool(true), "scan_interval_minutes": ParabellumKit.JSONValue.int(15), "alert_new_devices": ParabellumKit.JSONValue.bool(true)]), "guard": ParabellumKit.JSONValue.object(["ransomware_detection": ParabellumKit.JSONValue.bool(true), "stealer_detection": ParabellumKit.JSONValue.bool(true), "snapshots": ParabellumKit.JSONValue.bool(true), "snapshot_interval_minutes": ParabellumKit.JSONValue.int(60), "trusted_team_ids": ParabellumKit.JSONValue.array([]), "kill_on_detection": ParabellumKit.JSONValue.bool(true), "suspend_ransomware": ParabellumKit.JSONValue.bool(true)]), "devices": ParabellumKit.JSONValue.object(["alert_new_hid": ParabellumKit.JSONValue.bool(true), "alert_other_usb": ParabellumKit.JSONValue.bool(true), "alert_bluetooth": ParabellumKit.JSONValue.bool(true), "scan_volumes": ParabellumKit.JSONValue.bool(true), "alert_wifi_networks": ParabellumKit.JSONValue.bool(true), "alert_thunderbolt": ParabellumKit.JSONValue.bool(true), "block_new_hid": ParabellumKit.JSONValue.bool(false), "alert_network_interfaces": ParabellumKit.JSONValue.bool(true)]), "aliases": ParabellumKit.JSONValue.object(["api_key": ParabellumKit.JSONValue.null, "provider": ParabellumKit.JSONValue.string("none"), "domain": ParabellumKit.JSONValue.string(""), "base_url": ParabellumKit.JSONValue.string("")])])
+obtenu object(["network": ParabellumKit.JSONValue.object(["poll_seconds": ParabellumKit.JSONValue.int(20), "enabled": ParabellumKit.JSONValue.bool(true)]), "daily_report": ParabellumKit.JSONValue.object(["ai_summary": ParabellumKit.JSONValue.bool(true), "notify": ParabellumKit.JSONValue.bool(true), "hour": ParabellumKit.JSONValue.int(8), "enabled": ParabellumKit.JSONValue.bool(true)]), "data_removal": ParabellumKit.JSONValue.object(["max_emails_per_day": ParabellumKit.JSONValue.int(20), "from_address": ParabellumKit.JSONValue.string(""), "send_mode": ParabellumKit.JSONValue.string("drafts"), "escalate_after_days": ParabellumKit.JSONValue.int(15), "language": ParabellumKit.JSONValue.string("fr"), "smtp_password": ParabellumKit.JSONValue.null, "smtp_username": ParabellumKit.JSONValue.string(""), "repeat_every_days": ParabellumKit.JSONValue.int(180), "regions": ParabellumKit.JSONValue.array([ParabellumKit.JSONValue.string("eu"), ParabellumKit.JSONValue.string("global")]), "reminder_after_days": ParabellumKit.JSONValue.int(30), "smtp_host": ParabellumKit.JSONValue.string(""), "smtp_port": ParabellumKit.JSONValue.int(587), "enabled": ParabellumKit.JSONValue.bool(false)]), "permissions": ParabellumKit.JSONValue.object(["enabled": ParabellumKit.JSONValue.bool(true), "alert_high_risk": ParabellumKit.JSONValue.bool(true), "interval_hours": ParabellumKit.JSONValue.int(24)]), "aliases": ParabellumKit.JSONValue.object(["base_url": ParabellumKit.JSONValue.string(""), "provider": ParabellumKit.JSONValue.string("none"), "domain": ParabellumKit.JSONValue.string(""), "api_key": ParabellumKit.JSONValue.null]), "security": ParabellumKit.JSONValue.object(["spyware_scan_hour": ParabellumKit.JSONValue.int(13), "posture_checks": ParabellumKit.JSONValue.bool(true), "spyware_scan_weekly": ParabellumKit.JSONValue.bool(true), "spyware_scan_weekday": ParabellumKit.JSONValue.int(3)]), "lan": ParabellumKit.JSONValue.object(["scan_interval_minutes": ParabellumKit.JSONValue.int(15), "alert_new_devices": ParabellumKit.JSONValue.bool(true), "active_on_trusted": ParabellumKit.JSONValue.bool(true), "enabled": ParabellumKit.JSONValue.bool(true)]), "realtime": ParabellumKit.JSONValue.object(["eslogger": ParabellumKit.JSONValue.bool(true), "enabled": ParabellumKit.JSONValue.bool(true), "kill_malicious_processes": ParabellumKit.JSONValue.bool(true), "auto_quarantine": ParabellumKit.JSONValue.bool(true), "scan_on_exec": ParabellumKit.JSONValue.bool(true), "fsevents": ParabellumKit.JSONValue.bool(true)]), "guard": ParabellumKit.JSONValue.object(["trusted_team_ids": ParabellumKit.JSONValue.array([]), "ransomware_detection": ParabellumKit.JSONValue.bool(true), "suspend_ransomware": ParabellumKit.JSONValue.bool(true), "snapshots": ParabellumKit.JSONValue.bool(true), "snapshot_interval_minutes": ParabellumKit.JSONValue.int(60), "kill_on_detection": ParabellumKit.JSONValue.bool(true), "stealer_detection": ParabellumKit.JSONValue.bool(true)]), "dns": ParabellumKit.JSONValue.object(["listen": ParabellumKit.JSONValue.string("127.0.0.1:53"), "block_trackers": ParabellumKit.JSONValue.bool(true), "custom_allow": ParabellumKit.JSONValue.array([]), "upstream_servers": ParabellumKit.JSONValue.array([ParabellumKit.JSONValue.string("cloudflare"), ParabellumKit.JSONValue.string("quad9-doh-ip4-port443-filter-pri")]), "block_malware": ParabellumKit.JSONValue.bool(true), "enabled": ParabellumKit.JSONValue.bool(false), "block_ads": ParabellumKit.JSONValue.bool(true), "custom_block": ParabellumKit.JSONValue.array([])]), "intelligence": ParabellumKit.JSONValue.object(["domain_alerts": ParabellumKit.JSONValue.bool(true), "domain_allowlist": ParabellumKit.JSONValue.array([]), "anomaly_threshold": ParabellumKit.JSONValue.double(0.75), "max_anomaly_alerts_per_day": ParabellumKit.JSONValue.int(10), "domain_model": ParabellumKit.JSONValue.bool(true), "behavior_anomaly": ParabellumKit.JSONValue.bool(true), "learning_days": ParabellumKit.JSONValue.int(7), "block_ml_domains": ParabellumKit.JSONValue.bool(false)]), "energy": ParabellumKit.JSONValue.object(["background_qos": ParabellumKit.JSONValue.bool(true), "pause_on_battery_below": ParabellumKit.JSONValue.int(20)]), "mail_agent": ParabellumKit.JSONValue.object(["imap_host": ParabellumKit.JSONValue.string(""), "model": ParabellumKit.JSONValue.string("qwen3:4b"), "imap_port": ParabellumKit.JSONValue.int(993), "imap_password": ParabellumKit.JSONValue.null, "enabled": ParabellumKit.JSONValue.bool(false), "idle_minutes": ParabellumKit.JSONValue.int(10), "imap_username": ParabellumKit.JSONValue.string(""), "interval_hours": ParabellumKit.JSONValue.int(6), "max_messages_per_run": ParabellumKit.JSONValue.int(50), "require_ac_power": ParabellumKit.JSONValue.bool(true), "mailbox": ParabellumKit.JSONValue.string("INBOX"), "notes_dir": ParabellumKit.JSONValue.string("~/Documents/Parabellum RGPD")]), "breach": ParabellumKit.JSONValue.object(["check_interval_hours": ParabellumKit.JSONValue.int(168), "emails": ParabellumKit.JSONValue.array([]), "enabled": ParabellumKit.JSONValue.bool(false), "hibp_api_key": ParabellumKit.JSONValue.null, "provider": ParabellumKit.JSONValue.string("xposed_or_not")]), "scan": ParabellumKit.JSONValue.object(["archive_max_total_mb": ParabellumKit.JSONValue.int(1024), "exclude_paths": ParabellumKit.JSONValue.array([]), "max_file_size_mb": ParabellumKit.JSONValue.int(200), "mount_dmg": ParabellumKit.JSONValue.bool(true), "archive_max_entries": ParabellumKit.JSONValue.int(20000), "archive_max_depth": ParabellumKit.JSONValue.int(3), "expand_pkg": ParabellumKit.JSONValue.bool(true), "clamav_on_demand": ParabellumKit.JSONValue.bool(true), "watch_paths": ParabellumKit.JSONValue.array([ParabellumKit.JSONValue.string("~/Downloads"), ParabellumKit.JSONValue.string("~/Desktop"), ParabellumKit.JSONValue.string("~/Documents"), ParabellumKit.JSONValue.string("/Applications"), ParabellumKit.JSONValue.string("~/Applications")]), "threads": ParabellumKit.JSONValue.int(0), "clamav_realtime": ParabellumKit.JSONValue.bool(false)]), "privacy": ParabellumKit.JSONValue.object(["virustotal_lookup": ParabellumKit.JSONValue.bool(false), "virustotal_api_key": ParabellumKit.JSONValue.null]), "vpn": ParabellumKit.JSONValue.object(["kill_switch": ParabellumKit.JSONValue.bool(false), "mode": ParabellumKit.JSONValue.string("off"), "external_server_addresses": ParabellumKit.JSONValue.array([]), "external_service": ParabellumKit.JSONValue.null, "allow_lan": ParabellumKit.JSONValue.bool(true), "leak_test_interval_minutes": ParabellumKit.JSONValue.int(60), "backend": ParabellumKit.JSONValue.string("sing_box"), "trusted_networks": ParabellumKit.JSONValue.array([]), "tunnel_ipv6": ParabellumKit.JSONValue.bool(true)]), "notifications": ParabellumKit.JSONValue.object(["min_severity": ParabellumKit.JSONValue.string("medium"), "enabled": ParabellumKit.JSONValue.bool(true)]), "devices": ParabellumKit.JSONValue.object(["block_new_hid": ParabellumKit.JSONValue.bool(false), "alert_wifi_networks": ParabellumKit.JSONValue.bool(true), "scan_volumes": ParabellumKit.JSONValue.bool(true), "alert_other_usb": ParabellumKit.JSONValue.bool(true), "alert_new_hid": ParabellumKit.JSONValue.bool(true), "alert_network_interfaces": ParabellumKit.JSONValue.bool(true), "alert_bluetooth": ParabellumKit.JSONValue.bool(true), "alert_thunderbolt": ParabellumKit.JSONValue.bool(true)]), "full_scan": ParabellumKit.JSONValue.object(["clamav": ParabellumKit.JSONValue.bool(false), "require_ac_power": ParabellumKit.JSONValue.bool(true), "interval_days": ParabellumKit.JSONValue.int(7), "idle_minutes": ParabellumKit.JSONValue.int(10), "auto": ParabellumKit.JSONValue.bool(true), "external_volumes": ParabellumKit.JSONValue.bool(false)]), "ml": ParabellumKit.JSONValue.object(["enabled": ParabellumKit.JSONValue.bool(true), "only_untrusted": ParabellumKit.JSONValue.bool(true), "suspicious_threshold": ParabellumKit.JSONValue.double(0.8500000238418579)]), "updates": ParabellumKit.JSONValue.object(["app_releases_api": ParabellumKit.JSONValue.string("https://api.github.com/repos/WLDEUS/Parabellum/releases"), "auto_update_app": ParabellumKit.JSONValue.bool(false), "daily_hour": ParabellumKit.JSONValue.int(3), "github_token": ParabellumKit.JSONValue.null, "freshclam": ParabellumKit.JSONValue.bool(true), "db_base_url": ParabellumKit.JSONValue.string("https://github.com/WLDEUS/Parabellum/releases/download/db-latest"), "auto_update_components": ParabellumKit.JSONValue.bool(true)]), "persistence": ParabellumKit.JSONValue.object(["enabled": ParabellumKit.JSONValue.bool(true), "full_scan_interval_minutes": ParabellumKit.JSONValue.int(360), "osquery_hunting": ParabellumKit.JSONValue.bool(true)]), "travel": ParabellumKit.JSONValue.object(["suggest_on_untrusted": ParabellumKit.JSONValue.bool(true), "bluetooth_off": ParabellumKit.JSONValue.bool(false), "auto_enable": ParabellumKit.JSONValue.bool(false), "block_all_incoming": ParabellumKit.JSONValue.bool(false), "airdrop_off": ParabellumKit.JSONValue.bool(true)])])
+Test Case '-[ParabellumKitTests.ProtocolTests testConfigRoundTripKeepsEveryField]' failed (0.402 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testConfigValidationMirrorsRust]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testConfigValidationMirrorsRust]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testMutatingClassificationMatchesRust]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testMutatingClassificationMatchesRust]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testOptionalFieldsOmitted]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testOptionalFieldsOmitted]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testPartialConfigUsesDefaults]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testPartialConfigUsesDefaults]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testRequestLineIsSingleLine]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testRequestLineIsSingleLine]' passed (0.002 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testRequestsMatchRustEncoding]' started.
+/Users/runner/work/Parabellum/Parabellum/app/Tests/ParabellumKitTests/ProtocolTests.swift:130: error: -[ParabellumKitTests.ProtocolTests testRequestsMatchRustEncoding] : XCTAssertTrue failed - commande set_config :
+ attendu object(["id": ParabellumKit.JSONValue.int(26), "config": ParabellumKit.JSONValue.object(["permissions": ParabellumKit.JSONValue.object(["alert_high_risk": ParabellumKit.JSONValue.bool(true), "interval_hours": ParabellumKit.JSONValue.int(24), "enabled": ParabellumKit.JSONValue.bool(true)]), "security": ParabellumKit.JSONValue.object(["spyware_scan_weekday": ParabellumKit.JSONValue.int(3), "spyware_scan_weekly": ParabellumKit.JSONValue.bool(true), "spyware_scan_hour": ParabellumKit.JSONValue.int(13), "posture_checks": ParabellumKit.JSONValue.bool(true)]), "data_removal": ParabellumKit.JSONValue.object(["escalate_after_days": ParabellumKit.JSONValue.int(15), "max_emails_per_day": ParabellumKit.JSONValue.int(20), "smtp_port": ParabellumKit.JSONValue.int(587), "repeat_every_days": ParabellumKit.JSONValue.int(180), "send_mode": ParabellumKit.JSONValue.string("drafts"), "reminder_after_days": ParabellumKit.JSONValue.int(30), "language": ParabellumKit.JSONValue.string("fr"), "smtp_username": ParabellumKit.JSONValue.string(""), "enabled": ParabellumKit.JSONValue.bool(false), "smtp_password": ParabellumKit.JSONValue.null, "smtp_host": ParabellumKit.JSONValue.string(""), "regions": ParabellumKit.JSONValue.array([ParabellumKit.JSONValue.string("eu"), ParabellumKit.JSONValue.string("global")]), "from_address": ParabellumKit.JSONValue.string("")]), "energy": ParabellumKit.JSONValue.object(["background_qos": ParabellumKit.JSONValue.bool(true), "pause_on_battery_below": ParabellumKit.JSONValue.int(20)]), "persistence": ParabellumKit.JSONValue.object(["enabled": ParabellumKit.JSONValue.bool(true), "full_scan_interval_minutes": ParabellumKit.JSONValue.int(360), "osquery_hunting": ParabellumKit.JSONValue.bool(true)]), "dns": ParabellumKit.JSONValue.object(["custom_block": ParabellumKit.JSONValue.array([]), "block_trackers": ParabellumKit.JSONValue.bool(true), "block_malware": ParabellumKit.JSONValue.bool(true), "enabled": ParabellumKit.JSONValue.bool(false), "listen": ParabellumKit.JSONValue.string("127.0.0.1:53"), "block_ads": ParabellumKit.JSONValue.bool(true), "custom_allow": ParabellumKit.JSONValue.array([]), "upstream_servers": ParabellumKit.JSONValue.array([ParabellumKit.JSONValue.string("cloudflare"), ParabellumKit.JSONValue.string("quad9-doh-ip4-port443-filter-pri")])]), "intelligence": ParabellumKit.JSONValue.object(["max_anomaly_alerts_per_day": ParabellumKit.JSONValue.int(10), "learning_days": ParabellumKit.JSONValue.int(7), "block_ml_domains": ParabellumKit.JSONValue.bool(false), "domain_alerts": ParabellumKit.JSONValue.bool(true), "behavior_anomaly": ParabellumKit.JSONValue.bool(true), "anomaly_threshold": ParabellumKit.JSONValue.double(0.75), "domain_allowlist": ParabellumKit.JSONValue.array([]), "domain_model": ParabellumKit.JSONValue.bool(true)]), "lan": ParabellumKit.JSONValue.object(["scan_interval_minutes": ParabellumKit.JSONValue.int(15), "enabled": ParabellumKit.JSONValue.bool(true), "active_on_trusted": ParabellumKit.JSONValue.bool(true), "alert_new_devices": ParabellumKit.JSONValue.bool(true)]), "scan": ParabellumKit.JSONValue.object(["watch_paths": ParabellumKit.JSONValue.array([ParabellumKit.JSONValue.string("~/Downloads"), ParabellumKit.JSONValue.string("~/Desktop"), ParabellumKit.JSONValue.string("~/Documents"), ParabellumKit.JSONValue.string("/Applications"), ParabellumKit.JSONValue.string("~/Applications")]), "mount_dmg": ParabellumKit.JSONValue.bool(true), "archive_max_total_mb": ParabellumKit.JSONValue.int(1024), "max_file_size_mb": ParabellumKit.JSONValue.int(200), "clamav_on_demand": ParabellumKit.JSONValue.bool(true), "archive_max_depth": ParabellumKit.JSONValue.int(3), "clamav_realtime": ParabellumKit.JSONValue.bool(false), "expand_pkg": ParabellumKit.JSONValue.bool(true), "archive_max_entries": ParabellumKit.JSONValue.int(20000), "threads": ParabellumKit.JSONValue.int(0), "exclude_paths": ParabellumKit.JSONValue.array([])]), "notifications": ParabellumKit.JSONValue.object(["min_severity": ParabellumKit.JSONValue.string("medium"), "enabled": ParabellumKit.JSONValue.bool(true)]), "mail_agent": ParabellumKit.JSONValue.object(["idle_minutes": ParabellumKit.JSONValue.int(10), "model": ParabellumKit.JSONValue.string("qwen3:4b"), "max_messages_per_run": ParabellumKit.JSONValue.int(50), "imap_port": ParabellumKit.JSONValue.int(993), "enabled": ParabellumKit.JSONValue.bool(false), "imap_username": ParabellumKit.JSONValue.string(""), "imap_password": ParabellumKit.JSONValue.null, "imap_host": ParabellumKit.JSONValue.string(""), "require_ac_power": ParabellumKit.JSONValue.bool(true), "mailbox": ParabellumKit.JSONValue.string("INBOX"), "interval_hours": ParabellumKit.JSONValue.int(6), "notes_dir": ParabellumKit.JSONValue.string("~/Documents/Parabellum RGPD")]), "ml": ParabellumKit.JSONValue.object(["suspicious_threshold": ParabellumKit.JSONValue.double(0.85), "only_untrusted": ParabellumKit.JSONValue.bool(true), "enabled": ParabellumKit.JSONValue.bool(true)]), "realtime": ParabellumKit.JSONValue.object(["eslogger": ParabellumKit.JSONValue.bool(true), "auto_quarantine": ParabellumKit.JSONValue.bool(true), "enabled": ParabellumKit.JSONValue.bool(true), "kill_malicious_processes": ParabellumKit.JSONValue.bool(true), "fsevents": ParabellumKit.JSONValue.bool(true), "scan_on_exec": ParabellumKit.JSONValue.bool(true)]), "travel": ParabellumKit.JSONValue.object(["bluetooth_off": ParabellumKit.JSONValue.bool(false), "block_all_incoming": ParabellumKit.JSONValue.bool(false), "auto_enable": ParabellumKit.JSONValue.bool(false), "suggest_on_untrusted": ParabellumKit.JSONValue.bool(true), "airdrop_off": ParabellumKit.JSONValue.bool(true)]), "privacy": ParabellumKit.JSONValue.object(["virustotal_lookup": ParabellumKit.JSONValue.bool(false), "virustotal_api_key": ParabellumKit.JSONValue.null]), "devices": ParabellumKit.JSONValue.object(["alert_thunderbolt": ParabellumKit.JSONValue.bool(true), "alert_new_hid": ParabellumKit.JSONValue.bool(true), "alert_other_usb": ParabellumKit.JSONValue.bool(true), "alert_wifi_networks": ParabellumKit.JSONValue.bool(true), "block_new_hid": ParabellumKit.JSONValue.bool(false), "alert_bluetooth": ParabellumKit.JSONValue.bool(true), "alert_network_interfaces": ParabellumKit.JSONValue.bool(true), "scan_volumes": ParabellumKit.JSONValue.bool(true)]), "network": ParabellumKit.JSONValue.object(["enabled": ParabellumKit.JSONValue.bool(true), "poll_seconds": ParabellumKit.JSONValue.int(20)]), "updates": ParabellumKit.JSONValue.object(["auto_update_components": ParabellumKit.JSONValue.bool(true), "auto_update_app": ParabellumKit.JSONValue.bool(false), "freshclam": ParabellumKit.JSONValue.bool(true), "app_releases_api": ParabellumKit.JSONValue.string("https://api.github.com/repos/WLDEUS/Parabellum/releases"), "github_token": ParabellumKit.JSONValue.null, "db_base_url": ParabellumKit.JSONValue.string("https://github.com/WLDEUS/Parabellum/releases/download/db-latest"), "daily_hour": ParabellumKit.JSONValue.int(3)]), "breach": ParabellumKit.JSONValue.object(["hibp_api_key": ParabellumKit.JSONValue.null, "check_interval_hours": ParabellumKit.JSONValue.int(168), "enabled": ParabellumKit.JSONValue.bool(false), "emails": ParabellumKit.JSONValue.array([]), "provider": ParabellumKit.JSONValue.string("xposed_or_not")]), "vpn": ParabellumKit.JSONValue.object(["external_service": ParabellumKit.JSONValue.null, "trusted_networks": ParabellumKit.JSONValue.array([]), "kill_switch": ParabellumKit.JSONValue.bool(false), "allow_lan": ParabellumKit.JSONValue.bool(true), "tunnel_ipv6": ParabellumKit.JSONValue.bool(true), "external_server_addresses": ParabellumKit.JSONValue.array([]), "mode": ParabellumKit.JSONValue.string("off"), "leak_test_interval_minutes": ParabellumKit.JSONValue.int(60), "backend": ParabellumKit.JSONValue.string("sing_box")]), "aliases": ParabellumKit.JSONValue.object(["api_key": ParabellumKit.JSONValue.null, "base_url": ParabellumKit.JSONValue.string(""), "provider": ParabellumKit.JSONValue.string("none"), "domain": ParabellumKit.JSONValue.string("")]), "full_scan": ParabellumKit.JSONValue.object(["clamav": ParabellumKit.JSONValue.bool(false), "interval_days": ParabellumKit.JSONValue.int(7), "idle_minutes": ParabellumKit.JSONValue.int(10), "auto": ParabellumKit.JSONValue.bool(true), "external_volumes": ParabellumKit.JSONValue.bool(false), "require_ac_power": ParabellumKit.JSONValue.bool(true)]), "guard": ParabellumKit.JSONValue.object(["suspend_ransomware": ParabellumKit.JSONValue.bool(true), "ransomware_detection": ParabellumKit.JSONValue.bool(true), "stealer_detection": ParabellumKit.JSONValue.bool(true), "kill_on_detection": ParabellumKit.JSONValue.bool(true), "snapshots": ParabellumKit.JSONValue.bool(true), "snapshot_interval_minutes": ParabellumKit.JSONValue.int(60), "trusted_team_ids": ParabellumKit.JSONValue.array([])])]), "cmd": ParabellumKit.JSONValue.string("set_config")])
+ obtenu  object(["cmd": ParabellumKit.JSONValue.string("set_config"), "config": ParabellumKit.JSONValue.object(["security": ParabellumKit.JSONValue.object(["posture_checks": ParabellumKit.JSONValue.bool(true), "spyware_scan_weekday": ParabellumKit.JSONValue.int(3), "spyware_scan_weekly": ParabellumKit.JSONValue.bool(true), "spyware_scan_hour": ParabellumKit.JSONValue.int(13)]), "scan": ParabellumKit.JSONValue.object(["clamav_realtime": ParabellumKit.JSONValue.bool(false), "expand_pkg": ParabellumKit.JSONValue.bool(true), "threads": ParabellumKit.JSONValue.int(0), "mount_dmg": ParabellumKit.JSONValue.bool(true), "archive_max_entries": ParabellumKit.JSONValue.int(20000), "archive_max_depth": ParabellumKit.JSONValue.int(3), "max_file_size_mb": ParabellumKit.JSONValue.int(200), "archive_max_total_mb": ParabellumKit.JSONValue.int(1024), "clamav_on_demand": ParabellumKit.JSONValue.bool(true), "watch_paths": ParabellumKit.JSONValue.array([ParabellumKit.JSONValue.string("~/Downloads"), ParabellumKit.JSONValue.string("~/Desktop"), ParabellumKit.JSONValue.string("~/Documents"), ParabellumKit.JSONValue.string("/Applications"), ParabellumKit.JSONValue.string("~/Applications")]), "exclude_paths": ParabellumKit.JSONValue.array([])]), "daily_report": ParabellumKit.JSONValue.object(["notify": ParabellumKit.JSONValue.bool(true), "hour": ParabellumKit.JSONValue.int(8), "enabled": ParabellumKit.JSONValue.bool(true), "ai_summary": ParabellumKit.JSONValue.bool(true)]), "vpn": ParabellumKit.JSONValue.object(["allow_lan": ParabellumKit.JSONValue.bool(true), "tunnel_ipv6": ParabellumKit.JSONValue.bool(true), "external_service": ParabellumKit.JSONValue.null, "external_server_addresses": ParabellumKit.JSONValue.array([]), "trusted_networks": ParabellumKit.JSONValue.array([]), "leak_test_interval_minutes": ParabellumKit.JSONValue.int(60), "mode": ParabellumKit.JSONValue.string("off"), "backend": ParabellumKit.JSONValue.string("sing_box"), "kill_switch": ParabellumKit.JSONValue.bool(false)]), "guard": ParabellumKit.JSONValue.object(["trusted_team_ids": ParabellumKit.JSONValue.array([]), "kill_on_detection": ParabellumKit.JSONValue.bool(true), "suspend_ransomware": ParabellumKit.JSONValue.bool(true), "snapshots": ParabellumKit.JSONValue.bool(true), "stealer_detection": ParabellumKit.JSONValue.bool(true), "ransomware_detection": ParabellumKit.JSONValue.bool(true), "snapshot_interval_minutes": ParabellumKit.JSONValue.int(60)]), "permissions": ParabellumKit.JSONValue.object(["enabled": ParabellumKit.JSONValue.bool(true), "interval_hours": ParabellumKit.JSONValue.int(24), "alert_high_risk": ParabellumKit.JSONValue.bool(true)]), "lan": ParabellumKit.JSONValue.object(["alert_new_devices": ParabellumKit.JSONValue.bool(true), "active_on_trusted": ParabellumKit.JSONValue.bool(true), "scan_interval_minutes": ParabellumKit.JSONValue.int(15), "enabled": ParabellumKit.JSONValue.bool(true)]), "full_scan": ParabellumKit.JSONValue.object(["clamav": ParabellumKit.JSONValue.bool(false), "external_volumes": ParabellumKit.JSONValue.bool(false), "require_ac_power": ParabellumKit.JSONValue.bool(true), "idle_minutes": ParabellumKit.JSONValue.int(10), "auto": ParabellumKit.JSONValue.bool(true), "interval_days": ParabellumKit.JSONValue.int(7)]), "persistence": ParabellumKit.JSONValue.object(["full_scan_interval_minutes": ParabellumKit.JSONValue.int(360), "enabled": ParabellumKit.JSONValue.bool(true), "osquery_hunting": ParabellumKit.JSONValue.bool(true)]), "realtime": ParabellumKit.JSONValue.object(["auto_quarantine": ParabellumKit.JSONValue.bool(true), "enabled": ParabellumKit.JSONValue.bool(true), "fsevents": ParabellumKit.JSONValue.bool(true), "kill_malicious_processes": ParabellumKit.JSONValue.bool(true), "eslogger": ParabellumKit.JSONValue.bool(true), "scan_on_exec": ParabellumKit.JSONValue.bool(true)]), "devices": ParabellumKit.JSONValue.object(["alert_new_hid": ParabellumKit.JSONValue.bool(true), "alert_other_usb": ParabellumKit.JSONValue.bool(true), "alert_bluetooth": ParabellumKit.JSONValue.bool(true), "block_new_hid": ParabellumKit.JSONValue.bool(false), "scan_volumes": ParabellumKit.JSONValue.bool(true), "alert_wifi_networks": ParabellumKit.JSONValue.bool(true), "alert_network_interfaces": ParabellumKit.JSONValue.bool(true), "alert_thunderbolt": ParabellumKit.JSONValue.bool(true)]), "intelligence": ParabellumKit.JSONValue.object(["max_anomaly_alerts_per_day": ParabellumKit.JSONValue.int(10), "block_ml_domains": ParabellumKit.JSONValue.bool(false), "domain_alerts": ParabellumKit.JSONValue.bool(true), "learning_days": ParabellumKit.JSONValue.int(7), "anomaly_threshold": ParabellumKit.JSONValue.double(0.75), "domain_model": ParabellumKit.JSONValue.bool(true), "domain_allowlist": ParabellumKit.JSONValue.array([]), "behavior_anomaly": ParabellumKit.JSONValue.bool(true)]), "mail_agent": ParabellumKit.JSONValue.object(["require_ac_power": ParabellumKit.JSONValue.bool(true), "enabled": ParabellumKit.JSONValue.bool(false), "mailbox": ParabellumKit.JSONValue.string("INBOX"), "notes_dir": ParabellumKit.JSONValue.string("~/Documents/Parabellum RGPD"), "idle_minutes": ParabellumKit.JSONValue.int(10), "imap_host": ParabellumKit.JSONValue.string(""), "model": ParabellumKit.JSONValue.string("qwen3:4b"), "imap_password": ParabellumKit.JSONValue.null, "imap_port": ParabellumKit.JSONValue.int(993), "max_messages_per_run": ParabellumKit.JSONValue.int(50), "imap_username": ParabellumKit.JSONValue.string(""), "interval_hours": ParabellumKit.JSONValue.int(6)]), "data_removal": ParabellumKit.JSONValue.object(["send_mode": ParabellumKit.JSONValue.string("drafts"), "smtp_host": ParabellumKit.JSONValue.string(""), "escalate_after_days": ParabellumKit.JSONValue.int(15), "enabled": ParabellumKit.JSONValue.bool(false), "repeat_every_days": ParabellumKit.JSONValue.int(180), "max_emails_per_day": ParabellumKit.JSONValue.int(20), "smtp_port": ParabellumKit.JSONValue.int(587), "smtp_password": ParabellumKit.JSONValue.null, "smtp_username": ParabellumKit.JSONValue.string(""), "regions": ParabellumKit.JSONValue.array([ParabellumKit.JSONValue.string("eu"), ParabellumKit.JSONValue.string("global")]), "language": ParabellumKit.JSONValue.string("fr"), "reminder_after_days": ParabellumKit.JSONValue.int(30), "from_address": ParabellumKit.JSONValue.string("")]), "network": ParabellumKit.JSONValue.object(["poll_seconds": ParabellumKit.JSONValue.int(20), "enabled": ParabellumKit.JSONValue.bool(true)]), "energy": ParabellumKit.JSONValue.object(["pause_on_battery_below": ParabellumKit.JSONValue.int(20), "background_qos": ParabellumKit.JSONValue.bool(true)]), "dns": ParabellumKit.JSONValue.object(["custom_allow": ParabellumKit.JSONValue.array([]), "custom_block": ParabellumKit.JSONValue.array([]), "listen": ParabellumKit.JSONValue.string("127.0.0.1:53"), "block_trackers": ParabellumKit.JSONValue.bool(true), "block_ads": ParabellumKit.JSONValue.bool(true), "enabled": ParabellumKit.JSONValue.bool(false), "block_malware": ParabellumKit.JSONValue.bool(true), "upstream_servers": ParabellumKit.JSONValue.array([ParabellumKit.JSONValue.string("cloudflare"), ParabellumKit.JSONValue.string("quad9-doh-ip4-port443-filter-pri")])]), "aliases": ParabellumKit.JSONValue.object(["domain": ParabellumKit.JSONValue.string(""), "base_url": ParabellumKit.JSONValue.string(""), "api_key": ParabellumKit.JSONValue.null, "provider": ParabellumKit.JSONValue.string("none")]), "notifications": ParabellumKit.JSONValue.object(["enabled": ParabellumKit.JSONValue.bool(true), "min_severity": ParabellumKit.JSONValue.string("medium")]), "travel": ParabellumKit.JSONValue.object(["airdrop_off": ParabellumKit.JSONValue.bool(true), "auto_enable": ParabellumKit.JSONValue.bool(false), "suggest_on_untrusted": ParabellumKit.JSONValue.bool(true), "block_all_incoming": ParabellumKit.JSONValue.bool(false), "bluetooth_off": ParabellumKit.JSONValue.bool(false)]), "updates": ParabellumKit.JSONValue.object(["github_token": ParabellumKit.JSONValue.null, "freshclam": ParabellumKit.JSONValue.bool(true), "app_releases_api": ParabellumKit.JSONValue.string("https://api.github.com/repos/WLDEUS/Parabellum/releases"), "db_base_url": ParabellumKit.JSONValue.string("https://github.com/WLDEUS/Parabellum/releases/download/db-latest"), "daily_hour": ParabellumKit.JSONValue.int(3), "auto_update_app": ParabellumKit.JSONValue.bool(false), "auto_update_components": ParabellumKit.JSONValue.bool(true)]), "ml": ParabellumKit.JSONValue.object(["suspicious_threshold": ParabellumKit.JSONValue.double(0.85), "enabled": ParabellumKit.JSONValue.bool(true), "only_untrusted": ParabellumKit.JSONValue.bool(true)]), "breach": ParabellumKit.JSONValue.object(["provider": ParabellumKit.JSONValue.string("xposed_or_not"), "check_interval_hours": ParabellumKit.JSONValue.int(168), "hibp_api_key": ParabellumKit.JSONValue.null, "enabled": ParabellumKit.JSONValue.bool(false), "emails": ParabellumKit.JSONValue.array([])]), "privacy": ParabellumKit.JSONValue.object(["virustotal_api_key": ParabellumKit.JSONValue.null, "virustotal_lookup": ParabellumKit.JSONValue.bool(false)])]), "id": ParabellumKit.JSONValue.int(26)])
+Test Case '-[ParabellumKitTests.ProtocolTests testRequestsMatchRustEncoding]' failed (0.039 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testRequiresAdminEdgeCases]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testRequiresAdminEdgeCases]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testRequiresAdminMatchesRust]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testRequiresAdminMatchesRust]' passed (0.004 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testServerLines]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testServerLines]' passed (0.004 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testSetConfigPreservesUnknownKeys]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testSetConfigPreservesUnknownKeys]' passed (0.013 seconds).
+Test Case '-[ParabellumKitTests.ProtocolTests testUnknownEventIsTolerated]' started.
+Test Case '-[ParabellumKitTests.ProtocolTests testUnknownEventIsTolerated]' passed (0.000 seconds).
+Test Suite 'ProtocolTests' failed at 2026-11-24 00:24:02.204.
+	 Executed 14 tests, with 2 failures (0 unexpected) in 0.467 (0.468) seconds
+Test Suite 'RouterAdminTests' started at 2026-11-24 00:24:02.204.
+Test Case '-[ParabellumKitTests.RouterAdminTests testFreeboxFromFixture]' started.
+Test Case '-[ParabellumKitTests.RouterAdminTests testFreeboxFromFixture]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.RouterAdminTests testGenericRouterUsesPrivateGatewayIP]' started.
+Test Case '-[ParabellumKitTests.RouterAdminTests testGenericRouterUsesPrivateGatewayIP]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.RouterAdminTests testPrivateIPv4]' started.
+Test Case '-[ParabellumKitTests.RouterAdminTests testPrivateIPv4]' passed (0.001 seconds).
+Test Suite 'RouterAdminTests' passed at 2026-11-24 00:24:02.206.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.002 (0.003) seconds
+Test Suite 'SearchTests' started at 2026-11-24 00:24:02.206.
+Test Case '-[ParabellumKitTests.SearchTests testAllTermsMustMatchAndRanking]' started.
+Test Case '-[ParabellumKitTests.SearchTests testAllTermsMustMatchAndRanking]' passed (0.002 seconds).
+Test Case '-[ParabellumKitTests.SearchTests testDamerauDistance]' started.
+Test Case '-[ParabellumKitTests.SearchTests testDamerauDistance]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.SearchTests testExactPrefixFuzzyAndAccents]' started.
+Test Case '-[ParabellumKitTests.SearchTests testExactPrefixFuzzyAndAccents]' passed (0.002 seconds).
+Test Case '-[ParabellumKitTests.SearchTests testFiltersPhrasesExclusions]' started.
+Test Case '-[ParabellumKitTests.SearchTests testFiltersPhrasesExclusions]' passed (0.002 seconds).
+Test Case '-[ParabellumKitTests.SearchTests testFoldingAndTokens]' started.
+Test Case '-[ParabellumKitTests.SearchTests testFoldingAndTokens]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.SearchTests testHighlightRanges]' started.
+Test Case '-[ParabellumKitTests.SearchTests testHighlightRanges]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.SearchTests testPrivacyDocumentsFromDaemonPayloads]' started.
+Test Case '-[ParabellumKitTests.SearchTests testPrivacyDocumentsFromDaemonPayloads]' passed (0.003 seconds).
+Test Suite 'SearchTests' passed at 2026-11-24 00:24:02.216.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.009 (0.009) seconds
+Test Suite 'TravelShortcutsTests' started at 2026-11-24 00:24:02.216.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testFinderURLActions]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testFinderURLActions]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testLocalPlanEnableAndRestore]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testLocalPlanEnableAndRestore]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testStatusInfoTravelFlag]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testStatusInfoTravelFlag]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testTravelConfigDefaultsMatchRust]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testTravelConfigDefaultsMatchRust]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testTravelRequestsClassification]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testTravelRequestsClassification]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testTravelStatusDefaultFixture]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testTravelStatusDefaultFixture]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testTravelStatusFixture]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testTravelStatusFixture]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testURLActions]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testURLActions]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testURLExamplesAllParse]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testURLExamplesAllParse]' passed (0.002 seconds).
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testURLPolicyLoweringActionsNeedConfirmationAndFreshAuth]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testURLPolicyLoweringActionsNeedConfirmationAndFreshAuth]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testURLPolicyMatchesRequestClassification]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testURLPolicyMatchesRequestClassification]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testURLPolicyScanNeverRetriesAuth]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testURLPolicyScanNeverRetriesAuth]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testURLRejectsOddInput]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testURLRejectsOddInput]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testURLScanPaths]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testURLScanPaths]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testWidgetSnapshotWireFormatAndPath]' started.
+Test Case '-[ParabellumKitTests.TravelShortcutsTests testWidgetSnapshotWireFormatAndPath]' passed (0.001 seconds).
+Test Suite 'TravelShortcutsTests' passed at 2026-11-24 00:24:02.227.
+	 Executed 15 tests, with 0 failures (0 unexpected) in 0.010 (0.011) seconds
+Test Suite 'VaultTests' started at 2026-11-24 00:24:02.227.
+Test Case '-[ParabellumKitTests.VaultTests testAbsentVaultOmitsOptionals]' started.
+Test Case '-[ParabellumKitTests.VaultTests testAbsentVaultOmitsOptionals]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.VaultTests testErrorEnvelopeIsThrown]' started.
+Test Case '-[ParabellumKitTests.VaultTests testErrorEnvelopeIsThrown]' passed (0.002 seconds).
+Test Case '-[ParabellumKitTests.VaultTests testLocationArguments]' started.
+Test Case '-[ParabellumKitTests.VaultTests testLocationArguments]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.VaultTests testOpenVaultStatus]' started.
+Test Case '-[ParabellumKitTests.VaultTests testOpenVaultStatus]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.VaultTests testRecoveryKeyNormalization]' started.
+Test Case '-[ParabellumKitTests.VaultTests testRecoveryKeyNormalization]' passed (0.001 seconds).
+Test Case '-[ParabellumKitTests.VaultTests testRecoveryKeyShape]' started.
+Test Case '-[ParabellumKitTests.VaultTests testRecoveryKeyShape]' passed (0.000 seconds).
+Test Case '-[ParabellumKitTests.VaultTests testShredReports]' started.
+Test Case '-[ParabellumKitTests.VaultTests testShredReports]' passed (0.001 seconds).
+Test Suite 'VaultTests' passed at 2026-11-24 00:24:02.235.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.008 (0.008) seconds
+Test Suite 'ParabellumPackageTests.xctest' failed at 2026-11-24 00:24:02.235.
+	 Executed 113 tests, with 2 failures (0 unexpected) in 1.057 (1.066) seconds
+Test Suite 'All tests' failed at 2026-11-24 00:24:02.235.
+	 Executed 113 tests, with 2 failures (0 unexpected) in 1.057 (1.067) seconds
+◇ Test run started.
+↳ Testing Library Version: 124.4
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests passed after 0.001 seconds.

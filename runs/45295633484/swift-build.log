@@ -1,0 +1,52 @@
+[0/1] Planning build
+Building for production...
+[0/4] Write sources
+[2/4] Write swift-version--79AA4F9932D1E87A.txt
+[4/5] Compiling ParabellumKit CleaningModels.swift
+[5/6] Compiling Parabellum AdminAuthorizer.swift
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel+Freshness.swift:28:70: warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 21 | extension AppModel {
+ 22 |     /// Data younger than this is not reloaded when a screen appears (the refresh button always reloads).
+ 23 |     static let freshFor: TimeInterval = 30
+    |                `- note: static property declared here
+ 24 | 
+ 25 |     // MARK: - Freshness API (also for the feature stores)
+ 26 | 
+ 27 |     /// True when `key` was never loaded, was invalidated, or is older than `maxAge`.
+ 28 |     func needsRefresh(_ key: String, maxAge: TimeInterval = AppModel.freshFor) -> Bool {
+    |                                                                      `- warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 29 |         freshness.needsRefresh(key, maxAge: maxAge)
+ 30 |     }
+
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/AppModel+Freshness.swift:53:68: warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 21 | extension AppModel {
+ 22 |     /// Data younger than this is not reloaded when a screen appears (the refresh button always reloads).
+ 23 |     static let freshFor: TimeInterval = 30
+    |                `- note: static property declared here
+ 24 | 
+ 25 |     // MARK: - Freshness API (also for the feature stores)
+    :
+ 51 |     /// Runs `load` (which returns true on success) unless `key` is fresh or already loading; marks the key
+ 52 |     /// fresh on success.
+ 53 |     func revalidate(_ key: String, maxAge: TimeInterval = AppModel.freshFor, force: Bool = false, _ load: () async -> Bool) async {
+    |                                                                    `- warning: main actor-isolated static property 'freshFor' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+ 54 |         guard force || (freshness.needsRefresh(key, maxAge: maxAge) && !isBusy(key)) else { return }
+ 55 |         if await load() {
+
+/Users/runner/work/Parabellum/Parabellum/app/Sources/Parabellum/SingleInstance.swift:59:45: warning: main actor-isolated static property 'urlKey' can not be referenced from a Sendable closure; this is an error in the Swift 6 language mode
+ 21 | enum SingleInstance {
+ 22 |     static let forwardNotification = Notification.Name("com.wldeus.parabellum.forward-open")
+ 23 |     private static let urlKey = "url"
+    |                        `- note: static property declared here
+ 24 |     /// Links / files accepted per forward, like `ParabellumURL.maxPaths`.
+ 25 |     private static let maxForwarded = 20
+    :
+ 57 |             forName: forwardNotification, object: nil, queue: .main
+ 58 |         ) { note in
+ 59 |             guard let text = note.userInfo?[urlKey] as? String, text.utf8.count <= 64 * 1024,
+    |                                             `- warning: main actor-isolated static property 'urlKey' can not be referenced from a Sendable closure; this is an error in the Swift 6 language mode
+ 60 |                   let url = URL(string: text) else { return }
+ 61 |             MainActor.assumeIsolated { handler(url) }
+[5/7] Write Objects.LinkFileList
+[6/7] Linking Parabellum
+Build complete! (104.57s)
