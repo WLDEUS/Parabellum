@@ -117,6 +117,47 @@ impl Ollama {
     }
 }
 
+impl Ollama {
+    /// Free text from `system` + `user` (deterministic: temperature 0, no "thinking"), at most
+    /// `max_tokens`. The caller treats the answer as untrusted text to display, never as instructions.
+    pub async fn complete(
+        &self,
+        system: &str,
+        user: &str,
+        max_tokens: u32,
+    ) -> Result<String, String> {
+        let body = serde_json::json!({
+            "model": self.model,
+            "stream": false,
+            "think": false,
+            "keep_alive": "2m",
+            "options": { "temperature": 0, "num_ctx": 4096, "num_predict": max_tokens },
+            "messages": [
+                { "role": "system", "content": system },
+                { "role": "user", "content": user }
+            ]
+        });
+        let v: serde_json::Value = self
+            .http
+            .post(format!("{}/api/chat", self.base))
+            .json(&body)
+            .timeout(Duration::from_secs(180))
+            .send()
+            .await
+            .map_err(|e| format!("modèle injoignable : {e}"))?
+            .error_for_status()
+            .map_err(|e| format!("modèle : {e}"))?
+            .json()
+            .await
+            .map_err(|e| format!("réponse du modèle illisible : {e}"))?;
+        v.get("message")
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_str())
+            .map(str::to_string)
+            .ok_or_else(|| "réponse du modèle vide".to_string())
+    }
+}
+
 fn nonce() -> String {
     uuid::Uuid::new_v4().simple().to_string()[..16].to_string()
 }

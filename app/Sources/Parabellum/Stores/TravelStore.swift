@@ -41,7 +41,7 @@ final class TravelStore: ObservableObject {
     /// Follow `StatusInfo.travelActive` (called once from `AppModel.start()`).
     func activate() {
         guard activeSubscription == nil else { return }
-        activeSubscription = model.$status
+        activeSubscription = model.statusPublisher
             .map { $0?.travelActive }
             .removeDuplicates()
             .sink { [weak self] active in

@@ -3,7 +3,7 @@ import ParabellumKit
 import SwiftUI
 
 struct ScanView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var useClamav = true
     @State private var clamavInitialized = false
     @State private var isDropTargeted = false
@@ -215,7 +215,7 @@ struct ScanView: View {
             if model.recentJobs.isEmpty {
                 Text("Aucune analyse récente.").foregroundStyle(.secondary)
             } else {
-                List(selection: $model.selectedJobId) {
+                List(selection: Binding(get: { model.selectedJobId }, set: { model.selectedJobId = $0 })) {
                     ForEach(model.recentJobs) { job in
                         JobRow(job: job)
                     }
@@ -287,7 +287,7 @@ private struct JobRow: View {
 
 /// Findings of one job, with Quarantaine / Faux positif actions.
 private struct FindingsList: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let detail: ScanJobDetail
 
     var body: some View {
@@ -323,7 +323,7 @@ private struct FindingsList: View {
 }
 
 private struct FindingRow: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let report: ScanReport
     @State private var confirmQuarantine = false
 

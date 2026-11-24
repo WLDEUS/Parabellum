@@ -4,7 +4,7 @@ import SwiftUI
 
 /// "Réseau local": devices of the current network, unknown / new badges, scan with progress.
 struct LanView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @ObservedObject var store: LanStore
     @State private var selected: LanDevice?
     @State private var confirmFullScan = false
@@ -61,7 +61,7 @@ struct LanView: View {
         }
         .sheet(item: $selected) { device in
             LanDeviceSheet(store: store, mac: device.mac)
-                .environmentObject(model)
+                .environment(model)
         }
         .confirmationDialog(
             "Analyser complètement ce réseau ?",
@@ -167,7 +167,7 @@ private struct RouterAdminButton: View {
 }
 
 private struct LanHeaderCard: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @ObservedObject var store: LanStore
     let network: LanNetwork
     @Binding var confirmFullScan: Bool
@@ -392,7 +392,7 @@ struct LanDeviceCard: View {
 // MARK: - Device sheet
 
 private struct LanDeviceSheet: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var store: LanStore
     let mac: String

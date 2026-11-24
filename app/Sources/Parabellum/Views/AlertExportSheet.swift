@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 /// Alertes › Exporter… : full alert report as PDF, HTML, CSV, JSON or Markdown. The daemon renders it
 /// (`export_alerts`, same output as `parabellum export-alerts`); PDF = that HTML, paginated by WebKit.
 struct AlertExportSheet: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
 
     enum Format: String, CaseIterable, Identifiable {

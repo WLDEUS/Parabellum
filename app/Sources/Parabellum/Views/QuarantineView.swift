@@ -2,7 +2,7 @@ import ParabellumKit
 import SwiftUI
 
 struct QuarantineView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var pendingDelete: QuarantineEntry?
 
     var body: some View {
@@ -63,7 +63,7 @@ struct QuarantineView: View {
 }
 
 private struct QuarantineRow: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let entry: QuarantineEntry
     let onDelete: () -> Void
 

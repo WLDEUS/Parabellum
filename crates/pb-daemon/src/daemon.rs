@@ -34,6 +34,11 @@ pub struct DaemonOptions {
 
 /// kv: version of the daemon that ran last (detects updates).
 pub const KV_LAST_VERSION: &str = "daemon_version";
+/// Set when the daemon restarts itself after an internal task panicked (`<unix ts> <message>`): the next
+/// start raises an alert, then clears it.
+pub const KV_CRASH_NOTE: &str = "daemon_crash_note";
+/// How often [`Daemon::supervise`] looks at the background tasks.
+const SUPERVISE_EVERY: Duration = Duration::from_secs(5);
 
 /// A running daemon.
 pub struct Daemon {
@@ -98,6 +103,7 @@ pub async fn start(opts: DaemonOptions) -> anyhow::Result<Daemon> {
     if let Some(until) = paused {
         router::schedule_resume_notice(ctx.clone(), until);
     }
+    report_previous_crash(&ctx).await;
     if let Some(err) = loaded.fallback_error {
         let a = actions::alert(
             AlertKind::System,
@@ -215,6 +221,8 @@ pub async fn start(opts: DaemonOptions) -> anyhow::Result<Daemon> {
         tasks.push(tokio::spawn(crate::mailagent::run_loop(ctx.clone())));
         // Activity report: VPN uptime / leak test sampling, monthly announcement.
         tasks.push(tokio::spawn(crate::report::monthly_loop(ctx.clone())));
+        // Daily report on the Mac's situation (+ local AI summary when idle on mains power).
+        tasks.push(tokio::spawn(crate::daily::run_loop(ctx.clone())));
     }
     let c2 = ctx.clone();
     tokio::spawn(async move {
@@ -250,6 +258,45 @@ async fn dns_startup(ctx: Arc<Ctx>) {
 impl Daemon {
     pub fn ctx(&self) -> &Arc<Ctx> {
         &self.ctx
+    }
+
+    /// Watch one more background task (tests, extra producers).
+    pub fn adopt_task(&mut self, task: JoinHandle<()>) {
+        self.tasks.push(task);
+    }
+
+    /// Returns only when a background task (real-time dispatcher, monitors, jobs, IPC server…) has
+    /// panicked, with the panic message. Before, the task just vanished: the daemon kept answering
+    /// « protection active » with a dead watcher. The caller shuts down cleanly and exits non-zero so
+    /// launchd (`KeepAlive`) starts a fresh daemon, which raises an alert about it ([`KV_CRASH_NOTE`]).
+    /// Tasks that end normally (one-shot start-up work) are simply dropped from the watch.
+    pub async fn supervise(&mut self) -> String {
+        loop {
+            tokio::time::sleep(SUPERVISE_EVERY).await;
+            if self.server.is_finished() {
+                let outcome = (&mut self.server).await;
+                // Re-arm with a task that never ends so `shutdown` can still abort it.
+                self.server = tokio::spawn(std::future::pending());
+                if let Err(e) = outcome {
+                    if e.is_panic() {
+                        return format!("serveur IPC : {}", panic_message(e));
+                    }
+                }
+            }
+            let mut i = 0;
+            while i < self.tasks.len() {
+                if !self.tasks[i].is_finished() {
+                    i += 1;
+                    continue;
+                }
+                let handle = self.tasks.swap_remove(i);
+                if let Err(e) = handle.await {
+                    if e.is_panic() {
+                        return panic_message(e);
+                    }
+                }
+            }
+        }
     }
 
     /// Inject monitor events (tests, or extra producers).
@@ -302,4 +349,39 @@ impl Daemon {
         let _ = std::fs::remove_file(&ctx.paths.socket);
         tracing::info!("parabellumd stopped");
     }
+}
+
+fn panic_message(e: tokio::task::JoinError) -> String {
+    let payload = e.into_panic();
+    let text = payload
+        .downcast_ref::<&str>()
+        .map(|s| s.to_string())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "panique sans message".to_string());
+    text.chars().take(300).collect()
+}
+
+/// Called at start-up: alert about a self-restart recorded by the previous run.
+pub(crate) async fn report_previous_crash(ctx: &Arc<Ctx>) {
+    let Ok(Some(note)) = ctx.store.run(|s| s.kv_get(KV_CRASH_NOTE)).await else {
+        return;
+    };
+    let _ = ctx.store.run(|s| s.kv_delete(KV_CRASH_NOTE)).await;
+    let (ts, message) = note.split_once(' ').unwrap_or(("", note.as_str()));
+    tracing::error!(
+        at = ts,
+        message,
+        "previous run restarted after an internal error"
+    );
+    let alert = actions::alert(
+        AlertKind::System,
+        Severity::High,
+        "Parabellum a redémarré après une erreur interne",
+        format!(
+            "Une tâche interne du service s'est arrêtée sur une erreur ({message}). Le service a été \
+             redémarré automatiquement et la protection a repris. Si ce message revient, exporte le \
+             journal (/Library/Logs/Parabellum) et signale-le."
+        ),
+    );
+    actions::raise_alert(ctx, alert, None).await;
 }

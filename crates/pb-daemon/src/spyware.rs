@@ -849,6 +849,7 @@ pub async fn start(ctx: &Arc<Ctx>) -> Result<String, IpcError> {
         ));
     }
     let spec = JobSpec {
+        report_only: false,
         paths: vec![format!(
             "Zero Breach Toolkit {} : traces de logiciels espions",
             meta.version

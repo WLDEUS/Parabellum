@@ -11,6 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// that launches the app is not lost); `application(_:open:)` covers the case where AppKit / SwiftUI
     /// keeps its own handler.
     func applicationWillFinishLaunching(_ notification: Notification) {
+        // Normally claimed in `ParabellumApp.init`; idempotent.
+        SingleInstance.claim()
         NSAppleEventManager.shared().setEventHandler(
             self,
             andSelector: #selector(handleGetURL(_:withReplyEvent:)),
@@ -32,6 +34,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func open(_ url: URL) {
+        // A duplicate launched for this link / file hands it to the running copy.
+        if SingleInstance.deferIfSecondary(url) { return }
         // Double-click on a folder encrypted from the Finder.
         if url.isFileURL, CoffrePackage.isPackage(url) {
             AppModel.shared.start()
@@ -46,13 +50,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // The socket uses SO_NOSIGPIPE; this is a second safety net.
         signal(SIGPIPE, SIG_IGN)
+        // A duplicate starts nothing: it forwards what it was opened for and exits (SingleInstance).
+        guard !SingleInstance.isSecondary else { return }
+        // The LaunchAgent starts the app at login: macOS « Rouvrir les fenêtres » must not start a second
+        // copy (nor restore the main window, which used to pop up at every login).
+        NSApp.disableRelaunchOnLogin()
+        SingleInstance.listen { [weak self] url in self?.open(url) }
         // Menu bar app: no Dock icon unless the main window is open (also covers `swift run`,
         // where there is no Info.plist with LSUIElement).
         NSApp.setActivationPolicy(.accessory)
         // Finder › Actions rapides / Services.
         NSApp.servicesProvider = services
         NSUpdateDynamicServices()
-        FinderExtensionSupport.enableOnce()
+        FinderExtensionSupport.ensureEnabled()
         AppModel.shared.start()
         // Coffre: auto-lock observers (screen lock, sleep, idle) and first status.
         AppModel.shared.vault.start()

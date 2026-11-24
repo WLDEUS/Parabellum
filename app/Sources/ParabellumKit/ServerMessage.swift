@@ -15,6 +15,8 @@ public enum DaemonEvent: Sendable, Equatable {
     case vpn(VpnStatus)
     /// LAN scan progress / result.
     case lan(LanStatus)
+    /// A daily report was built.
+    case dailyReport(DailyReportSummary)
     /// An event name this build does not know (newer daemon); its payload is ignored.
     case unknown(String)
 
@@ -31,6 +33,7 @@ public enum DaemonEvent: Sendable, Equatable {
         case .quarantined: return "quarantined"
         case .vpn: return "vpn"
         case .lan: return "lan"
+        case .dailyReport: return "daily_report"
         case .unknown(let name): return name
         }
     }
@@ -65,6 +68,8 @@ extension DaemonEvent: Decodable {
             self = .vpn(try c.decode(VpnStatus.self, forKey: .data))
         case "lan":
             self = .lan(try c.decode(LanStatus.self, forKey: .data))
+        case "daily_report":
+            self = .dailyReport(try c.decode(DailyReportSummary.self, forKey: .data))
         default:
             self = .unknown(name)
         }

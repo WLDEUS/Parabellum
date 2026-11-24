@@ -794,6 +794,15 @@ pub fn event(ev: &DaemonEvent) -> String {
             ),
             (None, _) => format!("[{now}] réseau local : aucun réseau"),
         },
+        DaemonEvent::DailyReport(r) => format!(
+            "[{now}] rapport du jour {} : {}{}",
+            r.date,
+            r.headline,
+            r.highlights
+                .iter()
+                .map(|h| format!("\n    - {h}"))
+                .collect::<String>()
+        ),
     }
 }
 
@@ -862,6 +871,28 @@ pub fn activity_report(r: &ActivityReport) -> String {
     list("Domaines les plus bloqués", &r.top_blocked_domains);
     list("Alertes par type", &r.top_alert_kinds);
     o
+}
+
+// ----- Daily report -----
+
+pub fn daily_report(r: &DailyReport) -> String {
+    let mut s = format!("Rapport du {} — {}\n", r.date, r.headline);
+    for h in &r.highlights {
+        s.push_str(&format!("  • {h}\n"));
+    }
+    s.push_str(&format!("\n{}\n", r.summary));
+    if r.summary_source == SummarySource::LocalAi {
+        if let Some(m) = &r.summary_model {
+            s.push_str(&format!("(résumé rédigé par le modèle local {m})\n"));
+        }
+    }
+    if !r.facts.top_unseen.is_empty() {
+        s.push_str("\nNon vues :\n");
+        for a in &r.facts.top_unseen {
+            s.push_str(&format!("  [{:?}] #{} {}\n", a.severity, a.id, a.title));
+        }
+    }
+    s
 }
 
 #[cfg(test)]

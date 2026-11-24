@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Content of the menu bar window (`.menuBarExtraStyle(.window)`).
 struct MenuBarContentView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {

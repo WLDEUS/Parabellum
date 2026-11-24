@@ -15,7 +15,7 @@ enum AlertSort: String, CaseIterable, Identifiable {
 }
 
 struct AlertsView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var kindFilter: AlertKind?
     /// Severities shown (chips); all by default.
     @State private var severities: Set<Severity> = Set(Severity.known)
@@ -99,7 +99,7 @@ struct AlertsView: View {
         }
         .sheet(isPresented: $showExport) {
             AlertExportSheet()
-                .environmentObject(model)
+                .environment(model)
         }
         .onAppear {
             if let id = model.selectedAlertId { selection = [id] }
@@ -170,6 +170,19 @@ struct AlertsView: View {
             } else {
                 ForEach(visible) { AlertRow(alert: $0) }
             }
+            // Older alerts are paged in when the end of the list scrolls into view.
+            if model.alertsHaveMore {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Chargement des alertes plus anciennes…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .selectionDisabled()
+                .onAppear { Task { await model.loadMoreAlerts() } }
+            }
         }
         .contextMenu(forSelectionType: Int64.self) { ids in
             selectionMenu(ids)
@@ -195,7 +208,7 @@ struct AlertsView: View {
     private func filterBar(_ base: [SecurityAlert]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                Picker("État", selection: $model.includeResolvedAlerts) {
+                Picker("État", selection: Binding(get: { model.includeResolvedAlerts }, set: { model.includeResolvedAlerts = $0 })) {
                     Text("Ouvertes").tag(false)
                     Text("Toutes").tag(true)
                 }
@@ -298,7 +311,7 @@ private struct SeverityChip: View {
 
 /// Several alerts selected: summary and the actions they all accept.
 private struct BulkAlertsView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let alerts: [SecurityAlert]
     let clearSelection: () -> Void
     @State private var pendingAction: AlertAction?
@@ -427,7 +440,7 @@ private struct AlertRow: View {
 }
 
 private struct AlertDetailView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let alert: SecurityAlert
     @State private var pendingAction: AlertAction?
 

@@ -563,6 +563,7 @@ mod tests {
             paths: vec!["/x".into()],
             recursive: true,
             use_clamav: None,
+            report_only: false,
         };
         // requires_admin: root, or installed client + valid auth, or dev bypass.
         assert_eq!(

@@ -183,6 +183,18 @@ pub enum Command {
         #[arg(long, requires = "from")]
         to: Option<String>,
     },
+    /// Rapport du jour : dernier (défaut), d'une date, liste des 30 derniers jours, ou générer maintenant.
+    DailyReport {
+        /// Date AAAA-MM-JJ.
+        #[arg(long, conflicts_with_all = ["list", "generate"])]
+        date: Option<String>,
+        /// Lister les rapports gardés.
+        #[arg(long, conflicts_with = "generate")]
+        list: bool,
+        /// Construire le rapport du jour maintenant.
+        #[arg(long)]
+        generate: bool,
+    },
     /// Ré-analyser les fichiers vus récemment avec la base actuelle.
     RetroHunt {
         /// Fenêtre en jours.
@@ -352,6 +364,10 @@ pub struct ScanArgs {
     /// Rendre la main immédiatement (afficher seulement l'identifiant).
     #[arg(long)]
     pub no_wait: bool,
+    /// Seulement relever les verdicts : ni quarantaine, ni alerte, ni action (bancs d'essai, audit de
+    /// faux positifs sur des apps installées).
+    #[arg(long)]
+    pub report_only: bool,
 }
 
 #[derive(Debug, Subcommand)]

@@ -40,6 +40,8 @@ public struct Config: Codable, Sendable, Hashable {
     public var permissionsAudit = PermissionsAuditConfig()
     // Travel mode
     public var travel = TravelConfig()
+    /// Morning report (dashboard, notification, local AI summary).
+    public var dailyReport = DailyReportConfig()
 
     public init() {}
 
@@ -58,6 +60,7 @@ public struct Config: Codable, Sendable, Hashable {
         case permissionsAudit = "permissions"
         // Travel mode
         case travel
+        case dailyReport = "daily_report"
     }
 
     public init(from decoder: Decoder) throws {
@@ -65,6 +68,7 @@ public struct Config: Codable, Sendable, Hashable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         scan = try c.decodeOr(.scan, scan)
         fullScan = try c.decodeOr(.fullScan, fullScan)
+        dailyReport = try c.decodeOr(.dailyReport, dailyReport)
         realtime = try c.decodeOr(.realtime, realtime)
         ml = try c.decodeOr(.ml, ml)
         dns = try c.decodeOr(.dns, dns)
@@ -200,6 +204,33 @@ public struct ScanConfig: Codable, Sendable, Hashable {
 
 /// Whole-Mac scan (`[full_scan]`): everything on the startup disk but the sealed system volume, cloud-only
 /// files skipped. Automatic: at most every `intervalDays`, started when the Mac is idle (and on mains power).
+/// `[daily_report]`: same defaults as `DailyReportConfig` in Rust.
+public struct DailyReportConfig: Codable, Sendable, Hashable {
+    public var enabled: Bool = true
+    /// Local hour (0…23) from which the day's report is built.
+    public var hour: Int = 8
+    /// Plain-language summary by the local model (idle Mac on mains power), else a template.
+    public var aiSummary: Bool = true
+    public var notify: Bool = true
+
+    public init() {}
+
+    enum CodingKeys: String, CodingKey {
+        case enabled, hour
+        case aiSummary = "ai_summary"
+        case notify
+    }
+
+    public init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try c.decodeOr(.enabled, enabled)
+        hour = try c.decodeOr(.hour, hour)
+        aiSummary = try c.decodeOr(.aiSummary, aiSummary)
+        notify = try c.decodeOr(.notify, notify)
+    }
+}
+
 public struct FullScanConfig: Codable, Sendable, Hashable {
     /// Same bounds as `FULL_SCAN_MAX_INTERVAL_DAYS` / `FULL_SCAN_MAX_IDLE_MINUTES` in Rust.
     public static let maxIntervalDays = 90

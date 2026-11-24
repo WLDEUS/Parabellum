@@ -18,7 +18,7 @@ struct PrivacyView: View {
         }
     }
 
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var tab: Tab = .removal
     @State private var query = ""
     @State private var searchKind: PrivacySearch.Kind?
@@ -81,7 +81,7 @@ struct PrivacyView: View {
 
 /// Results of the privacy search bar (requests, brokers, breaches, aliases), best first.
 private struct PrivacySearchResults: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let query: String
     @Binding var kind: PrivacySearch.Kind?
     let open: (PrivacySearch.Kind) -> Void
@@ -152,7 +152,7 @@ private struct PrivacySearchResults: View {
 }
 
 private struct PrivacySearchRow: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let hit: SearchHit
     let open: (PrivacySearch.Kind) -> Void
 
@@ -240,7 +240,7 @@ private struct PrivacySearchRow: View {
 // MARK: - GDPR removal
 
 private struct RemovalTab: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -266,7 +266,7 @@ private struct RemovalTab: View {
 }
 
 private struct IdentityCard: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var editing: EditableIdentity?
 
     var body: some View {
@@ -305,7 +305,7 @@ private struct IdentityCard: View {
             IdentityEditor(initial: item.profile) {
                 editing = nil
             }
-            .environmentObject(model)
+            .environment(model)
         }
     }
 
@@ -333,7 +333,7 @@ private struct EditableIdentity: Identifiable {
 }
 
 private struct IdentityEditor: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var draft: IdentityProfile
     let onClose: () -> Void
 
@@ -404,7 +404,7 @@ private struct IdentityEditor: View {
 }
 
 private struct CampaignCard: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var confirmStart = false
 
     var body: some View {
@@ -507,7 +507,7 @@ private struct RequestsCard: View {
 
     private static let todoStatuses: [RemovalStatus] = [.queued, .draftReady, .needsForm, .needsYou, .failed, .escalated]
 
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var filter: Filter = .todo
     @State private var complaint: ComplaintItem?
     /// Rows rendered: hundreds of requests (each with a menu and buttons) in one glass card made the tab
@@ -580,7 +580,7 @@ private struct RequestsCard: View {
             ComplaintSheet(draft: item.draft) {
                 complaint = nil
             }
-            .environmentObject(model)
+            .environment(model)
         }
     }
 }
@@ -591,7 +591,7 @@ private struct ComplaintItem: Identifiable {
 }
 
 private struct MailAgentCard: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         Card(title: String(localized: "Agent courrier"), symbol: "envelope.badge") {
@@ -660,7 +660,7 @@ private struct MailAgentCard: View {
 }
 
 private struct RequestRow: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let request: RemovalRequest
     let showComplaint: (ComplaintDraft) -> Void
 
@@ -754,7 +754,7 @@ private struct RequestRow: View {
 }
 
 private struct ComplaintSheet: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let draft: ComplaintDraft
     let onClose: () -> Void
 

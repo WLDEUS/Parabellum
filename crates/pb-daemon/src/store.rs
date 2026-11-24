@@ -212,7 +212,21 @@ CREATE TABLE verdict_cache (
 CREATE INDEX verdict_cache_at ON verdict_cache(at);
 "#,
     ),
+    // ----- Daily reports (one per local day, 30 kept) -----
+    (
+        4,
+        r#"
+CREATE TABLE daily_reports (
+    date TEXT PRIMARY KEY,
+    generated_at INTEGER NOT NULL,
+    json TEXT NOT NULL
+);
+"#,
+    ),
 ];
+
+/// Daily reports kept (newest first).
+pub const DAILY_REPORTS_KEPT: i64 = 30;
 
 /// Rows kept in `verdict_cache` (most recently used first); entries of an older engine simply age out.
 pub const VERDICT_CACHE_CAP: i64 = 500_000;
@@ -491,8 +505,102 @@ impl Store {
         })
     }
 
+    // ----- Daily reports -----
+
+    /// Insert or replace the report of its date, then keep the newest [`DAILY_REPORTS_KEPT`].
+    pub fn put_daily_report(&self, r: &DailyReport) -> Result<()> {
+        let conn = self.lock();
+        conn.execute(
+            "INSERT OR REPLACE INTO daily_reports (date, generated_at, json) VALUES (?1, ?2, ?3)",
+            params![r.date, r.generated_at, serde_json::to_string(r)?],
+        )?;
+        conn.execute(
+            "DELETE FROM daily_reports WHERE date NOT IN \
+             (SELECT date FROM daily_reports ORDER BY date DESC LIMIT ?1)",
+            [DAILY_REPORTS_KEPT],
+        )?;
+        Ok(())
+    }
+
+    /// Report of `date`, or the newest one.
+    pub fn get_daily_report(&self, date: Option<&str>) -> Result<Option<DailyReport>> {
+        let conn = self.lock();
+        let json: Option<String> = match date {
+            Some(d) => conn
+                .query_row("SELECT json FROM daily_reports WHERE date = ?1", [d], |r| {
+                    r.get(0)
+                })
+                .optional()?,
+            None => conn
+                .query_row(
+                    "SELECT json FROM daily_reports ORDER BY date DESC LIMIT 1",
+                    [],
+                    |r| r.get(0),
+                )
+                .optional()?,
+        };
+        Ok(match json {
+            Some(j) => Some(serde_json::from_str(&j)?),
+            None => None,
+        })
+    }
+
+    pub fn list_daily_reports(&self, limit: u32) -> Result<Vec<DailyReportSummary>> {
+        let conn = self.lock();
+        let mut stmt =
+            conn.prepare("SELECT json FROM daily_reports ORDER BY date DESC LIMIT ?1")?;
+        let rows = stmt.query_map([limit.clamp(1, 366)], |r| {
+            from_json::<DailyReport>(&r.get::<_, String>(0)?)
+        })?;
+        Ok(rows
+            .collect::<rusqlite::Result<Vec<_>>>()?
+            .iter()
+            .map(DailyReport::summary_line)
+            .collect())
+    }
+
     /// Newest first.
     pub fn list_alerts(&self, limit: u32, include_resolved: bool) -> Result<Vec<Alert>> {
+        self.list_alerts_page(limit, include_resolved, None)
+    }
+
+    /// Newest first, one page: with `before_id`, only alerts strictly after that one in the
+    /// `ts DESC, id DESC` order (keyset pagination, stable while new alerts arrive). An unknown
+    /// `before_id` (alert cleaned up meanwhile) gives an empty page.
+    pub fn list_alerts_page(
+        &self,
+        limit: u32,
+        include_resolved: bool,
+        before_id: Option<i64>,
+    ) -> Result<Vec<Alert>> {
+        let Some(before) = before_id else {
+            return self.list_alerts_first(limit, include_resolved);
+        };
+        let conn = self.lock();
+        let Some(ts): Option<i64> = conn
+            .query_row("SELECT ts FROM alerts WHERE id = ?1", [before], |r| {
+                r.get(0)
+            })
+            .optional()?
+        else {
+            return Ok(Vec::new());
+        };
+        let status = if include_resolved {
+            ""
+        } else {
+            " AND status = 'open'"
+        };
+        let mut stmt = conn.prepare(&format!(
+            "SELECT json FROM alerts WHERE (ts < ?1 OR (ts = ?1 AND id < ?2)){status} \
+             ORDER BY ts DESC, id DESC LIMIT ?3"
+        ))?;
+        let rows = stmt.query_map(params![ts, before, limit.min(10_000)], |r| {
+            from_json::<Alert>(&r.get::<_, String>(0)?)
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    fn list_alerts_first(&self, limit: u32, include_resolved: bool) -> Result<Vec<Alert>> {
         let conn = self.lock();
         let sql = if include_resolved {
             "SELECT json FROM alerts ORDER BY ts DESC, id DESC LIMIT ?1"
@@ -1443,6 +1551,39 @@ mod tests {
         let (l, total) = s.alerts_between(i64::MIN, i64::MAX, true, 2).unwrap();
         assert_eq!(l.iter().map(|a| a.ts).collect::<Vec<_>>(), vec![400, 300]);
         assert_eq!(total, 4);
+    }
+
+    #[test]
+    fn alerts_keyset_pages_cover_everything_once() {
+        let s = Store::open_in_memory().unwrap();
+        // Same timestamp twice: the id breaks the tie, nothing is skipped or repeated.
+        let mut ids = Vec::new();
+        for (i, ts) in [100, 200, 200, 300, 400].into_iter().enumerate() {
+            ids.push(
+                s.insert_alert(&alert(&format!("/p{i}"), &format!("h{i}"), ts), None)
+                    .unwrap()
+                    .id,
+            );
+        }
+        let mut seen = Vec::new();
+        let mut cursor = None;
+        loop {
+            let page = s.list_alerts_page(2, true, cursor).unwrap();
+            if page.is_empty() {
+                break;
+            }
+            cursor = page.last().map(|a| a.id);
+            seen.extend(page.into_iter().map(|a| (a.ts, a.id)));
+        }
+        assert_eq!(seen.len(), 5);
+        let mut sorted = seen.clone();
+        sorted.sort_by(|a, b| b.cmp(a));
+        assert_eq!(seen, sorted, "newest first, ties by id");
+        // Unknown cursor (cleaned up meanwhile): empty page, not an error.
+        assert!(s
+            .list_alerts_page(10, true, Some(999_999))
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

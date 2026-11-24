@@ -4,7 +4,7 @@ import UserNotifications
 
 /// Form bound to a local copy of `Config`; "Enregistrer" sends `set_config` (unknown keys preserved).
 struct SettingsView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var draft = Config()
     @State private var loaded = false
     @State private var saving = false
@@ -22,6 +22,7 @@ struct SettingsView: View {
                     scanSection
                     finderSection
                     fullScanSection
+                    dailyReportSection
                     realtimeSection
                     mlSection
                     dnsSection
@@ -180,17 +181,11 @@ struct SettingsView: View {
 
     private var finderSection: some View {
         Section {
-            LabeledContent("Menu « Parabellum » du clic droit") {
-                Text(FinderExtensionSupport.isEnabled ? String(localized: "activé") : String(localized: "désactivé"))
-                    .foregroundStyle(FinderExtensionSupport.isEnabled ? Color.green : Color.secondary)
-            }
-            Button("Réglages des extensions du Finder…") {
-                FinderExtensionSupport.openSettings()
-            }
+            FinderExtensionStatusView()
         } header: {
             Text("Finder")
         } footer: {
-            Text("Clic droit sur un fichier ou un dossier › Parabellum : analyser, supprimer les métadonnées, chiffrer, supprimer définitivement. Les mêmes actions sont aussi dans Clic droit › Actions rapides (ou Services).")
+            Text("Clic droit sur un fichier ou un dossier › Parabellum : analyser, supprimer les métadonnées, chiffrer, supprimer définitivement. Les mêmes actions sont aussi dans Clic droit › Services.")
         }
     }
 
@@ -218,6 +213,24 @@ struct SettingsView: View {
             Text("Analyse complète")
         } footer: {
             Text("Tout le disque de démarrage sauf le volume système scellé d'Apple ; les fichiers iCloud non téléchargés sont ignorés plutôt que rapatriés. L'analyse automatique tourne en basse priorité et continue quand tu reprends le Mac. Une analyse automatique annulée n'est pas relancée avant le lendemain ; une analyse complète manuelle repousse la suivante.")
+        }
+    }
+
+    private var dailyReportSection: some View {
+        Section {
+            Toggle("Rapport du jour", isOn: $draft.dailyReport.enabled)
+            Group {
+                Stepper(value: $draft.dailyReport.hour, in: 0...23) {
+                    LabeledContent("Préparé à partir de", value: String(localized: "\(draft.dailyReport.hour) h"))
+                }
+                Toggle("Notification avec les points clés", isOn: $draft.dailyReport.notify)
+                Toggle("Résumé rédigé par le modèle local", isOn: $draft.dailyReport.aiSummary)
+            }
+            .disabled(!draft.dailyReport.enabled)
+        } header: {
+            Text("Rapport du jour")
+        } footer: {
+            Text("Le verdict et les points clés sont calculés par Parabellum. Le modèle local (le même que l'agent courrier, installé au premier usage) ne fait que les reformuler, quand le Mac est inactif sur secteur ; il ne reçoit que des compteurs, jamais de noms de fichiers. Rien ne quitte le Mac.")
         }
     }
 
@@ -817,6 +830,50 @@ extension SettingsView {
             Text("Permissions")
         } footer: {
             Text("Accessibilité, enregistrement de l'écran, accès complet au disque, surveillance du clavier… accordés à une app non signée ou signée « ad hoc » déclenchent une alerte.")
+        }
+    }
+}
+
+/// Réglages › Finder: real state of the extension (PlugInKit), and a repair that registers it again,
+/// turns it on and restarts the Finder.
+struct FinderExtensionStatusView: View {
+    @State private var state: FinderExtensionSupport.State?
+    @State private var repairing = false
+
+    var body: some View {
+        LabeledContent("Menu « Parabellum » du clic droit") {
+            HStack(spacing: 8) {
+                if state == nil || repairing {
+                    ProgressView().controlSize(.small)
+                }
+                Text(label).foregroundStyle(state == .enabled ? Color.green : Color.secondary)
+            }
+        }
+        HStack {
+            Button("Réparer le menu du Finder") {
+                repairing = true
+                Task {
+                    let reached = await FinderExtensionSupport.repair(force: true)
+                    state = reached
+                    repairing = false
+                }
+            }
+            .disabled(repairing || state == .missing)
+            Button("Réglages des extensions du Finder…") {
+                FinderExtensionSupport.openSettings()
+            }
+        }
+        .task { state = await FinderExtensionSupport.state() }
+    }
+
+    private var label: String {
+        switch state {
+        case .none: return String(localized: "vérification…")
+        case .enabled?: return String(localized: "activé")
+        case .disabledByUser?: return String(localized: "désactivé dans les Réglages")
+        case .undecided?: return String(localized: "en attente d'activation")
+        case .unregistered?: return String(localized: "non enregistré par macOS")
+        case .missing?: return String(localized: "absent de cette version de l'app")
         }
     }
 }

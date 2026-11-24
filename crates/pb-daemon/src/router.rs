@@ -155,7 +155,8 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
             paths,
             recursive,
             use_clamav,
-        } => scan(ctx, peer, paths, recursive, use_clamav).await,
+            report_only,
+        } => scan(ctx, peer, paths, recursive, use_clamav, report_only).await,
         Request::CancelScan { job_id } => match ctx.jobs.cancel(&job_id) {
             CancelOutcome::Signalled => Ok(Value::Null),
             CancelOutcome::Dequeued(j) => {
@@ -197,11 +198,12 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
         Request::ListAlerts {
             limit,
             include_resolved,
+            before_id,
         } => {
             let limit = limit.clamp(1, 10_000);
             json(
                 &ctx.store
-                    .run(move |s| s.list_alerts(limit, include_resolved))
+                    .run(move |s| s.list_alerts_page(limit, include_resolved, before_id))
                     .await?,
             )
         }
@@ -370,6 +372,11 @@ pub async fn handle(ctx: &Arc<Ctx>, peer: &Peer, req: Request) -> Result<Value, 
         Request::SetProtection { paused_minutes } => {
             json(&set_protection(ctx, paused_minutes).await?)
         }
+        Request::DailyReport { date } => json(&crate::daily::get(ctx, date).await?),
+        Request::ListDailyReports { limit } => {
+            json(&ctx.store.run(move |s| s.list_daily_reports(limit)).await?)
+        }
+        Request::GenerateDailyReport => json(&crate::daily::generate(ctx).await?),
         Request::WeeklyReport { week_offset } => {
             json(&crate::report::weekly(ctx, week_offset).await?)
         }
@@ -765,6 +772,7 @@ async fn scan(
     paths: Vec<String>,
     recursive: bool,
     use_clamav: Option<bool>,
+    report_only: bool,
 ) -> Result<Value, IpcError> {
     if paths.is_empty() {
         return Err(bad("aucun chemin à analyser"));
@@ -808,6 +816,7 @@ async fn scan(
     }
     let cfg = ctx.config();
     let spec = JobSpec {
+        report_only,
         paths,
         roots,
         opts: ScanOpts {

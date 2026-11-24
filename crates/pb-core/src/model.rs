@@ -1985,6 +1985,113 @@ pub struct CleanApplyReport {
     pub results: Vec<CleanItemResult>,
 }
 
+// ---------------------------------------------------------------------------------------------
+// Daily report
+// ---------------------------------------------------------------------------------------------
+
+/// Overall state of the Mac in a daily report, computed (never by the model).
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum DailyVerdict {
+    #[default]
+    Ok,
+    Attention,
+    Critical,
+}
+
+/// Who wrote [`DailyReport::summary`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SummarySource {
+    #[default]
+    Template,
+    LocalAi,
+}
+
+/// An alert not seen yet, as listed in a daily report.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DailyAlertLine {
+    pub id: i64,
+    pub ts: i64,
+    pub severity: Severity,
+    pub kind: AlertKind,
+    pub title: String,
+}
+
+/// Measured facts of a daily report (the period is the previous local day; `*_now` fields are the
+/// state when the report was built).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct DailyFacts {
+    pub period_start: i64,
+    pub period_end: i64,
+    pub protection_now: ProtectionState,
+    pub issues_now: Vec<String>,
+    /// Open (not seen) alerts now, by severity.
+    pub unseen_critical: u32,
+    pub unseen_high: u32,
+    pub unseen_other: u32,
+    /// Most severe, then newest, not-seen alerts (at most 5).
+    pub top_unseen: Vec<DailyAlertLine>,
+    pub alerts_yesterday: u64,
+    pub threats_yesterday: u64,
+    pub quarantined_yesterday: u64,
+    pub files_scanned_yesterday: u64,
+    pub persistence_new_yesterday: u64,
+    pub devices_new_yesterday: u64,
+    pub dns_blocked_yesterday: Option<u64>,
+    pub db_version: Option<String>,
+    /// Hours since the threat base was last updated.
+    pub db_age_hours: Option<u64>,
+    pub last_full_scan: Option<i64>,
+    /// Failing macOS security settings (titles).
+    pub posture_failing: Vec<String>,
+    pub quarantined_now: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DailyReport {
+    /// Local date `YYYY-MM-DD` of the morning it was built for.
+    pub date: String,
+    pub generated_at: i64,
+    pub verdict: DailyVerdict,
+    /// One line (French), computed.
+    pub headline: String,
+    /// 1-3 key points (French), computed: what to look at first.
+    pub highlights: Vec<String>,
+    /// A few sentences in plain language: template, or the local model (`summary_source`).
+    pub summary: String,
+    #[serde(default)]
+    pub summary_source: SummarySource,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary_model: Option<String>,
+    pub facts: DailyFacts,
+}
+
+/// History list / event payload.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DailyReportSummary {
+    pub date: String,
+    pub generated_at: i64,
+    pub verdict: DailyVerdict,
+    pub headline: String,
+    pub highlights: Vec<String>,
+}
+
+impl DailyReport {
+    pub fn summary_line(&self) -> DailyReportSummary {
+        DailyReportSummary {
+            date: self.date.clone(),
+            generated_at: self.generated_at,
+            verdict: self.verdict,
+            headline: self.headline.clone(),
+            highlights: self.highlights.clone(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

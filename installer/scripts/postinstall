@@ -196,6 +196,19 @@ if [[ -z "$console_uid" ]]; then
     exit 0
 fi
 
+# Finder menu (Finder › clic droit › Parabellum): register the new bundle and its extension for this
+# user now, so the submenu does not depend on LaunchServices noticing the app later. The app re-checks
+# at every launch and respects a user's « off ».
+readonly LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+readonly FINDER_APPEX="$APP/Contents/PlugIns/ParabellumFinder.appex"
+if [[ -x "$LSREGISTER" ]]; then
+    run /bin/launchctl asuser "$console_uid" /usr/bin/sudo -u "$console_user" "$LSREGISTER" -f -R -trusted "$APP"
+fi
+if [[ -d "$FINDER_APPEX" ]]; then
+    run /bin/launchctl asuser "$console_uid" /usr/bin/sudo -u "$console_user" /usr/bin/pluginkit -a "$FINDER_APPEX"
+    log "extension Finder enregistrée pour $console_user"
+fi
+
 run /bin/launchctl enable "gui/$console_uid/$UI_LABEL"
 if /bin/launchctl bootstrap "gui/$console_uid" "$AGENT_PLIST" 2>/dev/null; then
     log "app lancée pour $console_user (gui/$console_uid/$UI_LABEL)"

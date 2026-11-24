@@ -183,6 +183,7 @@ pub async fn start(
             .map(|v| v.to_string_lossy().into_owned()),
     );
     let spec = JobSpec {
+        report_only: false,
         paths,
         roots: plan.roots,
         opts: ScanOpts {

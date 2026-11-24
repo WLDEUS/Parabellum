@@ -19,7 +19,7 @@ public enum Request: Sendable, Equatable {
     /// → `ScanJobDetail`
     case getJob(jobId: String)
     /// → `[SecurityAlert]`
-    case listAlerts(limit: Int = 100, includeResolved: Bool = false)
+    case listAlerts(limit: Int = 100, includeResolved: Bool = false, beforeId: Int64? = nil)
     /// → `SecurityAlert` (updated)
     case resolveAlert(alertId: Int64, action: AlertAction)
     /// → `[QuarantineEntry]`
@@ -64,6 +64,12 @@ public enum Request: Sendable, Equatable {
     case setConfig(Config, preserving: JSONValue? = nil)
     /// 0 = resume now. → `StatusInfo`
     case setProtection(pausedMinutes: Int)
+    /// Daily report of `date` (`YYYY-MM-DD`), latest when nil. → `DailyReport?`
+    case dailyReport(date: String? = nil)
+    /// Newest first. → `[DailyReportSummary]`
+    case listDailyReports(limit: Int = 30)
+    /// Builds today's report now. → `DailyReport`
+    case generateDailyReport
     /// 0 = current week. → `WeeklyReport`
     case weeklyReport(weekOffset: Int = 0)
     /// → `JobStarted`
@@ -220,6 +226,9 @@ public enum Request: Sendable, Equatable {
         case .getConfig: return "get_config"
         case .setConfig: return "set_config"
         case .setProtection: return "set_protection"
+        case .dailyReport: return "daily_report"
+        case .listDailyReports: return "list_daily_reports"
+        case .generateDailyReport: return "generate_daily_report"
         case .weeklyReport: return "weekly_report"
         case .retroHunt: return "retro_hunt"
         case .spywareScan: return "spyware_scan"
@@ -354,7 +363,7 @@ public enum Request: Sendable, Equatable {
         }
         switch self {
         case .ping, .status, .listQuarantine, .listComponents, .getDns, .adblockStatus, .getConfig, .spywareScan,
-             .subscribe:
+             .subscribe, .generateDailyReport:
             break
         case .vpnStatus, .vpnConnect, .vpnDisconnect, .vpnRemoveProfile, .vpnLeakTest, .vpnListServices,
              .listNetworks, .guardStatus, .listSnapshots, .createSnapshot, .privacyListBrokers, .privacyListRequests,
@@ -426,9 +435,10 @@ public enum Request: Sendable, Equatable {
             o["limit"] = .int(Int64(limit))
         case let .getJob(jobId):
             o["job_id"] = .string(jobId)
-        case let .listAlerts(limit, includeResolved):
+        case let .listAlerts(limit, includeResolved, beforeId):
             o["limit"] = .int(Int64(limit))
             o["include_resolved"] = .bool(includeResolved)
+            if let beforeId { o["before_id"] = .int(beforeId) }
         case let .resolveAlert(alertId, action):
             o["alert_id"] = .int(alertId)
             o["action"] = .string(action.rawValue)
@@ -478,6 +488,10 @@ public enum Request: Sendable, Equatable {
             }
         case let .setProtection(pausedMinutes):
             o["paused_minutes"] = .int(Int64(pausedMinutes))
+        case let .dailyReport(date):
+            if let date { o["date"] = .string(date) }
+        case let .listDailyReports(limit):
+            o["limit"] = .int(Int64(limit))
         case let .weeklyReport(weekOffset):
             o["week_offset"] = .int(Int64(weekOffset))
         case let .retroHunt(days):

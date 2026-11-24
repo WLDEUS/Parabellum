@@ -152,6 +152,20 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertTrue(adblock.safariStoreUrl.hasPrefix("https://apps.apple.com/"))
     }
 
+    func testDailyReport() throws {
+        let report = try Fixtures.decode(DailyReport.self, from: "daily_report.json")
+        XCTAssertEqual(report.date, "2026-11-24")
+        XCTAssertEqual(report.verdict, .attention)
+        XCTAssertEqual(report.summarySource, .localAi)
+        XCTAssertEqual(report.summaryModel, "qwen3:4b")
+        XCTAssertEqual(report.facts.unseenHigh, 1)
+        XCTAssertEqual(report.facts.topUnseen.first?.kind, .persistence)
+        XCTAssertEqual(report.facts.dnsBlockedYesterday, 250)
+        XCTAssertNil(report.facts.lastFullScan)
+        let list = try Fixtures.decode([DailyReportSummary].self, from: "daily_reports.json")
+        XCTAssertEqual(list.map(\.date), ["2026-11-24"])
+    }
+
     func testWeeklyReportAndPing() throws {
         let report = try Fixtures.decode(WeeklyReport.self, from: "weekly_report.json")
         XCTAssertEqual(report.filesScanned, 15_234)

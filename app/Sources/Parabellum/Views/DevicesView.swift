@@ -2,7 +2,7 @@ import ParabellumKit
 import SwiftUI
 
 struct DevicesView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var showDisconnected = true
 
     private var visibleDevices: [DeviceInfo] {
@@ -77,7 +77,7 @@ struct DevicesView: View {
 }
 
 private struct DeviceRow: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let device: DeviceInfo
     @State private var showDetails = false
 

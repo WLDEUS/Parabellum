@@ -1,0 +1,42 @@
+{
+  "date": "2026-11-24",
+  "facts": {
+    "alerts_yesterday": 2,
+    "db_age_hours": 9,
+    "db_version": "2026.11.23.1",
+    "devices_new_yesterday": 0,
+    "dns_blocked_yesterday": 250,
+    "files_scanned_yesterday": 1234,
+    "issues_now": [],
+    "last_full_scan": null,
+    "period_end": 1795478400,
+    "period_start": 1795392000,
+    "persistence_new_yesterday": 0,
+    "posture_failing": [],
+    "protection_now": "active",
+    "quarantined_now": 0,
+    "quarantined_yesterday": 0,
+    "threats_yesterday": 0,
+    "top_unseen": [
+      {
+        "id": 42,
+        "kind": "persistence",
+        "severity": "high",
+        "title": "Nouvel agent de lancement",
+        "ts": 1795450000
+      }
+    ],
+    "unseen_critical": 0,
+    "unseen_high": 1,
+    "unseen_other": 0
+  },
+  "generated_at": 1795500000,
+  "headline": "Quelques points à vérifier.",
+  "highlights": [
+    "1 alerte élevée non vue(s)."
+  ],
+  "summary": "Hier, Parabellum a analysé 1 234 fichiers et levé 2 alertes.",
+  "summary_model": "qwen3:4b",
+  "summary_source": "local_ai",
+  "verdict": "attention"
+}

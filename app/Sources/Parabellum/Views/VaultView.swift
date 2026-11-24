@@ -5,7 +5,7 @@ import SwiftUI
 // Coffre: encrypted vault (AES-256 APFS image unlocked with Touch ID) and secure delete.
 
 struct VaultView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @ObservedObject var store: VaultStore
     @State private var changingPassword = false
     @State private var destroying = false
@@ -69,27 +69,27 @@ struct VaultView: View {
             set: { if $0 == nil { store.recoveryKeyToShow = nil } }
         )) { item in
             RecoveryKeySheet(store: store, key: item.key)
-                .environmentObject(model)
+                .environment(model)
         }
         .sheet(item: $store.passwordPrompt) { prompt in
             PasswordPromptSheet(store: store, prompt: prompt)
-                .environmentObject(model)
+                .environment(model)
         }
         .sheet(item: $store.shredPlan) { plan in
             ShredConfirmSheet(store: store, plan: plan, filevault: store.status?.filevault ?? .unknown)
-                .environmentObject(model)
+                .environment(model)
         }
         .sheet(isPresented: $store.showHolders) {
             HoldersSheet(store: store)
-                .environmentObject(model)
+                .environment(model)
         }
         .sheet(isPresented: $changingPassword) {
             ChangePasswordSheet(store: store)
-                .environmentObject(model)
+                .environment(model)
         }
         .sheet(isPresented: $destroying) {
             DestroyVaultSheet(store: store)
-                .environmentObject(model)
+                .environment(model)
         }
     }
 
@@ -131,7 +131,7 @@ private struct RecoveryKeyItem: Identifiable {
 // MARK: - Hero
 
 private struct VaultHero: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @ObservedObject var store: VaultStore
     let status: VaultStatus
 
@@ -225,7 +225,7 @@ private struct VaultHero: View {
 // MARK: - Creation
 
 private struct CreateVaultCard: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @ObservedObject var store: VaultStore
     @State private var generateKey = true
     @State private var password = ""
@@ -371,7 +371,7 @@ private struct VaultDropZone: View {
 }
 
 private struct AddToVaultCard: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @ObservedObject var store: VaultStore
     @State private var removeOriginals = false
 
@@ -430,7 +430,7 @@ private struct RecentItemsCard: View {
 // MARK: - Secure delete
 
 private struct ShredCard: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @ObservedObject var store: VaultStore
 
     var body: some View {
@@ -630,7 +630,7 @@ private struct FileVaultCard: View {
 // MARK: - Settings
 
 private struct VaultSettingsCard: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @ObservedObject var store: VaultStore
     @Binding var changingPassword: Bool
     @Binding var destroying: Bool
@@ -816,7 +816,7 @@ private struct PasswordPromptSheet: View {
 
 private struct HoldersSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @ObservedObject var store: VaultStore
 
     var body: some View {
@@ -912,7 +912,7 @@ private struct ChangePasswordSheet: View {
 
 private struct DestroyVaultSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @ObservedObject var store: VaultStore
     @State private var confirmation = ""
 
@@ -951,7 +951,7 @@ private struct DestroyVaultSheet: View {
 
 /// Vault state in the menu bar window, with lock / Touch ID unlock.
 struct VaultMenuRow: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @ObservedObject var store: VaultStore
 
     var body: some View {
@@ -981,7 +981,7 @@ struct VaultMenuRow: View {
 
 /// Dashboard tile: vault state, opens the section.
 struct VaultDashboardTile: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @ObservedObject var store: VaultStore
 
     var body: some View {

@@ -2,7 +2,7 @@ import ParabellumKit
 import SwiftUI
 
 struct PersistenceView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var onlyNew = false
     @State private var pendingRemoval: PersistenceItem?
 
@@ -83,7 +83,7 @@ struct PersistenceView: View {
 }
 
 private struct PersistenceRow: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let item: PersistenceItem
     let onRemove: () -> Void
 

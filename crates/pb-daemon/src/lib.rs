@@ -23,6 +23,7 @@ pub mod baseline;
 pub mod bus;
 pub mod ctx;
 pub mod daemon;
+pub mod daily;
 pub mod devices;
 pub mod fullscan;
 pub mod guard;

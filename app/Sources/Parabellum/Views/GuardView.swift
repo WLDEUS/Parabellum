@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Behaviour guard (info-stealers, ransomware), suspended processes and APFS snapshots.
 struct GuardView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         ScrollView {
@@ -37,7 +37,7 @@ struct GuardView: View {
 }
 
 private struct GuardStatusCard: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let status: GuardStatus
 
     var body: some View {
@@ -98,7 +98,7 @@ private struct GuardStatusCard: View {
 }
 
 private struct SuspendedCard: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let processes: [SuspendedProcess]
     @State private var pendingKill: SuspendedProcess?
 
@@ -168,7 +168,7 @@ private struct SuspendedCard: View {
 }
 
 private struct SnapshotsCard: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         Card(title: String(localized: "Instantanés APFS"), symbol: "clock.arrow.circlepath") {
@@ -219,7 +219,7 @@ private struct SnapshotsCard: View {
 }
 
 private struct SnapshotRow: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let snapshot: SnapshotInfo
 
     var body: some View {

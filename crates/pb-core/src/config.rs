@@ -48,6 +48,8 @@ pub struct Config {
     pub permissions: PermissionsAuditConfig,
     // ----- Travel mode -----
     pub travel: TravelConfig,
+    /// Morning report on the Mac's situation (dashboard card, notification, optional local AI summary).
+    pub daily_report: DailyReportConfig,
 }
 
 impl Config {
@@ -226,6 +228,9 @@ impl Config {
             return invalid("data_removal.from_address must be an email address");
         }
         self.mail_agent.validate()?;
+        if self.daily_report.hour > 23 {
+            return invalid("daily_report.hour must be 0..23");
+        }
         for e in &self.breach.emails {
             if !is_email(e) {
                 return Err(ConfigError::Invalid(format!(
@@ -374,6 +379,32 @@ impl Default for ScanConfig {
             mount_dmg: true,
             expand_pkg: true,
             threads: 0,
+        }
+    }
+}
+
+/// Daily report: built once a day from the daemon's own data (alerts, scans, base, posture…), kept 30
+/// days. The verdict and the key points are computed; the optional summary is written by the local
+/// model (Ollama, same model as the mail agent) only when the Mac is idle on mains power, never sent out.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DailyReportConfig {
+    pub enabled: bool,
+    /// Local hour (0..23) from which the day's report is built (or at the first wake after it).
+    pub hour: u8,
+    /// Plain-language summary by the local model; otherwise (or when it cannot run) a template.
+    pub ai_summary: bool,
+    /// One notification with the key points.
+    pub notify: bool,
+}
+
+impl Default for DailyReportConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            hour: 8,
+            ai_summary: true,
+            notify: true,
         }
     }
 }

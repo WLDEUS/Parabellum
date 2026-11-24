@@ -2,7 +2,7 @@ import ParabellumKit
 import SwiftUI
 
 struct ComponentsView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
 
     /// Required components first, then by display name.
     private var rows: [ComponentStatus] {
