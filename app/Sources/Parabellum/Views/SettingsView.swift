@@ -22,6 +22,7 @@ struct SettingsView: View {
                     scanSection
                     finderSection
                     fullScanSection
+                    dailyReportSection
                     realtimeSection
                     mlSection
                     dnsSection
@@ -212,6 +213,24 @@ struct SettingsView: View {
             Text("Analyse complète")
         } footer: {
             Text("Tout le disque de démarrage sauf le volume système scellé d'Apple ; les fichiers iCloud non téléchargés sont ignorés plutôt que rapatriés. L'analyse automatique tourne en basse priorité et continue quand tu reprends le Mac. Une analyse automatique annulée n'est pas relancée avant le lendemain ; une analyse complète manuelle repousse la suivante.")
+        }
+    }
+
+    private var dailyReportSection: some View {
+        Section {
+            Toggle("Rapport du jour", isOn: $draft.dailyReport.enabled)
+            Group {
+                Stepper(value: $draft.dailyReport.hour, in: 0...23) {
+                    LabeledContent("Préparé à partir de", value: String(localized: "\(draft.dailyReport.hour) h"))
+                }
+                Toggle("Notification avec les points clés", isOn: $draft.dailyReport.notify)
+                Toggle("Résumé rédigé par le modèle local", isOn: $draft.dailyReport.aiSummary)
+            }
+            .disabled(!draft.dailyReport.enabled)
+        } header: {
+            Text("Rapport du jour")
+        } footer: {
+            Text("Le verdict et les points clés sont calculés par Parabellum. Le modèle local (le même que l'agent courrier, installé au premier usage) ne fait que les reformuler, quand le Mac est inactif sur secteur ; il ne reçoit que des compteurs, jamais de noms de fichiers. Rien ne quitte le Mac.")
         }
     }
 

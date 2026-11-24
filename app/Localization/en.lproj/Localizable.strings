@@ -1590,3 +1590,7 @@
 "Générer maintenant" = "Generate Now";
 "Rapports des 30 derniers jours" = "Reports of the Last 30 Days";
 "Aucun rapport" = "No Reports";
+"Préparé à partir de" = "Prepared from";
+"%lld h" = "%lld:00";
+"Notification avec les points clés" = "Notification with the key points";
+"Le verdict et les points clés sont calculés par Parabellum. Le modèle local (le même que l'agent courrier, installé au premier usage) ne fait que les reformuler, quand le Mac est inactif sur secteur ; il ne reçoit que des compteurs, jamais de noms de fichiers. Rien ne quitte le Mac." = "The verdict and key points are computed by Parabellum. The local model (the mail agent's, installed on first use) only rewords them, while the Mac is idle on mains power; it receives counters only, never file names. Nothing leaves the Mac.";
