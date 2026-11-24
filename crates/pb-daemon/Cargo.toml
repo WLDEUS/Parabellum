@@ -53,3 +53,6 @@ zip = { workspace = true }
 pb-cli = { path = "../pb-cli" }
 # Guard tests exercise the behavioural heuristics, loaded from the repo signatures/ dir.
 pb-monitor = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

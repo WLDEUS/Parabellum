@@ -64,6 +64,14 @@ pub const IN_MEMORY_LIMIT: u64 = 64 * 1024 * 1024;
 const SCAN_CACHE_CAPACITY: usize = 20_000;
 const SIGN_CACHE_CAPACITY: usize = 4_096;
 const HASH_BUF: usize = 1024 * 1024;
+/// Largest file hashed in full. Beyond it, or for a sparse file (most of it never written), the digest
+/// covers the first [`IN_MEMORY_LIMIT`] bytes, the last 1 MiB and the size: two `truncate -s 8E` files
+/// used to keep both real-time slots reading zeros for years (audit FILE-1). Real malware this big is
+/// not in hash databases anyway; YARA still sees the head and the tail.
+pub const FULL_HASH_LIMIT: u64 = 4 * 1024 * 1024 * 1024;
+/// A file whose allocated blocks are under this fraction of its size is sparse.
+const SPARSE_RATIO: u64 = 8;
+const PARTIAL_TAIL: u64 = 1024 * 1024;
 const MAX_ROLLUP_DETECTIONS: usize = 20;
 const MIB: u64 = 1024 * 1024;
 
@@ -513,6 +521,26 @@ pub fn sha256_file(path: &Path) -> std::io::Result<String> {
 }
 
 /// Reads up to `keep` bytes into memory while hashing the first `size` bytes of `file`.
+/// Whether `read_and_hash` will only cover part of a file of `size` bytes with `allocated` bytes on disk.
+fn partial_hash(size: u64, allocated: u64) -> bool {
+    size > FULL_HASH_LIMIT
+        || (size > IN_MEMORY_LIMIT && allocated.saturating_mul(SPARSE_RATIO) < size)
+}
+
+/// Domain-separated digest of head + tail + size: never equal to a real SHA-256 of a file, so it cannot
+/// match the malware / allow databases nor a cached verdict.
+fn partial_digest(file: &File, size: u64, head: &[u8]) -> std::io::Result<hashdb::Digest> {
+    let mut h = Sha256::new();
+    h.update(b"parabellum-partial-v1\0");
+    h.update(size.to_le_bytes());
+    h.update(head);
+    let tail_len = PARTIAL_TAIL.min(size.saturating_sub(head.len() as u64));
+    let mut tail = vec![0u8; tail_len as usize];
+    file.read_exact_at(&mut tail, size - tail_len)?;
+    h.update(&tail);
+    Ok(h.finalize().into())
+}
+
 fn read_and_hash(
     file: &mut File,
     size: u64,
@@ -1285,7 +1313,24 @@ impl Engine {
         // Oversized files keep their first IN_MEMORY_LIMIT bytes too: padding a payload past
         // max_file_size (a known AV-evasion trick) must not skip the YARA pass on its code.
         let keep = size.min(IN_MEMORY_LIMIT);
-        let (digest, data) = match read_and_hash(&mut file, size, keep) {
+        let partial = {
+            use std::os::unix::fs::MetadataExt;
+            partial_hash(size, meta.blocks().saturating_mul(512))
+        };
+        let hashed = if partial {
+            let mut head = Vec::with_capacity(keep as usize);
+            (&mut file)
+                .take(keep)
+                .read_to_end(&mut head)
+                .and_then(|_| partial_digest(&file, size, &head).map(|d| (d, head)))
+        } else {
+            read_and_hash(&mut file, size, keep)
+        };
+        if partial {
+            a.note("very large or sparse file: partial fingerprint (start, end, size)");
+            a.cache_key = None;
+        }
+        let (digest, data) = match hashed {
             Ok(x) => x,
             Err(e) => {
                 a.note(format!("read error: {e}"));
@@ -1303,7 +1348,7 @@ impl Engine {
             None
         };
         drop(file);
-        if depth == 0 && !self.is_allowlisted(&digest) {
+        if depth == 0 && !partial && !self.is_allowlisted(&digest) {
             if let Some(store) = self.verdict_store() {
                 let key = self.persist_key(ctx, path, &digest, &data, tail.as_deref(), truncated);
                 if let Some(mut hit) = store.get(&key) {

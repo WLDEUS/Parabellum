@@ -23,3 +23,6 @@ pb-ml = { workspace = true, features = ["test-util"] }
 [[bin]]
 name = "pb-domain-features"
 path = "src/bin/pb-domain-features.rs"
+
+[lints]
+workspace = true

@@ -23,6 +23,7 @@
 //! // IPC: get_profile / set_profile / brokers / requests / summary / start_removal / update_request /
 //! //      draft / complaint / breaches / check_breaches / aliases / create_alias
 //! ```
+#![forbid(unsafe_code)]
 
 pub mod agent;
 pub mod aliases;

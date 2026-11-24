@@ -63,6 +63,7 @@ pub fn user_gid(uid: u32) -> Option<u32> {
 /// `(login name, home directory, primary gid)` from the password database.
 fn passwd_entry(uid: u32) -> Option<(String, PathBuf, u32)> {
     use std::ffi::CStr;
+    // SAFETY: passwd is a plain C struct (integers and pointers), all-zero is a valid value.
     let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
     let mut buf = vec![0 as libc::c_char; 16 * 1024];
     let mut result: *mut libc::passwd = std::ptr::null_mut();
@@ -83,6 +84,7 @@ fn passwd_entry(uid: u32) -> Option<(String, PathBuf, u32)> {
     let name = unsafe { CStr::from_ptr(pwd.pw_name) }
         .to_string_lossy()
         .into_owned();
+    // SAFETY: getpwuid_r succeeded, pw_dir points into `buf`, a NUL-terminated string that outlives this.
     let home = unsafe { CStr::from_ptr(pwd.pw_dir) }
         .to_string_lossy()
         .into_owned();
@@ -150,6 +152,7 @@ pub fn peer_credentials(fd: std::os::fd::RawFd) -> std::io::Result<PeerCred> {
     }
     #[cfg(target_os = "linux")]
     {
+        // SAFETY: ucred is three integers, all-zero is a valid value.
         let mut cred: libc::ucred = unsafe { std::mem::zeroed() };
         let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
         // SAFETY: SO_PEERCRED writes a `struct ucred` into the provided buffer of `len` bytes.
@@ -255,6 +258,7 @@ pub fn pid_path(pid: i32) -> Option<PathBuf> {
 pub fn rss_bytes() -> u64 {
     #[cfg(target_os = "macos")]
     {
+        // SAFETY: rusage_info_v2 is a plain C struct of integers and arrays, all-zero is valid.
         let mut info: libc::rusage_info_v2 = unsafe { std::mem::zeroed() };
         // SAFETY: RUSAGE_INFO_V2 fills a `rusage_info_v2`; the C API takes it as `rusage_info_t *`.
         let rc = unsafe {
@@ -413,6 +417,7 @@ pub fn process_identity(pid: i32) -> Option<(u32, i64)> {
     }
     #[cfg(target_os = "macos")]
     {
+        // SAFETY: proc_bsdinfo is a plain C struct of integers and arrays, all-zero is valid.
         let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
         let size = std::mem::size_of::<libc::proc_bsdinfo>() as libc::c_int;
         // SAFETY: `info` is a valid, writable proc_bsdinfo of `size` bytes.
@@ -473,6 +478,7 @@ pub fn parent_pid(pid: i32) -> Option<i32> {
     }
     #[cfg(target_os = "macos")]
     {
+        // SAFETY: proc_bsdinfo is a plain C struct of integers and arrays, all-zero is valid.
         let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
         let size = std::mem::size_of::<libc::proc_bsdinfo>() as libc::c_int;
         // SAFETY: `info` is a valid, writable proc_bsdinfo of `size` bytes.

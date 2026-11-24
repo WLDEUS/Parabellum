@@ -18,6 +18,7 @@
 //! Everything here parses untrusted bytes: all reads are bounds-checked, every loop driven by a
 //! count read from the file is capped, nothing recurses on attacker-controlled depth, and
 //! [`extract_features`] wraps the parser in `catch_unwind` as a last line of defence.
+#![forbid(unsafe_code)]
 
 mod codesig;
 mod features;

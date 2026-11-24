@@ -303,9 +303,7 @@ impl DnsManager {
                 // Files created earlier by a root-run proxy must stay writable after the switch.
                 if let Ok(rd) = std::fs::read_dir(&rt) {
                     for e in rd.flatten().take(64) {
-                        if e.file_type().map(|t| t.is_file()).unwrap_or(false) {
-                            let _ = std::os::unix::fs::lchown(e.path(), Some(uid), Some(gid));
-                        }
+                        let _ = hand_over_root_file(&e.path(), uid, gid);
                     }
                 }
             } else {
@@ -1066,5 +1064,55 @@ pub(crate) mod tests {
         assert!(m.status(&on(&good)).await.running);
         assert!(!m.status(&on(&dead)).await.running);
         assert!(m.status(&on(&good)).await.running);
+    }
+}
+
+/// Gives a file left by a root-run proxy to the proxy's user. The directory is writable by that user, so
+/// what is in it is untrusted: a hard link planted there to a root file (`/etc/sudoers`, our own daemon)
+/// would otherwise be handed over by root (`chown` follows hard links, macOS has no protected_hardlinks).
+/// Opened without following links, checked on the open descriptor (regular file, a single link, still
+/// owned by root), changed through that descriptor: no race between the check and the change.
+#[cfg(unix)]
+pub(crate) fn hand_over_root_file(path: &Path, uid: u32, gid: u32) -> std::io::Result<bool> {
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+    let f = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
+        .open(path)?;
+    let md = f.metadata()?;
+    if !md.file_type().is_file() || md.nlink() != 1 || md.uid() != 0 {
+        return Ok(false);
+    }
+    std::os::unix::fs::fchown(&f, Some(uid), Some(gid))?;
+    Ok(true)
+}
+
+#[cfg(test)]
+mod hardlink_tests {
+    use super::*;
+    use std::os::unix::fs::MetadataExt;
+
+    #[test]
+    fn hard_links_and_symlinks_are_never_handed_over() {
+        let d = tempfile::tempdir().unwrap();
+        let victim = d.path().join("victim");
+        std::fs::write(&victim, b"root file").unwrap();
+        let link = d.path().join("runtime-hardlink");
+        std::fs::hard_link(&victim, &link).unwrap();
+        let sym = d.path().join("runtime-symlink");
+        std::os::unix::fs::symlink(&victim, &sym).unwrap();
+        let me = std::fs::metadata(&victim).unwrap().uid();
+        // nlink == 2: refused whoever owns it.
+        assert!(!hand_over_root_file(&link, me, me).unwrap());
+        // Symlink: not followed (ELOOP).
+        assert!(hand_over_root_file(&sym, me, me).is_err());
+        // A lone file is handed over only when root owns it.
+        let lone = d.path().join("lone");
+        std::fs::write(&lone, b"x").unwrap();
+        let owner = std::fs::metadata(&lone).unwrap().uid();
+        assert_eq!(
+            hand_over_root_file(&lone, owner, owner).unwrap(),
+            owner == 0
+        );
     }
 }

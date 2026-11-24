@@ -12,6 +12,7 @@
 //! - JSON field names are `snake_case`, enum values are `snake_case` strings.
 //! - Timestamps are `i64` Unix epoch **seconds** (UTC).
 //! - Optional fields are omitted when `None`.
+#![forbid(unsafe_code)]
 
 pub mod config;
 pub mod db;

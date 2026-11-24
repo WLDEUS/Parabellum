@@ -408,6 +408,7 @@ mod tests {
         assert_eq!(last_log_line(d.path()), None, "hard link");
         std::fs::remove_file(&log).unwrap();
         let c = std::ffi::CString::new(log.as_os_str().as_encoded_bytes()).unwrap();
+        // SAFETY: `c` is a valid NUL-terminated path.
         assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
         assert_eq!(last_log_line(d.path()), None, "FIFO, without blocking");
     }

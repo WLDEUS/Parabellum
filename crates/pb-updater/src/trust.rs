@@ -111,6 +111,7 @@ mod tests {
         let link = root.join("link");
         std::os::unix::fs::symlink(&bin, &link).unwrap();
 
+        // SAFETY: geteuid has no preconditions and cannot fail.
         let me = unsafe { libc::geteuid() };
         let info = inspect_binary_under(&link, root).unwrap();
         assert_eq!(

@@ -166,6 +166,7 @@ pub fn brew_cache(home: &Path) -> Option<PathBuf> {
 pub fn user_home() -> Option<(u32, PathBuf)> {
     // SAFETY: geteuid has no preconditions.
     let uid = unsafe { libc::geteuid() };
+    // SAFETY: passwd is a plain C struct (integers and pointers), all-zero is a valid value.
     let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
     let mut buf = vec![0 as libc::c_char; 16 * 1024];
     let mut result: *mut libc::passwd = std::ptr::null_mut();
