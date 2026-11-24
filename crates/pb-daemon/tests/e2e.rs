@@ -782,3 +782,108 @@ async fn disguised_script_is_caught_when_executed() {
     .await;
     assert!(a.quarantine_id.is_some());
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn panicking_task_is_reported_by_the_supervisor() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut d = daemon(tmp.path(), true).await;
+    // A one-shot task that ends normally is just dropped from the watch.
+    d.adopt_task(tokio::spawn(async {}));
+    d.adopt_task(tokio::spawn(async {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        panic!("boom in a watcher");
+    }));
+    let message = tokio::time::timeout(std::time::Duration::from_secs(20), d.supervise())
+        .await
+        .expect("supervisor did not notice the panic");
+    assert!(message.contains("boom in a watcher"), "{message}");
+    d.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn report_only_scan_records_verdicts_without_acting() {
+    let root = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let d = daemon(root.path(), false).await;
+    let sock = d.ctx().paths.socket.clone();
+
+    let eicar = data.path().join("eicar.com");
+    std::fs::write(&eicar, EICAR).unwrap();
+    let (code, out, err) = cli(
+        &sock,
+        &["scan", "--report-only", data.path().to_str().unwrap()],
+    )
+    .await;
+    assert_eq!(code, 1, "threat counted ⇒ exit 1\n{out}\n{err}");
+    assert!(out.contains("EICAR-Test-File"), "{out}");
+    assert!(eicar.exists(), "report-only: the file stays in place");
+    let q: Vec<QuarantineEntry> = cli_json(&sock, &["quarantine"]).await;
+    assert!(q.is_empty(), "report-only: nothing quarantined");
+    let alerts: Vec<Alert> = cli_json(&sock, &["alerts"]).await;
+    assert!(alerts.is_empty(), "report-only: no alert");
+    d.shutdown().await;
+}
+
+/// PAB-1 evasion bar (docs/BENCHMARK.md §B), the variants a lab counts as must-detect: renamed,
+/// extension-less, zipped and nested three deep. bench/pab.py runs the same set on the installed product.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn pab_evasion_must_detect_variants() {
+    use std::io::Write;
+    fn zipped(name: &str, data: &[u8]) -> Vec<u8> {
+        let mut buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut z = zip::ZipWriter::new(&mut buf);
+            z.start_file(name, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            z.write_all(data).unwrap();
+            z.finish().unwrap();
+        }
+        buf.into_inner()
+    }
+    let root = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let d = daemon(root.path(), false).await;
+    let sock = d.ctx().paths.socket.clone();
+    let mut nested = EICAR.to_vec();
+    for i in 0..3 {
+        nested = zipped(
+            &if i == 0 {
+                "eicar.com".to_string()
+            } else {
+                format!("layer{i}.zip")
+            },
+            &nested,
+        );
+    }
+    let variants: Vec<(&str, Vec<u8>)> = vec![
+        ("holiday.jpg", EICAR.to_vec()),
+        ("README", EICAR.to_vec()),
+        ("a.zip", zipped("eicar.com", EICAR)),
+        ("nested.zip", nested),
+    ];
+    for (name, bytes) in &variants {
+        std::fs::write(data.path().join(name), bytes).unwrap();
+    }
+    let (code, out, err) = cli(
+        &sock,
+        &[
+            "--json",
+            "scan",
+            "--report-only",
+            data.path().to_str().unwrap(),
+        ],
+    )
+    .await;
+    assert_eq!(code, 1, "threats ⇒ exit 1: {err}");
+    let detail: ScanJobDetail = serde_json::from_str(&out).unwrap();
+    for (name, _) in &variants {
+        assert!(
+            detail.findings.iter().any(|f| f.verdict != Verdict::Clean
+                && Path::new(f.path.split("!/").next().unwrap()).file_name()
+                    == Some(std::ffi::OsStr::new(name))),
+            "{name} not detected: {:#?}",
+            detail.findings
+        );
+    }
+    d.shutdown().await;
+}
