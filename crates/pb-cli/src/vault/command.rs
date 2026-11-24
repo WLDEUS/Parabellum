@@ -87,12 +87,13 @@ pub enum VaultCmd {
     },
     /// État de FileVault.
     Filevault,
-    /// Chiffrer un dossier : copie vérifiée dans une image chiffrée `<dossier>.coffre` à côté de lui ;
-    /// le dossier n'est pas touché. Mot de passe sur l'entrée standard.
+    /// Chiffrer un dossier ou un fichier : copie vérifiée dans une image chiffrée `<nom>.coffre` à côté
+    /// de lui ; l'original n'est pas touché. Mot de passe sur l'entrée standard.
+    #[command(alias = "encrypt")]
     EncryptFolder {
-        /// Dossier à chiffrer.
+        /// Dossier ou fichier à chiffrer.
         source: PathBuf,
-        /// Paquet à créer (défaut : `<dossier>.coffre` à côté du dossier).
+        /// Paquet à créer (défaut : `<nom>.coffre` à côté de l'original).
         #[arg(long, value_name = "CHEMIN")]
         output: Option<PathBuf>,
     },
@@ -335,7 +336,7 @@ fn execute(
                 super::folder::encrypt_folder(r, home, &source, output.as_deref(), &secrets[0])?;
             emit(json, io, &s, |s| {
                 format!(
-                    "Dossier chiffré : {}\n{} fichier(s) vérifiés. L'original est intact : supprimez-le avec « parabellum vault shred » une fois le dossier chiffré ouvert et vérifié.\nNotez le mot de passe : sans lui, le contenu est irrécupérable.\n",
+                    "Chiffré : {}\n{} fichier(s) vérifiés. L'original est intact : supprimez-le avec « parabellum vault shred » une fois le coffre ouvert et vérifié.\nNotez le mot de passe : sans lui, le contenu est irrécupérable.\n",
                     s.package, s.files
                 )
             })?;

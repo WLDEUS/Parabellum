@@ -123,7 +123,7 @@
 			<dict/>
 			<key>NSSendFileTypes</key>
 			<array>
-				<string>public.folder</string>
+				<string>public.item</string>
 			</array>
 		</dict>
 		<dict>

@@ -47,7 +47,8 @@ final class ParabellumFinderSync: FIFinderSync {
         if !items.contains(where: Self.isFolder) {
             add(String(localized: "Supprimer les métadonnées"), "eye.slash", #selector(cleanMetadata(_:)))
         }
-        if let single, Self.isFolder(single), !Self.isCoffre(single) {
+        // A folder or a file (the app refuses links and anything else).
+        if let single, !Self.isCoffre(single) {
             add(String(localized: "Chiffrer…"), "lock.doc", #selector(encrypt(_:)))
         }
         sub.addItem(.separator())

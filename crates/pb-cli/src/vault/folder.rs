@@ -1,6 +1,7 @@
-//! « Chiffrer » un dossier (clic droit dans le Finder) : son contenu est copié dans une image disque APFS
-//! chiffrée (AES-256, `hdiutil`) rangée dans un paquet `<nom>.coffre` à côté de lui, puis vérifié fichier
-//! par fichier (SHA-256) avant que l'app ne supprime l'original. Le paquet contient aussi `keys.json`, que
+//! « Chiffrer » un dossier ou un fichier (clic droit dans le Finder) : son contenu est copié dans une image
+//! disque APFS chiffrée (AES-256, `hdiutil`) rangée dans un paquet `<nom>.coffre` à côté de lui, puis
+//! vérifié fichier par fichier (SHA-256) avant que l'app ne supprime l'original. Un fichier seul est copié
+//! à la racine du volume chiffré (`rapport.pdf` → `rapport.pdf.coffre`, qui s'ouvre sur `rapport.pdf`). Le paquet contient aussi `keys.json`, que
 //! l'app écrit : les accès sans mot de passe (Touch ID via la Secure Enclave, fichier clé), qui ne font
 //! que protéger une copie du mot de passe. Le mot de passe reste l'accès de secours : sans Parabellum,
 //! « Afficher le contenu du paquet » puis double-clic sur l'image suffit à l'ouvrir.
@@ -71,22 +72,33 @@ enum Entry {
     Link(PathBuf),
 }
 
-fn inventory(root: &Path) -> Result<BTreeMap<PathBuf, Entry>, VaultError> {
+/// Directories macOS creates at the root of a mounted volume, some owned by root and unreadable by the
+/// user (`.fseventsd`): never part of the copy, never walked.
+fn is_volume_internal(name: &str) -> bool {
+    matches!(
+        name,
+        ".fseventsd" | ".Trashes" | ".TemporaryItems" | ".DocumentRevisions-V100" | ".apdisk"
+    ) || name.starts_with(".Spotlight-V100")
+}
+
+/// `volume_root`: `root` is the mounted image, its macOS internals are skipped without being entered
+/// (walking into `.fseventsd` failed with « Permission denied »). The source is inventoried in full.
+fn inventory(root: &Path, volume_root: bool) -> Result<BTreeMap<PathBuf, Entry>, VaultError> {
     let mut out = BTreeMap::new();
-    for e in walkdir::WalkDir::new(root).follow_links(false).min_depth(1) {
+    let walk = walkdir::WalkDir::new(root)
+        .follow_links(false)
+        .min_depth(1)
+        .into_iter()
+        .filter_entry(|e| {
+            !(volume_root && e.depth() == 1 && is_volume_internal(&e.file_name().to_string_lossy()))
+        });
+    for e in walk {
         let e = e.map_err(|e| VaultError::Io(io::Error::other(e.to_string())))?;
         let rel = e
             .path()
             .strip_prefix(root)
             .map_err(|_| VaultError::Unsafe("chemin inattendu".into()))?
             .to_path_buf();
-        // Finder bookkeeping and APFS volume internals of the mounted image.
-        let name = e.file_name().to_string_lossy();
-        if e.depth() == 1
-            && (name == ".fseventsd" || name == ".Trashes" || name.starts_with(".Spotlight-V100"))
-        {
-            continue;
-        }
         let ft = e.file_type();
         let entry = if ft.is_dir() {
             Entry::Dir
@@ -122,10 +134,25 @@ fn sha256(p: &Path) -> io::Result<[u8; 32]> {
     Ok(h.finalize().into())
 }
 
+/// What is being encrypted, relative to `base`: a folder's whole tree (base = the folder), or one file
+/// (base = its parent, a single entry named like it).
+fn source_inventory(source: &Path) -> Result<(PathBuf, BTreeMap<PathBuf, Entry>), VaultError> {
+    let md = std::fs::symlink_metadata(source)?;
+    if md.is_dir() {
+        return Ok((source.to_path_buf(), inventory(source, false)?));
+    }
+    let (Some(parent), Some(name)) = (source.parent(), source.file_name()) else {
+        return Err(VaultError::Unsafe("nom de fichier invalide".into()));
+    };
+    let mut one = BTreeMap::new();
+    one.insert(PathBuf::from(name), Entry::File { size: md.len() });
+    Ok((parent.to_path_buf(), one))
+}
+
 /// Same tree, same file contents. Returns (files, bytes).
 fn verify(source: &Path, copy: &Path) -> Result<(u64, u64), VaultError> {
-    let a = inventory(source)?;
-    let b = inventory(copy)?;
+    let (base, a) = source_inventory(source)?;
+    let b = inventory(copy, true)?;
     let mismatch =
         |what: String| VaultError::Tool(format!("vérification de la copie chiffrée : {what}"));
     for (rel, e) in &a {
@@ -141,7 +168,7 @@ fn verify(source: &Path, copy: &Path) -> Result<(u64, u64), VaultError> {
     let (mut files, mut bytes) = (0u64, 0u64);
     for (rel, e) in &a {
         if let Entry::File { size } = e {
-            if sha256(&source.join(rel))? != sha256(&copy.join(rel))? {
+            if sha256(&base.join(rel))? != sha256(&copy.join(rel))? {
                 return Err(mismatch(format!("contenu de {} différent", rel.display())));
             }
             files += 1;
@@ -159,7 +186,7 @@ pub fn capacity_for(bytes: u64) -> u64 {
         .clamp(MIN_SIZE, MAX_SIZE)
 }
 
-/// Package path next to the folder: `Projets` → `Projets.coffre`.
+/// Package path next to the folder or file: `Projets` → `Projets.coffre`, `a.pdf` → `a.pdf.coffre`.
 pub fn default_package(source: &Path) -> Option<PathBuf> {
     let name = source.file_name()?.to_string_lossy();
     Some(source.with_file_name(format!("{name}.{PACKAGE_EXTENSION}")))
@@ -185,7 +212,7 @@ fn temp_mountpoint() -> io::Result<PathBuf> {
     Err(io::Error::other("point de montage temporaire impossible"))
 }
 
-/// Encrypts `source` into a new `.coffre` package; the folder itself is left untouched (the app deletes it
+/// Encrypts `source` (a folder or a regular file) into a new `.coffre` package; the original is left untouched (the app deletes it
 /// afterwards, with « Supprimer définitivement », once the user has confirmed).
 pub fn encrypt_folder(
     r: &dyn Runner,
@@ -201,9 +228,11 @@ pub fn encrypt_folder(
         io::ErrorKind::NotFound => VaultError::NotFound(source.display().to_string()),
         _ => e.into(),
     })?;
-    if !md.is_dir() {
+    // Symlinks, sockets, devices: refused (the link's target would be encrypted, not the link).
+    let is_file = md.is_file();
+    if !md.is_dir() && !is_file {
         return Err(VaultError::Unsafe(format!(
-            "{} n'est pas un dossier",
+            "{} n'est ni un dossier ni un fichier",
             source.display()
         )));
     }
@@ -237,7 +266,8 @@ pub fn encrypt_folder(
     if std::fs::symlink_metadata(&package).is_ok() {
         return Err(VaultError::AlreadyExists(package.display().to_string()));
     }
-    let content_bytes: u64 = inventory(&source)?
+    let content_bytes: u64 = source_inventory(&source)?
+        .1
         .values()
         .map(|e| match e {
             Entry::File { size } => *size,
@@ -245,8 +275,13 @@ pub fn encrypt_folder(
         })
         .sum();
     let capacity = capacity_for(content_bytes);
-    let name = source
-        .file_name()
+    // A file's volume is named without its extension (`rapport.pdf` → « rapport »).
+    let name_part = if is_file {
+        source.file_stem()
+    } else {
+        source.file_name()
+    };
+    let name = name_part
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
     let volume_name = if validate_volume_name(&name).is_ok() {
@@ -321,12 +356,17 @@ fn fill(
 ) -> Result<(u64, u64), VaultError> {
     create(r, paths, home, capacity, volume_name, password)?;
     attach(r, paths, home, password)?;
-    // `ditto src dst` copies the contents of src into dst, with extended attributes, ACLs and resource
-    // forks (quarantine flags kept: a downloaded file stays flagged).
-    let a = vec![
-        source.display().to_string(),
-        mountpoint.display().to_string(),
-    ];
+    // `ditto src dst` copies the contents of src into dst (a file: to dst/<name>), with extended
+    // attributes, ACLs and resource forks (quarantine flags kept: a downloaded file stays flagged).
+    let dest = if source.is_dir() {
+        mountpoint.to_path_buf()
+    } else {
+        let name = source
+            .file_name()
+            .ok_or_else(|| VaultError::Unsafe("nom de fichier invalide".into()))?;
+        mountpoint.join(name)
+    };
+    let a = vec![source.display().to_string(), dest.display().to_string()];
     let out = r.run(DITTO, &a, None, T_COPY)?;
     if !out.ok() {
         return Err(VaultError::Tool(format!(

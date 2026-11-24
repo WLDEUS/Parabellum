@@ -404,7 +404,8 @@
 "Choisir…" = "Choose…";
 "Choisis les fichiers ou dossiers à analyser" = "Choose the files or folders to scan";
 "Choisissez des fichiers (photos, PDF, documents) : les dossiers ne sont pas nettoyés." = "Choose files (photos, PDFs, documents): folders are not cleaned.";
-"Choisissez un dossier à chiffrer." = "Choose a folder to encrypt.";
+"Choisissez un dossier ou un fichier à chiffrer." = "Choose a folder or a file to encrypt.";
+"Chiffrer un fichier" = "Encrypt a File";
 "Cible de mise à jour inconnue : %@ (db, components, app, all)." = "Unknown update target: %@ (db, components, app, all).";
 "Cibles rapides :" = "Quick targets:";
 "ClamAV" = "ClamAV";
@@ -737,7 +738,7 @@
 "Inconnu" = "Unknown";
 "Inconnue" = "Unknown";
 "Inconnus" = "Unknown";
-"Indiquez le dossier : parabellum://encrypt?path=/chemin/absolu" = "Give the folder: parabellum://encrypt?path=/absolute/path";
+"Indiquez le dossier ou le fichier : parabellum://encrypt?path=/chemin/absolu" = "Give the folder or file: parabellum://encrypt?path=/absolute/path";
 "Indiquez le dossier chiffré : parabellum://coffre/lock?path=/x.coffre" = "Give the encrypted folder: parabellum://coffre/lock?path=/x.coffre";
 "Indiquez le dossier chiffré : parabellum://coffre/open?path=/x.coffre" = "Give the encrypted folder: parabellum://coffre/open?path=/x.coffre";
 "Indiquez le fichier à analyser : parabellum://scan?path=/chemin/absolu" = "Give the file to scan: parabellum://scan?path=/absolute/path";
@@ -1026,7 +1027,7 @@
 "Normal" = "Normal";
 "notarisé" = "notarized";
 "Notes Obsidian (dossier, vide = aucune)" = "Obsidian notes (folder, empty = none)";
-"Notez-le : c'est l'accès de secours, il ouvre le dossier même sans Parabellum. Sans lui (ni Touch ID, ni fichier clé), le contenu est perdu." = "Write it down: it is the fallback, it opens the folder even without Parabellum. Without it (and without Touch ID or a key file), the content is lost.";
+"Notez-le : c'est l'accès de secours, il ouvre le coffre même sans Parabellum. Sans lui (ni Touch ID, ni fichier clé), le contenu est perdu." = "Write it down: it is the fallback, it opens the vault even without Parabellum. Without it (and without Touch ID or a key file), the content is lost.";
 "Notifications" = "Notifications";
 "Notifications autorisées" = "Notifications allowed";
 "Notifications désactivées" = "Notifications off";
@@ -1350,7 +1351,7 @@
 "Supprimer définitivement (sans passer par la corbeille)" = "Delete permanently (without going through the Trash)";
 "Supprimer définitivement ?" = "Delete permanently?";
 "Supprimer définitivement ce fichier ?" = "Permanently delete this file?";
-"Supprimer définitivement le dossier d'origine après vérification" = "Permanently delete the original folder after verification";
+"Supprimer définitivement l'original après vérification" = "Permanently delete the original after verification";
 "Supprimer définitivement les originaux ?" = "Permanently delete the originals?";
 "supprimer définitivement un fichier en quarantaine" = "permanently delete a quarantined file";
 "Supprimer définitivement…" = "Delete Permanently…";
