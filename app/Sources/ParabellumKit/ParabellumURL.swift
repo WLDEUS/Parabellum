@@ -25,7 +25,7 @@ public enum ParabellumURLAction: Equatable, Sendable {
     case open(section: String?)
     /// `parabellum://clean?path=…` (repeatable): copies without metadata next to the files.
     case cleanMetadata(paths: [String])
-    /// `parabellum://encrypt?path=/folder`: opens the « Chiffrer » window (nothing happens without it).
+    /// `parabellum://encrypt?path=/folder-or-file`: opens the « Chiffrer » window (nothing happens without it).
     case encrypt(path: String)
     /// `parabellum://shred?path=…` (repeatable): opens the « Supprimer définitivement » confirmation.
     case shred(paths: [String])
@@ -117,7 +117,7 @@ public enum ParabellumURL {
         case ["clean"]:
             return pathList(String(localized: "Indiquez les fichiers : parabellum://clean?path=/chemin/absolu")).map { .cleanMetadata(paths: $0) }
         case ["encrypt"]:
-            return singlePath(String(localized: "Indiquez le dossier : parabellum://encrypt?path=/chemin/absolu")).map { .encrypt(path: $0) }
+            return singlePath(String(localized: "Indiquez le dossier ou le fichier : parabellum://encrypt?path=/chemin/absolu")).map { .encrypt(path: $0) }
         case ["shred"]:
             return pathList(String(localized: "Indiquez les éléments : parabellum://shred?path=/chemin/absolu")).map { .shred(paths: $0) }
         case ["coffre", "open"]:

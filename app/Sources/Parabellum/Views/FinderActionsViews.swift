@@ -58,7 +58,7 @@ struct EncryptFolderView: View {
 
             SecureField("Mot de passe", text: $password)
             SecureField("Confirmez le mot de passe", text: $confirmation)
-            Text("Notez-le : c'est l'accès de secours, il ouvre le dossier même sans Parabellum. Sans lui (ni Touch ID, ni fichier clé), le contenu est perdu.")
+            Text("Notez-le : c'est l'accès de secours, il ouvre le coffre même sans Parabellum. Sans lui (ni Touch ID, ni fichier clé), le contenu est perdu.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -70,7 +70,7 @@ struct EncryptFolderView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Toggle("Créer aussi un fichier clé (à garder ailleurs, sur une clé USB par exemple)", isOn: $keyFile)
-            Toggle("Supprimer définitivement le dossier d'origine après vérification", isOn: $deleteOriginal)
+            Toggle("Supprimer définitivement l'original après vérification", isOn: $deleteOriginal)
             if deleteOriginal {
                 Text("Vous confirmerez la suppression dans la fenêtre suivante.")
                     .font(.caption).foregroundStyle(.secondary)

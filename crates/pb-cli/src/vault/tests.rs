@@ -176,7 +176,22 @@ impl Runner for Fake {
                     .get_mut("ditto")
                     .and_then(VecDeque::pop_front);
                 if broken.is_none() {
-                    copy_tree(Path::new(&args[0]), Path::new(&args[1]));
+                    let (src, dst) = (Path::new(&args[0]), Path::new(&args[1]));
+                    if src.is_file() {
+                        std::fs::copy(src, dst).unwrap();
+                    } else {
+                        copy_tree(src, dst);
+                    }
+                    // What macOS adds at the root of a mounted volume (`.fseventsd` is root-only on a
+                    // real Mac): must not be walked nor count as « en trop ».
+                    let vol = if src.is_file() {
+                        dst.parent().unwrap()
+                    } else {
+                        dst
+                    };
+                    std::fs::create_dir_all(vol.join(".fseventsd")).unwrap();
+                    std::fs::write(vol.join(".fseventsd/fseventsd-uuid"), b"x").unwrap();
+                    std::fs::create_dir_all(vol.join(".Spotlight-V100/Store-V2")).unwrap();
                 }
                 ok("")
             }
@@ -1027,13 +1042,40 @@ fn encrypt_folder_refuses_unsafe_sources() {
         let err = folder::encrypt_folder(&f, &e.home, &p, None, &pw(GOOD)).unwrap_err();
         assert!(err.to_string().contains(why), "{p:?}: {err}");
     }
-    let file = e.home.join("note.txt");
-    std::fs::write(&file, b"x").unwrap();
-    assert!(folder::encrypt_folder(&f, &e.home, &file, None, &pw(GOOD)).is_err());
+    let link = e.home.join("lien-note");
+    std::os::unix::fs::symlink("/etc/hosts", &link).unwrap();
+    assert!(folder::encrypt_folder(&f, &e.home, &link, None, &pw(GOOD)).is_err());
     // Weak password: refused before anything is created.
     let src = project(&e.home);
     assert!(folder::encrypt_folder(&f, &e.home, &src, None, &pw("court")).is_err());
     assert!(!e.home.join("Projets.coffre").exists());
     assert!(f.calls_to("create").is_empty());
     assert_eq!(folder::capacity_for(3 << 30), 6 << 30);
+}
+
+#[test]
+fn encrypt_file_copies_it_alone_and_verifies() {
+    let e = env();
+    let f = Fake::default();
+    f.queue(
+        "hdiutil create",
+        ok("<plist><array><string>x</string></array></plist>"),
+    );
+    let file = e.home.join("rapport.pdf");
+    std::fs::write(&file, vec![7u8; 4096]).unwrap();
+    // A sibling must not end up in the coffre.
+    std::fs::write(e.home.join("autre.txt"), b"non").unwrap();
+    let r = folder::encrypt_folder(&f, &e.home, &file, None, &pw(GOOD)).unwrap();
+    assert!(r.verified);
+    assert_eq!((r.files, r.bytes), (1, 4096));
+    assert_eq!(
+        r.package,
+        e.home.join("rapport.pdf.coffre").display().to_string()
+    );
+    assert_eq!(r.volume_name, "rapport");
+    let calls = f.calls.borrow();
+    let ditto = calls.iter().find(|c| c.program.ends_with("ditto")).unwrap();
+    assert!(ditto.args[1].ends_with("/rapport.pdf"), "{:?}", ditto.args);
+    drop(calls);
+    assert!(file.exists(), "original untouched");
 }

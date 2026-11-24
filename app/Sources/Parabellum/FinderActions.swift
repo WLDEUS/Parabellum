@@ -55,11 +55,12 @@ final class FinderActions: ObservableObject {
         }
     }
 
+    /// A folder or a regular file (not a link, not an encrypted folder already).
     func encrypt(_ url: URL) {
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue,
-              !CoffrePackage.isPackage(url) else {
-            notify(String(localized: "Choisissez un dossier à chiffrer."), isError: true)
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey])
+        let usable = values.map { $0.isSymbolicLink != true && ($0.isDirectory == true || $0.isRegularFile == true) } ?? false
+        guard usable, !CoffrePackage.isPackage(url) else {
+            notify(String(localized: "Choisissez un dossier ou un fichier à chiffrer."), isError: true)
             return
         }
         present(.encrypt(url))
@@ -187,7 +188,11 @@ final class FinderActions: ObservableObject {
         let panel = self.panel ?? makePanel()
         self.panel = panel
         switch screen {
-        case .encrypt: panel.title = String(localized: "Chiffrer un dossier")
+        case .encrypt(let url):
+            let isDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? url.hasDirectoryPath
+            panel.title = isDir
+                ? String(localized: "Chiffrer un dossier")
+                : String(localized: "Chiffrer un fichier")
         case .unlock: panel.title = String(localized: "Ouvrir un dossier chiffré")
         }
         panel.center()
