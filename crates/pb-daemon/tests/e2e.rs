@@ -765,6 +765,7 @@ async fn disguised_script_is_caught_when_executed() {
         },
         args: vec!["sh".into(), path],
         parent: None,
+        cwd: None,
     })
     .await
     .unwrap();

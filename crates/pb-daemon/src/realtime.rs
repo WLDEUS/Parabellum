@@ -178,14 +178,20 @@ pub async fn run_dispatcher(ctx: Arc<Ctx>, mut rx: mpsc::Receiver<MonitorEvent>)
                         spawn_file_scan(&ctx, &shared, evicted);
                     }
                 }
-                Some(MonitorEvent::ProcessExec { target, args, parent }) => {
+                Some(MonitorEvent::ProcessExec {
+                    target,
+                    args,
+                    parent,
+                    cwd,
+                }) => {
                     let cfg = ctx.config();
                     if cfg.realtime.enabled {
                         crate::guard::on_exec(&ctx, &target, &args, parent.as_ref());
                         crate::intel::on_exec(&ctx, &target, parent.as_ref());
                     }
                     if cfg.realtime.enabled && cfg.realtime.scan_on_exec {
-                        if let Some(script) = pb_core::inert::disguised_script(&target.path, &args) {
+                        if let Some(script) = pb_core::inert::disguised_script(&target.path, &args, cwd.as_deref())
+                        {
                             spawn_script_scan(&ctx, &shared, target.clone(), PathBuf::from(script));
                         }
                         if !target.is_platform_binary {
@@ -547,7 +553,20 @@ pub async fn scan_exec(ctx: &Arc<Ctx>, shared: &Arc<RealtimeShared>, target: EsP
         }),
     };
     let verdict = actions::process_report(ctx, report.clone(), &rc, &path).await;
-    if report.sha256.is_some() {
+    // The verdict comes from re-reading the path; the key may be the CDHash of the image that ran. A
+    // benign file renamed over the path right after exec would otherwise whitelist the malware's
+    // CDHash for a day (audit FILE-5): cache by CDHash only when the scanned bytes are that image.
+    let cacheable = match (&report.sha256, key.strip_prefix("cd:")) {
+        (Some(sha), Some(cd)) => {
+            let (p, sha, cd) = (path.clone(), sha.clone(), cd.to_string());
+            tokio::task::spawn_blocking(move || pb_engine::content_matches_cdhash(&p, &sha, &cd))
+                .await
+                .unwrap_or(false)
+        }
+        (Some(_), None) => true,
+        (None, _) => false,
+    };
+    if cacheable {
         shared.exec_remember(key, verdict, generation);
     }
     record_history(ctx, &report, &md, verdict).await;

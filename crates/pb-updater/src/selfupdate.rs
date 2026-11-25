@@ -124,8 +124,40 @@ pub(crate) async fn stage_verified_pkg(
         dst.sync_all()?;
     }
     set_mode(&staged, 0o600)?;
-    verify_file_async(&staged, sig_text.to_string(), public_key.to_string()).await?;
+    let trusted = verify_file_async(&staged, sig_text.to_string(), public_key.to_string()).await?;
+    check_release_comment(&trusted, version, pb_core::VERSION)?;
     Ok(staged)
+}
+
+/// The version must come from the **signed** data, not from the asset name: the release job signs with
+/// the trusted comment `Parabellum <version> (<commit>)`. An old, genuinely signed package re-uploaded as
+/// `Parabellum-99.0.0.pkg` would otherwise be installed as root, then reinstalled every day (audit SC-3).
+/// Also refuses anything not newer than the running version.
+pub(crate) fn check_release_comment(
+    trusted: &str,
+    version: &str,
+    current: &str,
+) -> Result<(), UpdateError> {
+    let signed = trusted
+        .strip_prefix("Parabellum ")
+        .and_then(|rest| rest.split_once(' '))
+        .map(|(v, _)| v)
+        .unwrap_or("");
+    if signed != version {
+        return Err(UpdateError::Verification(format!(
+            "version signée « {signed} » différente du fichier ({version})"
+        )));
+    }
+    let parse = |v: &str| semver::Version::parse(v.trim()).ok();
+    match (parse(version), parse(current)) {
+        (Some(new), Some(cur)) if new > cur => Ok(()),
+        (Some(_), Some(_)) => Err(UpdateError::Verification(format!(
+            "version {version} pas plus récente que {current} : refusée"
+        ))),
+        _ => Err(UpdateError::Verification(format!(
+            "version invalide : {version}"
+        ))),
+    }
 }
 
 /// Stage + verify the package, write the marker and the job plist, and hand the installation to launchd.
@@ -257,6 +289,20 @@ mod tests {
         assert!(xml.contains("a&amp;b&lt;c&gt;.pkg"));
     }
 
+    #[test]
+    fn release_version_comes_from_the_signature() {
+        let ok = "Parabellum 0.3.0 (0123abc)";
+        assert!(check_release_comment(ok, "0.3.0", "0.2.9").is_ok());
+        // Old signed package renamed to a bigger version.
+        assert!(check_release_comment("Parabellum 0.2.0 (aaa)", "99.0.0", "0.2.9").is_err());
+        // Signed, but not newer than what runs (rollback / replay).
+        assert!(check_release_comment(ok, "0.3.0", "0.3.0").is_err());
+        assert!(check_release_comment(ok, "0.3.0", "1.0.0").is_err());
+        // Anything else in the comment (DB key, test signatures).
+        assert!(check_release_comment("test", "0.3.0", "0.1.0").is_err());
+        assert!(check_release_comment("Parabellum 0.3.0", "0.3.0", "0.1.0").is_err());
+    }
+
     #[tokio::test]
     async fn staging_verifies_the_root_only_copy() {
         let key = TestKey::new();
@@ -264,13 +310,13 @@ mod tests {
         let paths = Paths::with_root(d.path());
         let dl = d.path().join("Parabellum-0.2.0.pkg");
         std::fs::write(&dl, b"xar! fake pkg").unwrap();
-        let sig = key.sign(b"xar! fake pkg");
-        let staged = stage_verified_pkg(&paths, &dl, "0.2.0", &sig, &key.public_b64())
+        let sig = key.sign_with_comment(b"xar! fake pkg", "Parabellum 99.2.0 (abc123)");
+        let staged = stage_verified_pkg(&paths, &dl, "99.2.0", &sig, &key.public_b64())
             .await
             .unwrap();
         assert_eq!(
             staged,
-            self_update_staging_dir(&paths).join("Parabellum-0.2.0.pkg")
+            self_update_staging_dir(&paths).join("Parabellum-99.2.0.pkg")
         );
         #[cfg(unix)]
         {
@@ -284,7 +330,7 @@ mod tests {
         // Tampered download: the copy fails verification.
         std::fs::write(&dl, b"xar! evil pkg").unwrap();
         assert!(matches!(
-            stage_verified_pkg(&paths, &dl, "0.2.0", &sig, &key.public_b64()).await,
+            stage_verified_pkg(&paths, &dl, "99.2.0", &sig, &key.public_b64()).await,
             Err(UpdateError::Signature(_))
         ));
         assert!(
@@ -294,7 +340,7 @@ mod tests {
         );
         if !cfg!(target_os = "macos") {
             assert!(matches!(
-                launch_self_update(&paths, &dl, "0.2.0", &sig, &key.public_b64()).await,
+                launch_self_update(&paths, &dl, "99.2.0", &sig, &key.public_b64()).await,
                 Err(UpdateError::Unsupported(_))
             ));
         }

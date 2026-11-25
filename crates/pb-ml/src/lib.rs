@@ -27,7 +27,7 @@ mod macho;
 mod model;
 mod script;
 
-pub use codesig::{code_signature_summary, CodeSignatureSummary};
+pub use codesig::{code_signature_summary, verified_cdhashes, CodeSignatureSummary};
 pub use features::{extract_features, feature_descriptions, feature_names, FEATURES_VERSION};
 pub use gbdt::GbdtModel;
 pub use macho::plausible_fat_header;

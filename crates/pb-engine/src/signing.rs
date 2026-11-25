@@ -23,6 +23,8 @@ pub(crate) struct CodesignDetails {
     pub identifier: Option<String>,
     pub team_id: Option<String>,
     pub authorities: Vec<String>,
+    /// `CDHash=` and `CandidateCDHash sha256=` values (lowercase hex, 40 chars).
+    pub cdhashes: Vec<String>,
 }
 
 pub(crate) fn parse_codesign_details(stderr: &str) -> CodesignDetails {
@@ -42,6 +44,15 @@ pub(crate) fn parse_codesign_details(stderr: &str) -> CodesignDetails {
         } else if let Some(v) = line.strip_prefix("Identifier=") {
             if !v.trim().is_empty() {
                 d.identifier = Some(v.trim().to_owned());
+            }
+        } else if let Some(v) = line
+            .strip_prefix("CDHash=")
+            .or_else(|| line.strip_prefix("CandidateCDHash sha256="))
+        {
+            let v = v.trim().to_ascii_lowercase();
+            if v.len() == 40 && v.bytes().all(|b| b.is_ascii_hexdigit()) && !d.cdhashes.contains(&v)
+            {
+                d.cdhashes.push(v);
             }
         } else if line == "Signature=adhoc" {
             d.adhoc = true;
@@ -117,8 +128,17 @@ pub(crate) fn to_signing_info(
 
 /// Runs codesign / spctl on `path` (absolute). `check_notarization` should be true only for app
 /// bundles and main executables (spctl's `execute` assessment is meaningless for libraries).
+///
+/// `scanned_cdhashes`: CDHashes whose pages match the bytes the engine scanned
+/// (`pb_ml::verified_cdhashes`). When given, the signature only counts as valid when `codesign` reports
+/// one of them **and** `--verify` is pinned to it (`-R '=cdhash H"…"'`): the three tools run on a path an attacker
+/// can swap between them (audit FILE-4).
 #[cfg(target_os = "macos")]
-pub(crate) fn compute(path: &std::path::Path, check_notarization: bool) -> Option<SigningInfo> {
+pub(crate) fn compute(
+    path: &std::path::Path,
+    check_notarization: bool,
+    scanned_cdhashes: Option<&[String]>,
+) -> Option<SigningInfo> {
     use crate::proc;
     use std::process::Command;
     use std::time::Duration;
@@ -135,11 +155,29 @@ pub(crate) fn compute(path: &std::path::Path, check_notarization: bool) -> Optio
     if !details.signed {
         return Some(to_signing_info(&details, false, None));
     }
-    let mut cmd = Command::new(CODESIGN);
-    cmd.args(["--verify", "--strict"]).arg(&path);
-    let valid = proc::run(cmd, None, Duration::from_secs(60), None, 64 * 1024)
-        .map(|o| o.success())
-        .unwrap_or(false);
+    // `None`: not bound to scanned bytes (bundles, files too big to hold): plain verification.
+    let pin = match scanned_cdhashes {
+        None => Some(None),
+        Some(scanned) => details
+            .cdhashes
+            .iter()
+            .find(|h| scanned.contains(h))
+            .map(|h| Some(h.clone())),
+    };
+    let valid = match pin {
+        None => false,
+        Some(pin) => {
+            let mut cmd = Command::new(CODESIGN);
+            cmd.args(["--verify", "--strict"]);
+            if let Some(cdhash) = pin {
+                cmd.arg("-R").arg(format!("=cdhash H\"{cdhash}\""));
+            }
+            cmd.arg(&path);
+            proc::run(cmd, None, Duration::from_secs(60), None, 64 * 1024)
+                .map(|o| o.success())
+                .unwrap_or(false)
+        }
+    };
     let notarized = if check_notarization && !details.adhoc {
         let mut cmd = Command::new(SPCTL);
         cmd.args(["--assess", "--type", "execute", "-vv"])
@@ -156,7 +194,11 @@ pub(crate) fn compute(path: &std::path::Path, check_notarization: bool) -> Optio
 
 /// Non-macOS stub: Apple code signing cannot be evaluated.
 #[cfg(not(target_os = "macos"))]
-pub(crate) fn compute(_path: &std::path::Path, _check_notarization: bool) -> Option<SigningInfo> {
+pub(crate) fn compute(
+    _path: &std::path::Path,
+    _check_notarization: bool,
+    _scanned_cdhashes: Option<&[String]>,
+) -> Option<SigningInfo> {
     None
 }
 
@@ -244,6 +286,19 @@ TeamIdentifier=not set
         let d = parse_codesign_details("/tmp/x: code object is not signed at all\n");
         assert!(!d.signed);
         assert!(!to_signing_info(&d, true, None).valid);
+    }
+
+    #[test]
+    fn parses_cdhashes() {
+        let out = "Executable=/x\nCandidateCDHash sha1=1111111111111111111111111111111111111111\n\
+                   CandidateCDHash sha256=AABBCCDDEEFF00112233445566778899AABBCCDD\n\
+                   CandidateCDHashFull sha256=aabbccddeeff00112233445566778899aabbccddeeff0011223344556677889\n\
+                   CDHash=aabbccddeeff00112233445566778899aabbccdd\nCDHash=short\n";
+        let d = parse_codesign_details(out);
+        assert_eq!(
+            d.cdhashes,
+            vec!["aabbccddeeff00112233445566778899aabbccdd".to_string()]
+        );
     }
 
     #[test]

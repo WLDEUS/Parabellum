@@ -434,7 +434,7 @@ impl Engine {
                 return Ok(());
             }
             let mut entry = entry.map_err(|e| format!("tar: {e}"))?;
-            if !entry.header().entry_type().is_file() {
+            if !tar_entry_has_content(entry.header().entry_type()) {
                 continue;
             }
             if budget.bytes == 0 {
@@ -795,5 +795,39 @@ mod tests {
         );
         assert!(!is_bomb(500_000, 10));
         assert!(is_bomb(2 * 1024 * 1024, 10_000));
+    }
+}
+
+/// Tar entries whose data is a file to scan: regular, contiguous (`'7'`), GNU sparse and unknown types.
+/// Extractors (libarchive / Archive Utility, Python) write `'7'` and unknown types as regular files, so
+/// skipping them hid a payload from the scanner (audit FILE-7). Only structural entries are skipped.
+fn tar_entry_has_content(t: tar::EntryType) -> bool {
+    use tar::EntryType as E;
+    !matches!(
+        t,
+        E::Directory
+            | E::Symlink
+            | E::Link
+            | E::Char
+            | E::Block
+            | E::Fifo
+            | E::GNULongName
+            | E::GNULongLink
+            | E::XGlobalHeader
+            | E::XHeader
+    )
+}
+
+#[cfg(test)]
+mod tar_type_tests {
+    #[test]
+    fn contiguous_sparse_and_unknown_entries_are_scanned() {
+        use tar::EntryType as E;
+        for t in [E::Regular, E::Continuous, E::GNUSparse, E::new(b'Z')] {
+            assert!(super::tar_entry_has_content(t), "{t:?}");
+        }
+        for t in [E::Directory, E::Symlink, E::Link, E::XHeader, E::Fifo] {
+            assert!(!super::tar_entry_has_content(t), "{t:?}");
+        }
     }
 }

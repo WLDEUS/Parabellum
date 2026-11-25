@@ -37,6 +37,9 @@ pub struct Peer {
     pub can_mutate: bool,
     /// Root or administrator-approved for this request (secrets may be returned).
     pub admin: bool,
+    /// The installed CLI run by a non-root user: anything can start it, so it gets less than the app
+    /// (`Request::cli_needs_admin`).
+    pub cli: bool,
 }
 
 fn json<T: Serialize>(v: &T) -> Result<Value, IpcError> {

@@ -57,6 +57,9 @@ pub enum MonitorEvent {
         args: Vec<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         parent: Option<EsProcessInfo>,
+        /// Working directory of the new image, when eslogger gives it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cwd: Option<String>,
     },
     /// A persistence item appeared / changed / disappeared.
     Persistence {

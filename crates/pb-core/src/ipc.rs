@@ -463,6 +463,34 @@ impl Request {
         }
     }
 
+    /// What the installed CLI may only do as root (`sudo`) or with administrator approval, while the app
+    /// may do it directly. Any program of the user (malware included) can start the CLI, so the CLI alone
+    /// must not hide alerts, stop scans, read personal data the daemon gathered with root rights
+    /// (TCC database, mail-agent summaries, LAN and browsing history, findings paths), or make the daemon
+    /// install / run third-party software (audit IPC-1).
+    pub fn cli_needs_admin(&self) -> bool {
+        matches!(
+            self,
+            Request::CancelScan { .. }
+                | Request::ResolveAlert { .. }
+                | Request::ExportAlerts { .. }
+                | Request::GetJob { .. }
+                | Request::IntelStatus
+                | Request::LanStatus { .. }
+                | Request::LanPorts { .. }
+                | Request::Report { .. }
+                | Request::DailyReport { .. }
+                | Request::ListDailyReports { .. }
+                | Request::PermissionsAudit { .. }
+                | Request::MailAgentStatus
+                | Request::MailAgentRunNow
+                | Request::PrivacyListRequests
+                | Request::BreachList
+                | Request::AliasList
+                | Request::InstallComponent { .. }
+        )
+    }
+
     /// Commands that change state, or reveal personal data (browsing / LAN history: `IntelStatus`,
     /// `LanStatus`, `Report`, `PermissionsAudit`): they need the peer to be the installed app/CLI of the
     /// console user or root. Everything else is readable by any local process of an admin-group user.
@@ -472,9 +500,7 @@ impl Request {
             Request::Ping
                 | Request::Status
                 | Request::ListJobs { .. }
-                | Request::GetJob { .. }
                 | Request::ListAlerts { .. }
-                | Request::ExportAlerts { .. }
                 | Request::ListQuarantine
                 | Request::ListPersistence { .. }
                 | Request::ListDevices { .. }
@@ -492,10 +518,7 @@ impl Request {
                 | Request::ListSnapshots
                 | Request::PrivacyGetProfile { reveal: false }
                 | Request::PrivacyListBrokers
-                | Request::PrivacyListRequests
                 | Request::PrivacySummary
-                | Request::BreachList
-                | Request::AliasList
                 | Request::IntelScoreDomain { .. }
                 // ----- Travel mode -----
                 | Request::TravelStatus
