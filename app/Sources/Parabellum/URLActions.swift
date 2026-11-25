@@ -77,7 +77,7 @@ enum URLActionRunner {
         case .shred(let paths):
             await FinderActions.shared.shred(paths.map { URL(fileURLWithPath: $0) })
         case .openCoffre(let path):
-            await FinderActions.shared.openCoffre(URL(fileURLWithPath: path))
+            await FinderActions.shared.openCoffre(URL(fileURLWithPath: path), fromOutside: true)
         case .lockCoffre(let path):
             await FinderActions.shared.lockCoffre(URL(fileURLWithPath: path))
         case .open(let name):

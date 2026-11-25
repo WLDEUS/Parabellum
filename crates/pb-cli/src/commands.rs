@@ -32,8 +32,9 @@ pub enum CliError {
 }
 
 /// Shown when a protection-weakening command is run without root.
-pub const SUDO_MESSAGE: &str =
-    "Cette commande réduit la protection : relancez-la avec sudo (sudo parabellum …)";
+pub const SUDO_MESSAGE: &str = "Commande protégée : relancez-la avec sudo et le chemin complet \
+     (sudo \"/Library/Application Support/Parabellum/bin/parabellum\" …), jamais un « parabellum » \
+     trouvé dans le PATH";
 
 /// Where output goes.
 pub struct Output<'a> {

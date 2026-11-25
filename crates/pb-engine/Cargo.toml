@@ -28,3 +28,6 @@ plist = { workspace = true }
 
 [dev-dependencies]
 pb-ml = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

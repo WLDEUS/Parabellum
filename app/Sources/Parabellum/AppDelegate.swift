@@ -39,7 +39,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Double-click on a folder encrypted from the Finder.
         if url.isFileURL, CoffrePackage.isPackage(url) {
             AppModel.shared.start()
-            Task { await FinderActions.shared.openCoffre(url.standardizedFileURL) }
+            // LaunchServices (Finder double-click, `open`, a forwarded request): confirmed in-app first.
+            Task { await FinderActions.shared.openCoffre(url.standardizedFileURL, fromOutside: true) }
             return
         }
         guard url.scheme?.lowercased() == ParabellumURL.scheme else { return }

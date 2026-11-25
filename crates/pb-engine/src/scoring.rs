@@ -3,7 +3,7 @@
 //! | Source                                   | Verdict                                              |
 //! |------------------------------------------|------------------------------------------------------|
 //! | hash allowlisted (local or bundle)       | **Clean**, detections dropped (decided before scoring) |
-//! | hash DB hit                              | Malicious (confidence 0.99)                          |
+//! | hash DB hit                              | Malicious; Suspicious if the signer is trusted       |
 //! | ClamAV signature                         | Malicious; `PUA.*` / `Heuristics.*` → Suspicious     |
 //! | YARA / heuristic, critical or high       | Malicious, or Suspicious if the signer is trusted    |
 //! | YARA / heuristic, medium                 | Suspicious                                           |
@@ -24,6 +24,10 @@ pub fn detection_verdict(d: &Detection, trusted_signer: bool) -> (Verdict, f32) 
         0.0
     };
     match d.engine {
+        // Anyone can submit a legitimate notarized binary to a public malware feed: such a hit alerts
+        // but never auto-quarantines an app signed by Apple or a trusted team (audit SC-6). Trust is
+        // bound to the scanned bytes (CDHash + page hashes), so a copied signature does not qualify.
+        DetectionEngine::HashDb if trusted_signer => (Verdict::Suspicious, conf.min(0.6)),
         DetectionEngine::HashDb => (Verdict::Malicious, conf),
         DetectionEngine::ClamAv => {
             if d.name.starts_with("PUA.") || d.name.starts_with("Heuristics.") {
@@ -89,8 +93,16 @@ mod tests {
         assert_eq!(score(&[], false), (Verdict::Clean, 0.0));
         assert_eq!(
             score(&[det(HashDb, "x", Severity::Critical, 0.99)], true).0,
+            Verdict::Suspicious
+        );
+        assert_eq!(
+            score(&[det(HashDb, "x", Severity::Critical, 0.99)], false).0,
             Verdict::Malicious
         );
+        assert!(!is_signature_grade(
+            &det(HashDb, "x", Severity::Critical, 0.99),
+            true
+        ));
         assert_eq!(
             score(
                 &[det(ClamAv, "Osx.Trojan.Amos", Severity::High, 0.95)],

@@ -3,11 +3,16 @@ name: Release
 # Tag vX.Y.Z -> build the arm64 .pkg on macOS, sign it with minisign, publish .pkg + .minisig + SHA256SUMS.
 #
 # Supply-chain layout (see docs/SECURITY-SUPPLY-CHAIN.md):
-#   * `build` compiles third-party code (crates, build scripts): read-only token, no minisign key, no
-#     build cache (a poisoned cache must never end up in a signed installer), `--locked` dependencies.
+#   * `build` compiles third-party code (crates, build scripts, proc macros): read-only token, NO secret
+#     at all, no build cache (a poisoned cache must never end up in a signed installer), `--locked`
+#     dependencies. It hands over the two Rust binaries only.
+#   * `package` builds the app (first-party Swift, no SwiftPM dependency) and the .pkg from those binaries
+#     and signs the code with the stable certificate (environment `codesign`: tags v* only). The .p12 is
+#     imported non-extractable; no third-party code is compiled in this job (audit SC-8).
 #   * `sign-publish` never runs project or dependency code: it only receives the .pkg as an artifact,
-#     signs it with the dedicated RELEASE key (MINISIGN_RELEASE_SECRET_KEY, keys/parabellum-release.pub)
-#     and publishes. Before the release key exists it falls back to the DB key (warning).
+#     signs it with the dedicated RELEASE key (environment `release`: tags v* only, required reviewer;
+#     audit SC-1) and publishes. The trusted comment `Parabellum <version> (<commit>)` binds the signature
+#     to the version, so a client can refuse an older signed .pkg (anti-rollback, audit SC-3).
 
 on:
   push:
@@ -53,25 +58,23 @@ jobs:
             exit 1
           fi
           if [[ ! -s keys/parabellum-release.pub ]]; then
-            echo "::warning::keys/parabellum-release.pub is missing: self-updates stay verified with the DB key (make release-key)"
+            echo "::error::keys/parabellum-release.pub is missing (make release-key): releases are signed with the release key only"
+            exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
-      # Stable code-signing identity: same certificate for every release, so the Full Disk Access grant
-      # of parabellumd survives updates. Without the secrets the release is signed ad hoc (warning).
-      - name: Code-signing identity (certificate from secrets, else ad hoc)
+      - name: cargo build --release (daemon + CLI)
         env:
-          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
-          MACOS_SIGN_P12_PASSWORD: ${{ secrets.MACOS_SIGN_P12_PASSWORD }}
-        run: scripts/ci-codesign.sh import
-      - name: Build .pkg
-        run: scripts/build-pkg.sh 2>&1 | tee ci-logs/build-pkg.log
-      - name: Delete the temporary signing keychain
-        if: always()
-        run: scripts/ci-codesign.sh cleanup
+          MACOSX_DEPLOYMENT_TARGET: "14.0"
+        run: |
+          set -o pipefail
+          cargo build --locked --release --target aarch64-apple-darwin -p pb-daemon -p pb-cli 2>&1 | tee ci-logs/cargo-build.log
+          mkdir -p rust-bin
+          cp target/aarch64-apple-darwin/release/parabellumd target/aarch64-apple-darwin/release/parabellum rust-bin/
+          (cd rust-bin && shasum -a 256 parabellumd parabellum > SHA256SUMS)
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-pkg
-          path: dist/Parabellum-${{ steps.version.outputs.version }}.pkg
+          name: rust-bin
+          path: rust-bin
           retention-days: 1
           if-no-files-found: error
       - name: Annotate errors
@@ -84,18 +87,71 @@ jobs:
             done
           done
 
-  sign-publish:
+  package:
     needs: build
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    permissions:
-      contents: write # gh release create
+    runs-on: macos-15 # arm64
+    timeout-minutes: 60
+    environment: codesign # MACOS_SIGN_P12 / MACOS_SIGN_P12_PASSWORD (tags v* only)
     steps:
-      # Only the public keys are read from the checkout; no project script or dependency runs here.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          sparse-checkout: keys
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: rust-bin
+          path: rust-bin
+      - name: Put the Rust binaries in place
+        run: |
+          set -euo pipefail
+          [[ "$(find rust-bin -mindepth 1 ! -type f | wc -l)" -eq 0 ]] || { echo "::error::unexpected entry in rust-bin"; exit 1; }
+          (cd rust-bin && shasum -a 256 -c SHA256SUMS)
+          out=target/aarch64-apple-darwin/release
+          mkdir -p "$out"
+          install -m 0755 rust-bin/parabellumd rust-bin/parabellum "$out/"
+          rm -rf rust-bin
+      # Stable code-signing identity: same certificate for every release, so the Full Disk Access grant
+      # of parabellumd survives updates. Without the secrets the release is signed ad hoc (warning).
+      - name: Code-signing identity (certificate from the codesign environment, else ad hoc)
+        env:
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_P12_PASSWORD: ${{ secrets.MACOS_SIGN_P12_PASSWORD }}
+        run: scripts/ci-codesign.sh import
+      # First-party Swift only (app/Package.swift has no dependency), then the .pkg from the binaries above.
+      - name: Build app and .pkg
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -o pipefail
+          mkdir -p ci-logs
+          scripts/build-app.sh 2>&1 | tee ci-logs/build-app.log
+          scripts/build-pkg.sh --skip-build 2>&1 | tee ci-logs/build-pkg.log
+          test -s "dist/Parabellum-${VERSION}.pkg"
+      - name: Delete the temporary signing keychain
+        if: always()
+        run: scripts/ci-codesign.sh cleanup
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-pkg
+          path: dist/Parabellum-${{ needs.build.outputs.version }}.pkg
+          retention-days: 1
+          if-no-files-found: error
+
+  sign-publish:
+    needs: [build, package]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: release # MINISIGN_RELEASE_SECRET_KEY (+ _PASSWORD): tags v* only, required reviewer
+    permissions:
+      contents: write # gh release create
+    steps:
+      # Only the public keys and the signing helper are read from the checkout; nothing else runs here.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            keys
+            scripts/ci-minisign.sh
+          sparse-checkout-cone-mode: false
       - run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends minisign
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
@@ -104,28 +160,18 @@ jobs:
       - name: Sign
         env:
           VERSION: ${{ needs.build.outputs.version }}
-          MINISIGN_RELEASE_SECRET_KEY: ${{ secrets.MINISIGN_RELEASE_SECRET_KEY }}
-          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_KEY: ${{ secrets.MINISIGN_RELEASE_SECRET_KEY }}
+          MINISIGN_KEY_PASSWORD: ${{ secrets.MINISIGN_RELEASE_KEY_PASSWORD }}
+          MINISIGN_PUB: keys/parabellum-release.pub
         run: |
           set -euo pipefail
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::bad version '$VERSION'"; exit 1; }
           pkg="dist/Parabellum-${VERSION}.pkg"
           test -s "$pkg"
           [[ "$(find dist -type f | wc -l)" -eq 1 ]] || { echo "::error::unexpected files in the artifact"; exit 1; }
-          if [[ -s keys/parabellum-release.pub ]]; then
-            secret="$MINISIGN_RELEASE_SECRET_KEY"; pub=keys/parabellum-release.pub
-            [[ -n "$secret" ]] || { echo "::error::secret MINISIGN_RELEASE_SECRET_KEY is not set (make release-key)"; exit 1; }
-          else
-            echo "::warning::no release key yet: signing with the DB key (make release-key)"
-            secret="$MINISIGN_SECRET_KEY"; pub=keys/parabellum-db.pub
-            [[ -n "$secret" ]] || { echo "::error::secret MINISIGN_SECRET_KEY is not set"; exit 1; }
-          fi
-          key="$RUNNER_TEMP/minisign.key"
-          (umask 077 && printf '%s\n' "$secret" > "$key")
-          minisign -S -s "$key" -m "$pkg" -t "Parabellum ${VERSION} (${GITHUB_SHA})" </dev/null
-          rm -f "$key"
-          # Fails if the secret does not match the committed public key.
-          minisign -V -p "$pub" -m "$pkg"
+          [[ "$(find dist -mindepth 1 ! -type f | wc -l)" -eq 0 ]] || { echo "::error::unexpected non-regular entry in the artifact"; exit 1; }
+          # The comment names the version so the client can bind the signature to the asset (audit SC-3).
+          bash scripts/ci-minisign.sh sign "$pkg" "Parabellum ${VERSION} (${GITHUB_SHA})"
           (cd dist && sha256sum "Parabellum-${VERSION}.pkg" "Parabellum-${VERSION}.pkg.minisig" > SHA256SUMS)
       - name: Publish release
         env:

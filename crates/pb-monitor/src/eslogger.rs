@@ -127,6 +127,9 @@ struct RawExec {
     target: RawProcess,
     #[serde(default)]
     args: Vec<Value>,
+    /// Working directory of the new image (eslogger fills it on macOS 13+): resolves `sh p.json`.
+    #[serde(default)]
+    cwd: Option<RawFile>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -175,6 +178,7 @@ pub enum EsEvent {
         target: EsProcessInfo,
         args: Vec<String>,
         parent: Option<EsProcessInfo>,
+        cwd: Option<String>,
     },
     File {
         path: String,
@@ -281,10 +285,17 @@ pub fn parse_line(line: &[u8]) -> Option<EsEvent> {
                 other => crate::util::clip(&other.to_string(), MAX_ARG_CHARS),
             })
             .collect();
+        let cwd = exec
+            .cwd
+            .as_ref()
+            .filter(|f| !f.path_truncated)
+            .and_then(|f| f.path.clone())
+            .filter(|p| p.starts_with('/'));
         return Some(EsEvent::Exec {
             target,
             args,
             parent: process,
+            cwd,
         });
     }
     if let Some(c) = ev.create {
@@ -899,6 +910,7 @@ fn dispatch(
             target,
             args,
             parent,
+            cwd,
         } => {
             if target.pid == filter.own_pid
                 || Path::new(&target.path).starts_with(&filter.own_root)
@@ -906,7 +918,7 @@ fn dispatch(
                     && !crate::sensitive::platform_exec_of_interest(&target.path, &args)
                     && !interpreter_from_third_party(&target, parent.as_ref())
                     // `sh /x/payload.json`: the file is skipped by pattern rules at rest, scanned now.
-                    && pb_core::inert::disguised_script(&target.path, &args).is_none())
+                    && pb_core::inert::disguised_script(&target.path, &args, cwd.as_deref()).is_none())
             {
                 return Dispatch::Skipped;
             }
@@ -914,6 +926,7 @@ fn dispatch(
                 target,
                 args,
                 parent,
+                cwd,
             }
         }
         EsEvent::File {
@@ -972,6 +985,7 @@ mod tests {
                 target,
                 args,
                 parent,
+                ..
             }) => {
                 assert_eq!(target.path, "/opt/homebrew/bin/payload");
                 assert_eq!(target.pid, 14522);
@@ -1233,6 +1247,7 @@ mod tests {
             },
             args: vec!["payload".into()],
             parent: None,
+            cwd: None,
         };
         assert!(matches!(
             dispatch(ev, &f, &tx, Some(&mut budget)),
@@ -1265,6 +1280,7 @@ mod tests {
             },
             args: args.iter().map(|a| a.to_string()).collect(),
             parent: Some(launchd.clone()),
+            cwd: None,
         };
         // Apple -> Apple, normally filtered out: forwarded when handed an inert-looking file.
         assert!(matches!(
@@ -1303,6 +1319,7 @@ mod tests {
                 "display dialog \"Mot de passe\" default answer \"\" with hidden answer".into(),
             ],
             parent: Some(proc_info("/private/tmp/.x/payload", false)),
+            cwd: None,
         };
         assert!(matches!(dispatch(ev, &f, &tx, None), Dispatch::Sent));
         // Ordinary platform exec: skipped.
@@ -1310,6 +1327,7 @@ mod tests {
             target: proc_info("/bin/ls", true),
             args: vec!["ls".into()],
             parent: None,
+            cwd: None,
         };
         assert!(matches!(dispatch(ev, &f, &tx, None), Dispatch::Skipped));
         // Shell started by a third-party program (behaviour baseline): forwarded; by Apple: skipped.
@@ -1320,6 +1338,7 @@ mod tests {
                 "/Applications/Editor.app/Contents/MacOS/Editor",
                 false,
             )),
+            cwd: None,
         };
         assert!(matches!(dispatch(ev, &f, &tx, None), Dispatch::Sent));
         let ev = EsEvent::Exec {
@@ -1329,6 +1348,7 @@ mod tests {
                 "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
                 true,
             )),
+            cwd: None,
         };
         assert!(matches!(dispatch(ev, &f, &tx, None), Dispatch::Skipped));
         // Credential store copied to a staging folder outside the watched paths: forwarded.
@@ -1393,5 +1413,24 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
+    }
+}
+
+#[cfg(test)]
+mod cwd_tests {
+    use super::*;
+
+    #[test]
+    fn exec_working_directory_is_parsed() {
+        let line = br#"{"event":{"exec":{"target":{"executable":{"path":"/bin/sh"},"audit_token":{"pid":5}},"args":["sh","p.json"],"cwd":{"path":"/Users/Shared","path_truncated":false}}}}"#;
+        match parse_line(line) {
+            Some(EsEvent::Exec { cwd, .. }) => assert_eq!(cwd.as_deref(), Some("/Users/Shared")),
+            other => panic!("{other:?}"),
+        }
+        let truncated = br#"{"event":{"exec":{"target":{"executable":{"path":"/bin/sh"}},"args":["sh"],"cwd":{"path":"/a","path_truncated":true}}}}"#;
+        assert!(matches!(
+            parse_line(truncated),
+            Some(EsEvent::Exec { cwd: None, .. })
+        ));
     }
 }

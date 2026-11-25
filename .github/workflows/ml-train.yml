@@ -2,7 +2,9 @@ name: Weekly ML training
 
 # Accumulates Mach-O feature vectors (never samples), trains the LightGBM classifier, and promotes it
 # to the `ml-latest` release only if it passes the gate (holdout FPR <= 0.1 % and TPR >= current).
-# The nightly DB build picks up ml-latest. Secrets: ABUSECH_AUTH_KEY.
+# The nightly DB build picks up ml-latest (signed models only, scripts/fetch-ml-models.sh).
+# Secrets: ABUSECH_AUTH_KEY (repo); MINISIGN_SECRET_KEY + MINISIGN_KEY_PASSWORD (environment db-signing,
+# publish job only).
 # Repository variable ML_FETCH_MALWARE=0 disables sample downloads on GitHub runners (see the GitHub
 # Acceptable Use caveat in ml/README.md); positives can then be produced on a local Linux box.
 
@@ -37,7 +39,8 @@ on:
         default: 0
 
 # Supply chain: `train` downloads and featurizes malware samples (7-Zip, pb-features), so it has a
-# READ-ONLY token; `publish` runs no project code beyond ml/publish.sh and uploads the produced files.
+# READ-ONLY token; `publish` (environment db-signing) runs no project code beyond ml/publish.sh +
+# scripts/ci-minisign.sh: it signs the promoted files and uploads them.
 permissions:
   contents: read
 
@@ -67,7 +70,7 @@ jobs:
           toolchain: stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          shared-key: pb-features
+          shared-key: pb-features-ml # not shared with nightly-db.yml
       - name: Build pb-features
         run: cargo build --release -p pb-ml --bin pb-features
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -83,11 +86,12 @@ jobs:
       - name: Restore clean corpus cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: .cache/corpus
-          key: corpus-v1-${{ hashFiles('pipeline/data/clean_corpus.toml') }}-${{ github.run_id }}
+          path: |
+            .cache/corpus/dl
+            .cache/corpus/bottles.json
+          key: corpus-v2-${{ hashFiles('pipeline/data/clean_corpus.toml') }}-${{ github.run_id }}
           restore-keys: |
-            corpus-v1-${{ hashFiles('pipeline/data/clean_corpus.toml') }}-
-            corpus-v1-
+            corpus-v2-${{ hashFiles('pipeline/data/clean_corpus.toml') }}-
       - name: Download dataset, metrics and current model
         run: |
           mkdir -p prev current
@@ -131,11 +135,12 @@ jobs:
         if: "!cancelled() && inputs.kind != 'macho'"
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: .cache/script-corpus
-          key: script-corpus-v1-${{ hashFiles('ml/data/script_corpus.toml') }}-${{ github.run_id }}
+          path: |
+            .cache/script-corpus/dl
+            .cache/script-corpus/bottles.json
+          key: script-corpus-v2-${{ hashFiles('ml/data/script_corpus.toml') }}-${{ github.run_id }}
           restore-keys: |
-            script-corpus-v1-${{ hashFiles('ml/data/script_corpus.toml') }}-
-            script-corpus-v1-
+            script-corpus-v2-${{ hashFiles('ml/data/script_corpus.toml') }}-
       - name: Download script dataset and current script model
         if: "!cancelled() && inputs.kind != 'macho'"
         run: |
@@ -188,11 +193,13 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
       - name: Save script corpus cache
-        if: always() && inputs.kind != 'macho' && hashFiles('.cache/script-corpus/**') != ''
+        if: always() && inputs.kind != 'macho' && hashFiles('.cache/script-corpus/dl/**') != ''
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: .cache/script-corpus
-          key: script-corpus-v1-${{ hashFiles('ml/data/script_corpus.toml') }}-${{ github.run_id }}
+          path: |
+            .cache/script-corpus/dl
+            .cache/script-corpus/bottles.json
+          key: script-corpus-v2-${{ hashFiles('ml/data/script_corpus.toml') }}-${{ github.run_id }}
       - name: Script summary
         if: always() && inputs.kind != 'macho'
         run: |
@@ -223,6 +230,9 @@ jobs:
     if: "!cancelled() && needs.train.result != 'skipped'"
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    # Signs promoted models with the DB key (audit SC-7): runs no training code, only ml/publish.sh
+    # and scripts/ci-minisign.sh on the training job's data files.
+    environment: db-signing # MINISIGN_SECRET_KEY (+ MINISIGN_KEY_PASSWORD): branch main only
     permissions:
       contents: write # gh release upload (ml-dataset, ml-latest)
     env:
@@ -233,14 +243,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          sparse-checkout: ml/publish.sh
+          sparse-checkout: |
+            ml/publish.sh
+            scripts/ci-minisign.sh
+            keys/parabellum-db.pub
           sparse-checkout-cone-mode: false
+      - run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends minisign
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         continue-on-error: true
         with:
           name: ml-out
           path: out
       - name: Publish
+        env: # only this step sees the key
+          MINISIGN_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_KEY_PASSWORD: ${{ secrets.MINISIGN_KEY_PASSWORD }}
+          MINISIGN_PUB: keys/parabellum-db.pub
         run: |
           set -euo pipefail
           # Data only: no link or special file may come out of the training job.

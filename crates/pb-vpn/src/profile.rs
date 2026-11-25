@@ -262,7 +262,57 @@ impl VpnProfile {
             port: self.port,
             transport: Some(self.transport_summary()),
             imported_at: self.imported_at,
+            warnings: self.security_warnings(),
         }
+    }
+
+    /// What makes this profile weaker than it looks (audit NET-4). Not refused: the server decides, and
+    /// some of these still hide traffic from the local network, but the user must know.
+    pub fn security_warnings(&self) -> Vec<String> {
+        let mut w = Vec::new();
+        let tls_warn = |w: &mut Vec<String>, tls: &Tls| {
+            if tls.insecure && tls.reality.is_none() {
+                w.push(
+                    "certificat du serveur non vérifié (allowInsecure) : un intermédiaire peut se \
+                     faire passer pour lui"
+                        .into(),
+                );
+            }
+        };
+        match &self.protocol {
+            Protocol::Shadowsocks { method, .. } => {
+                if !method.ends_with("-gcm") && !method.contains("poly1305") {
+                    w.push(format!(
+                        "chiffrement Shadowsocks « {method} » obsolète, sans authentification : \
+                         trafic modifiable et détectable"
+                    ));
+                }
+            }
+            Protocol::Vless { tls, .. } => match tls {
+                Some(t) => tls_warn(&mut w, t),
+                None => w.push(
+                    "VLESS sans TLS ni REALITY : le trafic circule en clair jusqu'au serveur"
+                        .into(),
+                ),
+            },
+            Protocol::Vmess { security, tls, .. } => {
+                if let Some(t) = tls {
+                    tls_warn(&mut w, t);
+                }
+                if tls.is_none() && matches!(security.as_str(), "none" | "zero") {
+                    w.push(format!(
+                        "VMess sans TLS avec le chiffrement « {security} » : le trafic circule en clair"
+                    ));
+                } else if security == "aes-128-ctr" {
+                    w.push("VMess « aes-128-ctr » : chiffrement sans authentification".into());
+                }
+            }
+            Protocol::Trojan { tls, .. }
+            | Protocol::Hysteria2 { tls, .. }
+            | Protocol::Tuic { tls, .. } => tls_warn(&mut w, tls),
+            Protocol::Wireguard(_) => {}
+        }
+        w
     }
 
     fn transport_summary(&self) -> String {
@@ -1504,6 +1554,30 @@ mod tests {
                 .contains("non prise en charge")
         );
         assert!(err(&format!("ss://{ui}@203.0.113.7:0")).contains("port"));
+    }
+
+    #[test]
+    fn weak_settings_are_reported() {
+        let ok = URL_SAFE_NO_PAD.encode("chacha20-ietf-poly1305:pw");
+        assert!(p(&format!("ss://{ok}@1.2.3.4:8388"))
+            .info()
+            .warnings
+            .is_empty());
+        let rc4 = STANDARD.encode("rc4-md5:pw");
+        assert_eq!(
+            p(&format!("ss://{rc4}@1.2.3.4:8388"))
+                .security_warnings()
+                .len(),
+            1
+        );
+        let plain = p(&format!("vless://{UUID}@1.2.3.4:443?type=tcp#x"));
+        assert!(plain.security_warnings()[0].contains("en clair"));
+        let insecure = p(
+            "trojan://pw@vpn.example.com:443?security=tls&sni=vpn.example.com&allowInsecure=1#t",
+        );
+        assert!(insecure.security_warnings()[0].contains("non vérifié"));
+        let good = p("trojan://pw@vpn.example.com:443?security=tls&sni=vpn.example.com#t");
+        assert!(good.security_warnings().is_empty());
     }
 
     #[test]

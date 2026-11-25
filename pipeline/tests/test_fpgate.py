@@ -1,4 +1,4 @@
-from pipeline.fpgate import fp_rate, run_fp_gate
+from pipeline.fpgate import fp_rate, ml_fp_problems, run_fp_gate
 from pipeline.yara_rules import RuleFile
 
 from .conftest import MACHO
@@ -114,3 +114,11 @@ def test_unscannable_clean_file_is_reported(tmp_path, monkeypatch):
     res = run_fp_gate(rules, paths)
     assert res.unscannable == ["small"]
     assert {f.name for f in res.kept} == {"x__slow.yar", "x__ok.yar"}  # not the rules' fault
+
+
+def test_ml_fp_gate():
+    assert ml_fp_problems(0, 1000, 0.005) == []
+    assert ml_fp_problems(5, 1000, 0.005) == []
+    assert ml_fp_problems(0, 0, 0.005) == []
+    (p,) = ml_fp_problems(6, 1000, 0.005)
+    assert "6/1000" in p

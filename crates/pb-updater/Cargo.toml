@@ -31,3 +31,6 @@ libc = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 minisign = "0.7"
+
+[lints]
+workspace = true

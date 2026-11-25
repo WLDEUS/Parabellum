@@ -1132,6 +1132,7 @@ mod tests {
 
         let meta = read_meta(d.path()).unwrap();
         let uid = crate::system::euid();
+        // SAFETY: getegid has no preconditions and cannot fail.
         let gid = unsafe { libc::getegid() };
         let base = tempfile::tempdir().unwrap();
         let p = prepare(base.path(), d.path(), &meta, uid, gid).unwrap();
@@ -1238,6 +1239,7 @@ mod tests {
         assert!(open_user_output(d.path(), me).is_err());
         let fifo = d.path().join("fifo.json");
         let c = std::ffi::CString::new(fifo.as_os_str().as_encoded_bytes()).unwrap();
+        // SAFETY: `c` is a valid NUL-terminated path.
         assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
         assert!(open_user_output(&fifo, me).is_err());
         // Missing.

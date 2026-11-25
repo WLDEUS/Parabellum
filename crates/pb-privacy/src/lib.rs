@@ -23,11 +23,13 @@
 //! // IPC: get_profile / set_profile / brokers / requests / summary / start_removal / update_request /
 //! //      draft / complaint / breaches / check_breaches / aliases / create_alias
 //! ```
+#![forbid(unsafe_code)]
 
 pub mod agent;
 pub mod aliases;
 pub mod breach;
 pub mod brokers;
+mod http;
 pub mod letters;
 pub mod mail;
 pub mod metadata;
@@ -811,7 +813,12 @@ de passe d'application) dans les réglages ; nouvel essai demain."
                     continue;
                 };
                 let id = mail.message_id.clone().unwrap_or_default();
-                if mail.auth_failed || st.agent.was_seen(&id) {
+                // Unauthenticated mail is never acted on. Bounces are the exception (servers rarely sign
+                // them): they only count when they quote our unguessable Message-ID (see below).
+                let unauthenticated = mail.auth_failed
+                    && !(mail.bounce
+                        && mail.refs.iter().any(|r| agent::ref_request_id(r).is_some()));
+                if unauthenticated || st.agent.was_seen(&id) {
                     done.push(uid);
                     continue;
                 }

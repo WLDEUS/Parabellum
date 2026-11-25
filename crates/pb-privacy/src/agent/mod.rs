@@ -98,7 +98,7 @@ fn subject_reference(subject: &str) -> Option<String> {
     (hex.len() == 8 && hex.chars().all(|c| c.is_ascii_hexdigit())).then_some(hex)
 }
 
-fn ref_request_id(r: &str) -> Option<String> {
+pub(crate) fn ref_request_id(r: &str) -> Option<String> {
     let lower = r.to_ascii_lowercase();
     let i = lower.find("pb.")?;
     let rest = &lower[i + 3..];

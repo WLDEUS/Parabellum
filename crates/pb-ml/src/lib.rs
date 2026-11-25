@@ -18,6 +18,7 @@
 //! Everything here parses untrusted bytes: all reads are bounds-checked, every loop driven by a
 //! count read from the file is capped, nothing recurses on attacker-controlled depth, and
 //! [`extract_features`] wraps the parser in `catch_unwind` as a last line of defence.
+#![forbid(unsafe_code)]
 
 mod codesig;
 mod features;
@@ -26,7 +27,7 @@ mod macho;
 mod model;
 mod script;
 
-pub use codesig::{code_signature_summary, CodeSignatureSummary};
+pub use codesig::{code_signature_summary, verified_cdhashes, CodeSignatureSummary};
 pub use features::{extract_features, feature_descriptions, feature_names, FEATURES_VERSION};
 pub use gbdt::GbdtModel;
 pub use macho::plausible_fat_header;

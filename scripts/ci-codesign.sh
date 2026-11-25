@@ -4,6 +4,8 @@
 # Usage: scripts/ci-codesign.sh import    (before scripts/build-pkg.sh)
 #        scripts/ci-codesign.sh cleanup   (last step, `if: always()`)
 #
+# Used only by the `package` job of release.yml (environment `codesign`, tags v*), which compiles no
+# third-party code; ci.yml builds are ad hoc (audit SC-8).
 # import: with the secrets MACOS_SIGN_P12 (base64 .p12) and MACOS_SIGN_P12_PASSWORD (both created by
 # scripts/setup-codesign-cert.sh), creates a temporary keychain in $RUNNER_TEMP, imports the identity,
 # sets the key partition list (codesign without UI), trusts the certificate for code signing, checks a
@@ -38,7 +40,9 @@ import() {
     /usr/bin/security create-keychain -p "$kc_pass" "$KEYCHAIN"
     /usr/bin/security set-keychain-settings -lut 21600 "$KEYCHAIN"
     /usr/bin/security unlock-keychain -p "$kc_pass" "$KEYCHAIN"
-    /usr/bin/security import "$work/sign.p12" -k "$KEYCHAIN" -f pkcs12 -P "$MACOS_SIGN_P12_PASSWORD" \
+    # -x: the private key is non-extractable once imported (audit SC-8): a later step can sign with it
+    # while the keychain is unlocked, but cannot export it.
+    /usr/bin/security import "$work/sign.p12" -k "$KEYCHAIN" -f pkcs12 -x -P "$MACOS_SIGN_P12_PASSWORD" \
         -T /usr/bin/codesign >/dev/null
     rm -rf "$work"
     /usr/bin/security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$kc_pass" "$KEYCHAIN" >/dev/null

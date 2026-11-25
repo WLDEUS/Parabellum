@@ -27,6 +27,13 @@ pub const APP_EXECUTABLE: &str = "/Applications/Parabellum.app/Contents/MacOS/Pa
 pub const CLI_EXECUTABLE: &str = "/Library/Application Support/Parabellum/bin/parabellum";
 /// Concurrent client connections.
 pub const MAX_CONNECTIONS: usize = 64;
+/// Concurrent connections of one process: one program cannot take every slot (audit IPC-5). The app
+/// and root also get past a full table.
+pub const MAX_CONNECTIONS_PER_PID: usize = 8;
+/// Longest request line. Responses (CLI, app) may still be up to [`MAX_FRAME`]; a request is small (the
+/// largest are a VPN subscription and `set_config`). An 8 MiB line cost ~270 MB of RAM to parse before
+/// any access check (audit IPC-4).
+pub const MAX_REQUEST_FRAME: usize = 1024 * 1024;
 /// Outgoing lines buffered per connection.
 pub const OUT_BUFFER: usize = 512;
 /// A connection without subscription, request in flight or incoming frame for this long is closed
@@ -50,6 +57,42 @@ const CONN_LIMITS: ConnLimits = ConnLimits {
     write: WRITE_TIMEOUT,
     pending: PENDING_RESPONSES_TIMEOUT,
 };
+
+/// One connection counted against its process (released on drop).
+struct PidSlot {
+    table: Arc<std::sync::Mutex<std::collections::HashMap<i32, usize>>>,
+    pid: i32,
+}
+
+impl PidSlot {
+    fn take(
+        table: &Arc<std::sync::Mutex<std::collections::HashMap<i32, usize>>>,
+        pid: i32,
+    ) -> Option<Self> {
+        let mut t = table.lock().unwrap_or_else(|e| e.into_inner());
+        let n = t.entry(pid).or_insert(0);
+        if *n >= MAX_CONNECTIONS_PER_PID {
+            return None;
+        }
+        *n += 1;
+        Some(Self {
+            table: table.clone(),
+            pid,
+        })
+    }
+}
+
+impl Drop for PidSlot {
+    fn drop(&mut self) {
+        let mut t = self.table.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(n) = t.get_mut(&self.pid) {
+            *n -= 1;
+            if *n == 0 {
+                t.remove(&self.pid);
+            }
+        }
+    }
+}
 
 /// May this peer run mutating commands?
 pub fn authorize(
@@ -110,16 +153,36 @@ pub fn bind(paths: &Paths, dev_mode: bool) -> std::io::Result<UnixListener> {
 /// Accept loop (until shutdown).
 pub async fn serve(ctx: Arc<Ctx>, listener: UnixListener) {
     let slots = Arc::new(Semaphore::new(MAX_CONNECTIONS));
+    let per_pid = Arc::new(std::sync::Mutex::new(
+        std::collections::HashMap::<i32, usize>::new(),
+    ));
     let mut shutdown = ctx.shutdown_rx();
     loop {
         tokio::select! {
             r = listener.accept() => match r {
                 Ok((stream, _)) => {
+                    let cred = peer_cred(&stream);
+                    // Root (uninstall script, `sudo parabellum dns off`) and the installed app are never
+                    // locked out by connections other processes keep open.
+                    let privileged = cred.as_ref().is_some_and(|c| {
+                        c.uid == 0
+                            || system::peer_executable(c).as_deref()
+                                == Some(Path::new(APP_EXECUTABLE))
+                    });
+                    let pid = cred.as_ref().and_then(|c| c.pid);
+                    let guard = match pid {
+                        Some(pid) if !privileged => match PidSlot::take(&per_pid, pid) {
+                            Some(g) => Some(g),
+                            None => {
+                                tracing::warn!(pid, "too many IPC connections from one process");
+                                continue;
+                            }
+                        },
+                        _ => None,
+                    };
                     let permit = match slots.clone().try_acquire_owned() {
                         Ok(p) => Some(p),
-                        // Root (uninstall script, `sudo parabellum dns off`) is never locked out by
-                        // connections other processes keep open.
-                        Err(_) if peer_cred(&stream).is_some_and(|c| c.uid == 0) => None,
+                        Err(_) if privileged => None,
                         Err(_) => {
                             tracing::warn!("too many IPC connections, refusing one");
                             continue;
@@ -129,6 +192,7 @@ pub async fn serve(ctx: Arc<Ctx>, listener: UnixListener) {
                     tokio::spawn(async move {
                         handle_connection(ctx, stream, CONN_LIMITS).await;
                         drop(permit);
+                        drop(guard);
                     });
                 }
                 Err(e) => {
@@ -246,17 +310,19 @@ pub enum Access {
     PermissionDenied,
 }
 
-/// Access rules. `requires_admin` ⇒ root, or (installed client of the console user **and** valid `auth`),
-/// or the dev bypass; other mutating commands ⇒ root or installed client of the console user.
+/// Access rules. `requires_admin` (and, for the non-root CLI, `cli_needs_admin`) ⇒ root, or (installed
+/// client of the console user **and** valid `auth`), or the dev bypass; other mutating commands ⇒ root
+/// or installed client of the console user.
 pub fn decide(
     req: &Request,
     is_root: bool,
     can_mutate: bool,
     auth_ok: bool,
     dev_bypass: bool,
+    cli_peer: bool,
 ) -> Access {
     let admin = is_root || (can_mutate && auth_ok);
-    if req.requires_admin() {
+    if needs_admin(req, cli_peer && !is_root) {
         return if admin || (dev_bypass && can_mutate) {
             Access::Allowed { admin: true }
         } else {
@@ -269,6 +335,11 @@ pub fn decide(
     Access::Allowed {
         admin: admin || (dev_bypass && can_mutate),
     }
+}
+
+/// Administrator approval needed for this request from this kind of peer.
+pub fn needs_admin(req: &Request, cli_peer: bool) -> bool {
+    req.requires_admin() || (cli_peer && req.cli_needs_admin())
 }
 
 fn peer_cred(stream: &UnixStream) -> Option<system::PeerCred> {
@@ -293,12 +364,14 @@ fn current_peer(ctx: &Ctx, cred: &system::PeerCred) -> Peer {
         ctx.dev_mode,
     );
     let is_root = cred.uid == 0 && ctx.access.root_is_admin;
+    let cli = cred.uid != 0 && !ctx.dev_mode && exe.as_deref() == Some(Path::new(CLI_EXECUTABLE));
     Peer {
         uid: cred.uid,
         pid: cred.pid,
         exe,
         can_mutate,
         admin: is_root,
+        cli,
     }
 }
 
@@ -306,7 +379,7 @@ fn current_peer(ctx: &Ctx, cred: &system::PeerCred) -> Peer {
 async fn check_access(ctx: &Ctx, peer: &mut Peer, env: &RequestEnvelope) -> Result<(), IpcError> {
     // A scan outside the user's own locations needs approval (`router::scan_root_allowed`): the app
     // retries such an `auth_required` answer with `auth`, which must then be checked.
-    let wants_admin = env.request.requires_admin()
+    let wants_admin = needs_admin(&env.request, peer.cli)
         || env.request == Request::GetConfig
         || (env.auth.is_some() && matches!(env.request, Request::Scan { .. }));
     let is_root = peer.admin;
@@ -325,9 +398,10 @@ async fn check_access(ctx: &Ctx, peer: &mut Peer, env: &RequestEnvelope) -> Resu
         peer.can_mutate,
         auth_ok,
         ctx.access.dev_bypass,
+        peer.cli,
     ) {
         Access::Allowed { admin } => {
-            if env.request.requires_admin() && !is_root && !auth_ok {
+            if needs_admin(&env.request, peer.cli) && !is_root && !auth_ok {
                 tracing::warn!(uid = peer.uid, "dev mode: administrator approval bypassed");
             }
             peer.admin = admin;
@@ -384,7 +458,7 @@ async fn handle_connection(ctx: Arc<Ctx>, stream: UnixStream, limits: ConnLimits
     let mut abandon = false;
     loop {
         let frame = tokio::select! {
-            f = read_frame(&mut reader, &mut buf, MAX_FRAME) => f,
+            f = read_frame(&mut reader, &mut buf, MAX_REQUEST_FRAME) => f,
             _ = kill.notified() => {
                 tracing::info!(uid = cred.uid, "slow client disconnected");
                 abandon = true;
@@ -435,7 +509,7 @@ async fn handle_connection(ctx: Arc<Ctx>, stream: UnixStream, limits: ConnLimits
                                     ctx.bus.subscribe(),
                                     out_tx.clone(),
                                     kill.clone(),
-                                    peer.can_mutate || peer.admin,
+                                    (peer.can_mutate && !peer.cli) || peer.admin,
                                 ));
                             }
                             ResponseEnvelope::ok_empty(id)
@@ -495,10 +569,20 @@ async fn respond(ctx: &Arc<Ctx>, peer: &Peer, id: u64, request: Request) -> Resp
     }
 }
 
-/// Events only the installed app/CLI (or root) may receive: same rule as the requests that return them
-/// (`Request::is_mutating`), e.g. LAN devices and history for `lan_status`.
+/// Events only the app (or root / an approved CLI) may receive: they carry paths of scanned files (an
+/// approved full scan walks other users' homes, Mail, Messages), alert details, LAN devices, report
+/// highlights. Any admin-group process can open the socket and subscribe (audit IPC-2).
 pub fn event_is_sensitive(ev: &DaemonEvent) -> bool {
-    matches!(ev, DaemonEvent::Lan(_))
+    matches!(
+        ev,
+        DaemonEvent::Lan(_)
+            | DaemonEvent::Alert(_)
+            | DaemonEvent::ScanProgress(_)
+            | DaemonEvent::ScanFinished(_)
+            | DaemonEvent::Quarantined(_)
+            | DaemonEvent::DailyReport(_)
+            | DaemonEvent::Device(_)
+    )
 }
 
 fn spawn_forwarder(
@@ -532,6 +616,66 @@ fn spawn_forwarder(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn one_process_cannot_take_every_slot() {
+        let table = Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+        let held: Vec<_> = (0..MAX_CONNECTIONS_PER_PID)
+            .map(|_| PidSlot::take(&table, 42).unwrap())
+            .collect();
+        assert!(PidSlot::take(&table, 42).is_none());
+        assert!(
+            PidSlot::take(&table, 43).is_some(),
+            "other processes unaffected"
+        );
+        drop(held);
+        assert!(PidSlot::take(&table, 42).is_some(), "released on drop");
+    }
+
+    /// Audit IPC-1: the non-root CLI (any program can start it) needs approval to hide alerts, stop
+    /// scans or read personal data; the app does not; root always may.
+    #[test]
+    fn cli_peer_needs_approval_for_hiding_and_personal_data() {
+        use pb_core::model::AlertAction;
+        let dismiss = Request::ResolveAlert {
+            alert_id: 1,
+            action: AlertAction::Dismiss,
+        };
+        let cancel = Request::CancelScan { job_id: "j".into() };
+        for req in [
+            &dismiss,
+            &cancel,
+            &Request::MailAgentStatus,
+            &Request::BreachList,
+        ] {
+            // CLI, no approval.
+            assert_eq!(
+                decide(req, false, true, false, false, true),
+                Access::AuthRequired,
+                "{req:?}"
+            );
+            // CLI with approval, app, root.
+            assert_eq!(
+                decide(req, false, true, true, false, true),
+                Access::Allowed { admin: true }
+            );
+            assert!(matches!(
+                decide(req, false, true, false, false, false),
+                Access::Allowed { .. }
+            ));
+            assert!(matches!(
+                decide(req, true, false, false, false, true),
+                Access::Allowed { .. }
+            ));
+        }
+        // Scanning and status stay open to the CLI.
+        let ping = Request::Ping;
+        assert!(matches!(
+            decide(&ping, false, true, false, false, true),
+            Access::Allowed { .. }
+        ));
+    }
+
     use super::*;
 
     #[test]
@@ -567,40 +711,49 @@ mod tests {
         };
         // requires_admin: root, or installed client + valid auth, or dev bypass.
         assert_eq!(
-            decide(&fp, true, false, false, false),
+            decide(&fp, true, false, false, false, false),
             Access::Allowed { admin: true }
         );
         assert_eq!(
-            decide(&fp, false, true, true, false),
+            decide(&fp, false, true, true, false, false),
             Access::Allowed { admin: true }
         );
-        assert_eq!(decide(&fp, false, true, false, false), Access::AuthRequired);
-        assert_eq!(decide(&fp, false, false, true, false), Access::AuthRequired);
         assert_eq!(
-            decide(&fp, false, true, false, true),
+            decide(&fp, false, true, false, false, false),
+            Access::AuthRequired
+        );
+        assert_eq!(
+            decide(&fp, false, false, true, false, false),
+            Access::AuthRequired
+        );
+        assert_eq!(
+            decide(&fp, false, true, false, true, false),
             Access::Allowed { admin: true }
         );
-        assert_eq!(decide(&fp, false, false, false, true), Access::AuthRequired);
+        assert_eq!(
+            decide(&fp, false, false, false, true, false),
+            Access::AuthRequired
+        );
         // plain mutating
         assert_eq!(
-            decide(&scan, false, true, false, false),
+            decide(&scan, false, true, false, false, false),
             Access::Allowed { admin: false }
         );
         assert_eq!(
-            decide(&scan, false, false, false, false),
+            decide(&scan, false, false, false, false, false),
             Access::PermissionDenied
         );
         assert_eq!(
-            decide(&scan, true, false, false, false),
+            decide(&scan, true, false, false, false, false),
             Access::Allowed { admin: true }
         );
         // read-only: anyone; secrets only for admins
         assert_eq!(
-            decide(&Request::GetConfig, false, false, false, false),
+            decide(&Request::GetConfig, false, false, false, false, false),
             Access::Allowed { admin: false }
         );
         assert_eq!(
-            decide(&Request::GetConfig, false, true, true, false),
+            decide(&Request::GetConfig, false, true, true, false, false),
             Access::Allowed { admin: true }
         );
         assert_eq!(
@@ -608,6 +761,7 @@ mod tests {
                 &Request::SetDns { enabled: true },
                 false,
                 true,
+                false,
                 false,
                 false
             ),
@@ -618,6 +772,7 @@ mod tests {
                 &Request::SetDns { enabled: false },
                 false,
                 true,
+                false,
                 false,
                 false
             ),

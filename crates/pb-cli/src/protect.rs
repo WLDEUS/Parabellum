@@ -176,6 +176,9 @@ pub fn vpn_status(s: &VpnStatus) -> String {
                     .unwrap_or_default()
             ),
         );
+        for w in &p.warnings {
+            line(&mut o, "Attention", w.clone());
+        }
     }
     if let Some(t) = s.connected_since {
         line(
@@ -1106,6 +1109,7 @@ pub(crate) fn read_password(prompt: &str) -> Result<String, CliError> {
         .write(true)
         .open("/dev/tty")?;
     let fd = std::os::fd::AsRawFd::as_raw_fd(&tty);
+    // SAFETY: termios is a plain C struct of integers, all-zero is a valid value.
     let mut term: libc::termios = unsafe { std::mem::zeroed() };
     // SAFETY: fd is an open terminal, `term` a valid termios.
     let has_term = unsafe { libc::tcgetattr(fd, &mut term) } == 0;

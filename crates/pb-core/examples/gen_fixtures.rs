@@ -217,6 +217,7 @@ fn dns() -> DnsStatus {
         queries_blocked_24h: Some(5321),
         managed_services: vec!["Wi-Fi".into(), "USB 10/100/1000 LAN".into()],
         message: None,
+        failed_open: false,
     }
 }
 
@@ -302,6 +303,7 @@ fn vpn_status() -> VpnStatus {
             port: 443,
             transport: Some("reality".into()),
             imported_at: 1_792_950_000,
+            warnings: vec![],
         }),
         external_service: None,
         connected_since: Some(1_793_000_000),

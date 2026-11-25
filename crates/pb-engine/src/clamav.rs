@@ -204,6 +204,9 @@ pub(crate) fn build_args(db_dirs: &[PathBuf], limits: &ClamLimits) -> Vec<OsStri
         "--no-summary".into(),
         "--infected".into(),
         "--stdout".into(),
+        // A file swapped for a link after our read must not make clamscan read the link's target.
+        "--follow-file-symlinks=0".into(),
+        "--follow-dir-symlinks=0".into(),
     ];
     for d in db_dirs {
         let mut a = OsString::from("--database=");

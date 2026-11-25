@@ -53,9 +53,11 @@ async fn fetch_range(
             resp.status().as_u16()
         )));
     }
-    resp.text()
+    // A range is ~30 KiB (padded); 1 MiB is generous.
+    let body = crate::http::read_capped(resp, 1024 * 1024)
         .await
-        .map_err(|e| PrivacyError::Failed(e.to_string()))
+        .map_err(PrivacyError::Failed)?;
+    String::from_utf8(body).map_err(|e| PrivacyError::Failed(e.to_string()))
 }
 
 /// How many times the password appears in known breaches (0 = not found).

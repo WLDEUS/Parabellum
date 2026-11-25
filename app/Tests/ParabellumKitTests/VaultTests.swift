@@ -104,3 +104,34 @@ final class VaultTests: XCTestCase {
         )
     }
 }
+
+final class PasswordPolicyTests: XCTestCase {
+    func testRejectsWeakPasswords() {
+        XCTAssertEqual(PasswordPolicy.problem("court"), .tooShort)
+        XCTAssertEqual(PasswordPolicy.problem("aaaaaaaaaaaa"), .tooFewDistinct)
+        XCTAssertEqual(PasswordPolicy.problem("abababababab"), .tooFewDistinct)
+        XCTAssertEqual(PasswordPolicy.problem("123456789012"), .sequence)
+        XCTAssertEqual(PasswordPolicy.problem("azertyuiop!!"), .sequence)
+        XCTAssertEqual(PasswordPolicy.problem("Password2026!"), .common)
+        XCTAssertEqual(PasswordPolicy.problem("motdepasse1234"), .common)
+    }
+
+    func testAcceptsReasonablePasswords() {
+        XCTAssertNil(PasswordPolicy.problem("cheval correct agrafe batterie"))
+        XCTAssertNil(PasswordPolicy.problem("Tr0mbone-Lune-47"))
+        XCTAssertNil(PasswordPolicy.problem("mon password de vacances au ski"))
+    }
+}
+
+final class RecoveryKeyFormTests: XCTestCase {
+    func testChosenPasswordStoredAsItWillBeTyped() {
+        let generated = RecoveryKey.generate()
+        // Whatever form the user types it in, unlock produces what was stored.
+        let typed = generated.replacingOccurrences(of: "-", with: " ").lowercased()
+        XCTAssertEqual(RecoveryKey.unlockCandidates(typed).first, RecoveryKey.storedForm(ofChosen: generated))
+        // An ordinary chosen password is never rewritten.
+        let chosen = "Tr0mbone-Lune-47"
+        XCTAssertEqual(RecoveryKey.storedForm(ofChosen: chosen), chosen)
+        XCTAssertEqual(RecoveryKey.unlockCandidates(chosen), [chosen])
+    }
+}

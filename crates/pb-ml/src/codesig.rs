@@ -83,6 +83,118 @@ fn contains(hay: &[u8], needle: &[u8]) -> bool {
 /// Parses the embedded signature of a Mach-O (for universal binaries: the arm64 slice, else the
 /// first parsable one). `None` when `bytes` is not a parsable Mach-O. A Mach-O without signature
 /// yields `Some` with `present == false`.
+/// CDHashes (lowercase hex, 20 bytes) of the SHA-256 CodeDirectories of `bytes`' preferred slice (arm64
+/// first, as `codesign` reports on Apple silicon) **whose page hashes match these very bytes**.
+///
+/// `codesign` evaluates a *path*; the engine read the bytes earlier. Requiring the CDHash `codesign`
+/// vouched for to be one of these binds its verdict to what was scanned: a file swapped between the read
+/// and `codesign` (genuine signed binary renamed over a malicious one carrying a copied signature) no
+/// longer lends its trust (audit FILE-4). Empty when unsigned, truncated or not matching.
+pub fn verified_cdhashes(bytes: &[u8]) -> Vec<String> {
+    if !crate::looks_like_macho(bytes) {
+        return Vec::new();
+    }
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let slices = match macho::parse_fat(bytes) {
+            Ok(Some(s)) => s,
+            Ok(None) => vec![macho::FatSlice {
+                cputype: 0,
+                offset: 0,
+                size: bytes.len(),
+            }],
+            Err(_) => return Vec::new(),
+        };
+        let Ok((_, slice, m)) = macho::select_slice(bytes, &slices) else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for lc in &m.load_commands {
+            if let CommandVariant::CodeSignature(cmd) = &lc.command {
+                if let Some(blob) =
+                    macho::sub(slice, u64::from(cmd.dataoff), u64::from(cmd.datasize))
+                {
+                    for cd in code_directories(blob) {
+                        if let Some(h) = verify_code_directory(slice, cd) {
+                            out.push(h);
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }))
+    .unwrap_or_default()
+}
+
+/// Every CodeDirectory blob of a SuperBlob (primary and alternates).
+fn code_directories(blob: &[u8]) -> Vec<&[u8]> {
+    let mut v = Vec::new();
+    if read_u32_be(blob, 0) != Some(CSMAGIC_EMBEDDED_SIGNATURE) {
+        return v;
+    }
+    let len = read_u32_be(blob, 4).unwrap_or(0) as usize;
+    let blob = &blob[..blob.len().min(len)];
+    let count = read_u32_be(blob, 8).unwrap_or(0);
+    for i in 0..count.min(MAX_BLOBS) as usize {
+        let (Some(slot), Some(off)) =
+            (read_u32_be(blob, 12 + i * 8), read_u32_be(blob, 16 + i * 8))
+        else {
+            break;
+        };
+        if slot != CSSLOT_CODEDIRECTORY && !(0x1000..=0x1004).contains(&slot) {
+            continue;
+        }
+        let off = off as usize;
+        if read_u32_be(blob, off) != Some(CSMAGIC_CODEDIRECTORY) {
+            continue;
+        }
+        let cd_len = read_u32_be(blob, off + 4).unwrap_or(0) as usize;
+        if let Some(cd) = blob.get(off..off.saturating_add(cd_len)) {
+            v.push(cd);
+        }
+    }
+    v
+}
+
+/// CDHash of `cd` when it is SHA-256 and every code page of `slice` matches its slot.
+fn verify_code_directory(slice: &[u8], cd: &[u8]) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    const CS_HASHTYPE_SHA256: u8 = 2;
+    let version = read_u32_be(cd, 8)?;
+    let hash_offset = read_u32_be(cd, 16)? as usize;
+    let n_code_slots = read_u32_be(cd, 28)? as usize;
+    let mut code_limit = u64::from(read_u32_be(cd, 32)?);
+    let hash_size = *cd.get(36)? as usize;
+    let hash_type = *cd.get(37)?;
+    let page_shift = *cd.get(39)?;
+    if version >= 0x20300 && code_limit == 0 {
+        let hi = u64::from(read_u32_be(cd, 56)?);
+        let lo = u64::from(read_u32_be(cd, 60)?);
+        code_limit = (hi << 32) | lo;
+    }
+    if hash_type != CS_HASHTYPE_SHA256 || hash_size != 32 || !(12..=16).contains(&page_shift) {
+        return None;
+    }
+    let code_limit = usize::try_from(code_limit).ok()?;
+    if code_limit > slice.len() || code_limit == 0 {
+        return None;
+    }
+    let page = 1usize << page_shift;
+    if n_code_slots != code_limit.div_ceil(page) {
+        return None;
+    }
+    let slots = cd.get(hash_offset..hash_offset.checked_add(n_code_slots.checked_mul(32)?)?)?;
+    let (slots, _) = slots.as_chunks::<32>();
+    for (i, expected) in slots.iter().enumerate() {
+        let start = i * page;
+        let end = (start + page).min(code_limit);
+        if Sha256::digest(&slice[start..end]).as_slice() != expected {
+            return None;
+        }
+    }
+    Some(hex::encode(&Sha256::digest(cd)[..20]))
+}
+
 pub fn code_signature_summary(bytes: &[u8]) -> Option<CodeSignatureSummary> {
     if !crate::looks_like_macho(bytes) {
         return None;
@@ -211,6 +323,53 @@ fn cstring(b: &[u8], off: usize) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+
+    /// A SHA-256 CodeDirectory over `code` (page 2^12), hand-built: version 0x20400, slots after the
+    /// 88-byte header.
+    fn cd_for(code: &[u8]) -> Vec<u8> {
+        use sha2::{Digest, Sha256};
+        let pages: Vec<_> = code
+            .chunks(4096)
+            .map(|p| Sha256::digest(p).to_vec())
+            .collect();
+        let header = 88usize;
+        let mut cd = Vec::new();
+        let be = |v: &mut Vec<u8>, x: u32| v.extend_from_slice(&x.to_be_bytes());
+        be(&mut cd, CSMAGIC_CODEDIRECTORY);
+        be(&mut cd, (header + pages.len() * 32) as u32);
+        be(&mut cd, 0x20400); // version
+        be(&mut cd, 0); // flags
+        be(&mut cd, header as u32); // hashOffset
+        be(&mut cd, 0); // identOffset
+        be(&mut cd, 0); // nSpecialSlots
+        be(&mut cd, pages.len() as u32); // nCodeSlots
+        be(&mut cd, code.len() as u32); // codeLimit
+        cd.extend_from_slice(&[32, 2, 0, 12]);
+        cd.resize(header, 0);
+        for p in pages {
+            cd.extend_from_slice(&p);
+        }
+        cd
+    }
+
+    #[test]
+    fn cdhash_only_when_every_page_matches_the_scanned_bytes() {
+        let code: Vec<u8> = (0..10_000u32).map(|i| (i % 251) as u8).collect();
+        let cd = cd_for(&code);
+        let h = verify_code_directory(&code, &cd).expect("matching pages");
+        assert_eq!(h.len(), 40);
+        // One byte changed in the last (partial) page: the copied signature no longer vouches.
+        let mut evil = code.clone();
+        evil[9_999] ^= 1;
+        assert!(verify_code_directory(&evil, &cd).is_none());
+        // Truncated read (code limit beyond what was scanned).
+        assert!(verify_code_directory(&code[..8_000], &cd).is_none());
+        // Slot count inconsistent with the code limit.
+        let mut bad = cd.clone();
+        bad[28..32].copy_from_slice(&1u32.to_be_bytes());
+        assert!(verify_code_directory(&code, &bad).is_none());
+    }
+
     use super::*;
     use crate::testutil::MachOBuilder;
 

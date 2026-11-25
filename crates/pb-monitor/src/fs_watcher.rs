@@ -38,27 +38,10 @@ pub struct FileWatcher;
 /// True for in-progress download artefacts (`.crdownload`, `.part`, `.partial`, `.tmp`, Office
 /// `~$` lock files, anything inside a Safari `.download` bundle) and Finder noise (`.DS_Store`).
 pub fn is_ignored_artefact(path: &Path) -> bool {
-    let mut components = path.components().peekable();
-    while let Some(c) = components.next() {
-        let name = c.as_os_str().to_string_lossy();
-        let lower = name.to_ascii_lowercase();
-        let is_last = components.peek().is_none();
-        // Safari downloads into `<name>.download/` bundles (directory) until complete.
-        if lower.ends_with(".download") {
-            return true;
-        }
-        if is_last
-            && (lower.ends_with(".crdownload")
-                || lower.ends_with(".part")
-                || lower.ends_with(".partial")
-                || lower.ends_with(".tmp")
-                || lower.starts_with("~$")
-                || lower == ".ds_store")
-        {
-            return true;
-        }
-    }
-    false
+    pb_core::inert::has_transient_name(path)
+        || path
+            .file_name()
+            .is_some_and(|n| n.eq_ignore_ascii_case(".DS_Store"))
 }
 
 /// Per-path rate limiter: leading-edge emission, then at most one trailing emission per window.

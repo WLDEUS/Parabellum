@@ -36,13 +36,15 @@ public struct VpnProfileInfo: Codable, Sendable, Hashable {
     /// Transport / security summary, e.g. `tls+ws`, `reality`, `udp`.
     public let transport: String?
     public let importedAt: Int64
+    /// Weak settings imposed by the server (no TLS, certificate not checked…), already in French.
+    public let warnings: [String]?
 
     public var importedDate: Date { Date(unixSeconds: importedAt) }
 
     enum CodingKeys: String, CodingKey {
         case name
         case protocolName = "protocol"
-        case server, port, transport
+        case server, port, transport, warnings
         case importedAt = "imported_at"
     }
 }

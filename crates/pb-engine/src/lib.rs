@@ -64,6 +64,14 @@ pub const IN_MEMORY_LIMIT: u64 = 64 * 1024 * 1024;
 const SCAN_CACHE_CAPACITY: usize = 20_000;
 const SIGN_CACHE_CAPACITY: usize = 4_096;
 const HASH_BUF: usize = 1024 * 1024;
+/// Largest file hashed in full. Beyond it, or for a sparse file (most of it never written), the digest
+/// covers the first [`IN_MEMORY_LIMIT`] bytes, the last 1 MiB and the size: two `truncate -s 8E` files
+/// used to keep both real-time slots reading zeros for years (audit FILE-1). Real malware this big is
+/// not in hash databases anyway; YARA still sees the head and the tail.
+pub const FULL_HASH_LIMIT: u64 = 4 * 1024 * 1024 * 1024;
+/// A file whose allocated blocks are under this fraction of its size is sparse.
+const SPARSE_RATIO: u64 = 8;
+const PARTIAL_TAIL: u64 = 1024 * 1024;
 const MAX_ROLLUP_DETECTIONS: usize = 20;
 const MIB: u64 = 1024 * 1024;
 
@@ -403,6 +411,9 @@ pub(crate) struct Analysis {
     pub persist_key: Option<String>,
     /// Sent to ClamAV and no answer merged yet: the verdict is incomplete, never persisted.
     pub clamav_pending: bool,
+    /// (dev, ino, size, mtime, ctime) of the file we read, checked again after clamscan re-opened it
+    /// by path: a swap in between must not store ClamAV's « clean » under our digest (audit FILE-6).
+    pub clamav_identity: Option<[i64; 5]>,
     started: Instant,
     notes: Vec<String>,
     /// Report is already final (scan-cache hit).
@@ -422,6 +433,7 @@ impl Analysis {
             allowlisted: false,
             persist_key: None,
             clamav_pending: false,
+            clamav_identity: None,
             clamav_path: None,
             cache_key: None,
             started: Instant::now(),
@@ -513,6 +525,91 @@ pub fn sha256_file(path: &Path) -> std::io::Result<String> {
 }
 
 /// Reads up to `keep` bytes into memory while hashing the first `size` bytes of `file`.
+/// YARA over `data`. A timeout on an executable or a script is itself a finding (Suspicious, never
+/// auto-quarantined): a file crafted to make the rules time out was otherwise reported clean in real
+/// time (audit FILE-9). The error note keeps the report out of every cache.
+fn yara_pass(ctx: &mut Ctx<'_>, a: &mut Analysis, kind: FileKind, data: &[u8]) {
+    match yara::scan(&mut ctx.yara, data) {
+        Ok(d) => a.own.extend(d),
+        Err(e) => {
+            if e.to_ascii_lowercase().contains("timeout")
+                && matches!(
+                    kind,
+                    FileKind::MachO | FileKind::FatMachO | FileKind::Script
+                )
+            {
+                a.own.push(Detection {
+                    engine: DetectionEngine::Heuristic,
+                    name: "Parabellum.Evasion.RuleTimeout".into(),
+                    severity: Severity::Medium,
+                    confidence: 0.5,
+                    details: Some("analyse par règles interrompue (délai dépassé)".into()),
+                });
+            }
+            a.note(format!("yara: {e}"));
+        }
+    }
+}
+
+/// True when the file at `path` (read once, at most [`IN_MEMORY_LIMIT`], links not followed) has SHA-256
+/// `sha256_hex` and its code pages match a CodeDirectory whose CDHash is `cdhash`: the bytes scanned are
+/// the image the kernel ran. Lets the daemon cache an exec verdict by CDHash safely (audit FILE-5).
+pub fn content_matches_cdhash(path: &Path, sha256_hex: &str, cdhash: &str) -> bool {
+    use std::os::unix::fs::OpenOptionsExt;
+    let Ok(mut f) = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+    else {
+        return false;
+    };
+    let mut data = Vec::new();
+    if (&mut f)
+        .take(IN_MEMORY_LIMIT + 1)
+        .read_to_end(&mut data)
+        .is_err()
+        || data.len() as u64 > IN_MEMORY_LIMIT
+    {
+        return false;
+    }
+    hex::encode(Sha256::digest(&data)) == sha256_hex.to_ascii_lowercase()
+        && pb_ml::verified_cdhashes(&data).contains(&cdhash.to_ascii_lowercase())
+}
+
+fn file_identity(m: &std::fs::Metadata) -> [i64; 5] {
+    [
+        m.dev() as i64,
+        m.ino() as i64,
+        m.size() as i64,
+        m.mtime()
+            .wrapping_mul(1_000_000_000)
+            .wrapping_add(m.mtime_nsec()),
+        m.ctime()
+            .wrapping_mul(1_000_000_000)
+            .wrapping_add(m.ctime_nsec()),
+    ]
+}
+
+/// Whether `read_and_hash` will only cover part of a file of `size` bytes with `allocated` bytes on disk.
+fn partial_hash(size: u64, allocated: u64) -> bool {
+    size > FULL_HASH_LIMIT
+        || (size > IN_MEMORY_LIMIT && allocated.saturating_mul(SPARSE_RATIO) < size)
+}
+
+/// Domain-separated digest of head + tail + size: never equal to a real SHA-256 of a file, so it cannot
+/// match the malware / allow databases nor a cached verdict.
+fn partial_digest(file: &File, size: u64, head: &[u8]) -> std::io::Result<hashdb::Digest> {
+    let mut h = Sha256::new();
+    h.update(b"parabellum-partial-v1\0");
+    h.update(size.to_le_bytes());
+    h.update(head);
+    let tail_len = PARTIAL_TAIL.min(size.saturating_sub(head.len() as u64));
+    let mut tail = vec![0u8; tail_len as usize];
+    file.read_exact_at(&mut tail, size - tail_len)?;
+    h.update(&tail);
+    Ok(h.finalize().into())
+}
+
 fn read_and_hash(
     file: &mut File,
     size: u64,
@@ -816,19 +913,46 @@ impl Engine {
         }
         let meta = std::fs::metadata(path).ok()?;
         if meta.is_dir() {
-            return signing::compute(path, true);
+            return signing::compute(path, true, None);
         }
-        let digest = hashdb::parse_hex_digest(&sha256_file(path).ok()?)?;
-        self.signing_for(path, &digest)
+        // Digest and bytes from one read, so the signature is bound to the same content. Bigger
+        // files (frameworks) keep the unbound check.
+        let mut f = File::open(path).ok()?;
+        let size = f.metadata().ok()?.len();
+        if size > IN_MEMORY_LIMIT {
+            return signing::compute(path, true, None);
+        }
+        let mut data = Vec::with_capacity(size as usize);
+        (&mut f)
+            .take(IN_MEMORY_LIMIT + 1)
+            .read_to_end(&mut data)
+            .ok()?;
+        let digest: hashdb::Digest = Sha256::digest(&data).into();
+        self.signing_for(path, &digest, &data, data.len() as u64 > IN_MEMORY_LIMIT)
     }
 
-    fn signing_for(&self, path: &Path, digest: &hashdb::Digest) -> Option<SigningInfo> {
+    /// Signature of the file at `path`, bound to the scanned `data` (see `signing::compute`). Cached by
+    /// content digest only when the scanned bytes were complete and matched what `codesign` verified.
+    fn signing_for(
+        &self,
+        path: &Path,
+        digest: &hashdb::Digest,
+        data: &[u8],
+        truncated: bool,
+    ) -> Option<SigningInfo> {
         if let Some(hit) = self.sign_cache.lock().ok().and_then(|mut c| c.get(digest)) {
             return hit;
         }
-        let info = signing::compute(path, true);
-        if let Ok(mut c) = self.sign_cache.lock() {
-            c.insert(*digest, info.clone());
+        let scanned = if truncated {
+            Vec::new()
+        } else {
+            pb_ml::verified_cdhashes(data)
+        };
+        let info = signing::compute(path, true, Some(&scanned));
+        if info.as_ref().is_some_and(|i| i.valid) || !info.as_ref().is_some_and(|i| i.signed) {
+            if let Ok(mut c) = self.sign_cache.lock() {
+                c.insert(*digest, info.clone());
+            }
         }
         info
     }
@@ -982,7 +1106,7 @@ impl Engine {
             ));
         }
         if opts.compute_signing && report.kind == FileKind::AppBundle {
-            report.signing = signing::compute(dir, true);
+            report.signing = signing::compute(dir, true, None);
         }
         report.duration_ms = started.elapsed().as_millis() as u64;
         report
@@ -1114,6 +1238,14 @@ impl Engine {
             Ok(hits) => {
                 for (a, p) in batch.iter_mut().zip(files) {
                     a.clamav_pending = false;
+                    let same = std::fs::symlink_metadata(p).ok().map(|m| file_identity(&m))
+                        == a.clamav_identity;
+                    if !same {
+                        a.note("file changed during the scan: ClamAV result not kept");
+                        a.persist_key = None;
+                        a.cache_key = None;
+                        continue;
+                    }
                     if let Some(sigs) = hits.get(p) {
                         for sig in sigs {
                             a.own.push(Detection {
@@ -1285,7 +1417,24 @@ impl Engine {
         // Oversized files keep their first IN_MEMORY_LIMIT bytes too: padding a payload past
         // max_file_size (a known AV-evasion trick) must not skip the YARA pass on its code.
         let keep = size.min(IN_MEMORY_LIMIT);
-        let (digest, data) = match read_and_hash(&mut file, size, keep) {
+        let partial = {
+            use std::os::unix::fs::MetadataExt;
+            partial_hash(size, meta.blocks().saturating_mul(512))
+        };
+        let hashed = if partial {
+            let mut head = Vec::with_capacity(keep as usize);
+            (&mut file)
+                .take(keep)
+                .read_to_end(&mut head)
+                .and_then(|_| partial_digest(&file, size, &head).map(|d| (d, head)))
+        } else {
+            read_and_hash(&mut file, size, keep)
+        };
+        if partial {
+            a.note("very large or sparse file: partial fingerprint (start, end, size)");
+            a.cache_key = None;
+        }
+        let (digest, data) = match hashed {
             Ok(x) => x,
             Err(e) => {
                 a.note(format!("read error: {e}"));
@@ -1303,7 +1452,7 @@ impl Engine {
             None
         };
         drop(file);
-        if depth == 0 && !self.is_allowlisted(&digest) {
+        if depth == 0 && !partial && !self.is_allowlisted(&digest) {
             if let Some(store) = self.verdict_store() {
                 let key = self.persist_key(ctx, path, &digest, &data, tail.as_deref(), truncated);
                 if let Some(mut hit) = store.get(&key) {
@@ -1336,6 +1485,7 @@ impl Engine {
         {
             a.clamav_path = Some(path.to_path_buf());
             a.clamav_pending = true;
+            a.clamav_identity = Some(file_identity(&meta));
         } else if ctx.opts.use_clamav && self.clamav.is_some() && !a.allowlisted && !hash_only {
             // ClamAV wanted but skipped for this path (unbatchable name): a clean verdict here would let
             // a copy under a normal name skip ClamAV too.
@@ -1421,22 +1571,36 @@ impl Engine {
                 IN_MEMORY_LIMIT / MIB
             ));
             if !data.is_empty() {
-                match yara::scan(&mut ctx.yara, data) {
-                    Ok(d) => a.own.extend(d),
-                    Err(e) => a.note(format!("yara: {e}")),
-                }
+                yara_pass(ctx, a, kind, data);
             }
             return;
         }
-        match yara::scan(&mut ctx.yara, data) {
-            Ok(d) => a.own.extend(d),
-            Err(e) => a.note(format!("yara: {e}")),
-        }
+        yara_pass(ctx, a, kind, data);
         if ctx.cancelled() {
             return;
         }
         if depth < ctx.opts.archive_max_depth {
             self.scan_container(ctx, a, kind, data, info, depth, budget, sink);
+        } else if matches!(
+            kind,
+            FileKind::Zip | FileKind::Archive | FileKind::Dmg | FileKind::Pkg
+        ) {
+            // Nesting past the limit is a known way to hide a payload: never a silent « clean »
+            // (audit FILE-7). Suspicious, not quarantined; the note keeps it out of the caches.
+            a.note(format!(
+                "nested container beyond depth {}: not opened",
+                ctx.opts.archive_max_depth
+            ));
+            a.own.push(Detection {
+                engine: DetectionEngine::Heuristic,
+                name: "Parabellum.Evasion.DeepNesting".into(),
+                severity: Severity::Medium,
+                confidence: 0.5,
+                details: Some(format!(
+                    "archive imbriquée au-delà de {} niveaux, contenu non analysé",
+                    ctx.opts.archive_max_depth
+                )),
+            });
         }
 
         // Code signing (macOS, on-disk Mach-O only), computed lazily.
@@ -1448,12 +1612,13 @@ impl Engine {
                     matches!(d.engine, DetectionEngine::Yara | DetectionEngine::Heuristic)
                         && d.severity >= Severity::High
                 });
-                let need_trust = high_yara || (ml_wanted && self.ml_only_untrusted);
+                let hash_hit = a.own.iter().any(|d| d.engine == DetectionEngine::HashDb);
+                let need_trust = high_yara || hash_hit || (ml_wanted && self.ml_only_untrusted);
                 // Unsigned / ad-hoc / no certificate chain can never be trusted: skip codesign.
                 let may_be_trusted = pb_ml::code_signature_summary(data)
                     .is_some_and(|s| s.present && !s.adhoc && s.has_cms);
                 if ctx.opts.compute_signing || (need_trust && may_be_trusted) {
-                    if let Some(s) = self.signing_for(path, digest) {
+                    if let Some(s) = self.signing_for(path, digest, data, info.truncated) {
                         a.trusted = self.is_trusted_signer(&s);
                         a.report.signing = Some(s);
                     }

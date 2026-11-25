@@ -9,9 +9,11 @@
 //! [`Request::requires_admin`]: pb_core::ipc::Request::requires_admin
 
 /// Message of the `auth_required` error.
+/// The `sudo` hint names the installed binary by absolute path: a bare `sudo parabellum` follows a PATH
+/// (Homebrew, a user-owned /usr/local/bin) where malware can drop a `parabellum` shim (audit IPC-6).
 pub const AUTH_REQUIRED_MESSAGE: &str =
-    "Cette action réduit la protection : approbation d'un administrateur requise \
-     (mot de passe ou Touch ID dans l'app Parabellum, ou sudo parabellum …)";
+    "Action protégée : approbation d'un administrateur requise (mot de passe ou Touch ID dans \
+     l'app Parabellum, ou sudo \"/Library/Application Support/Parabellum/bin/parabellum\" …)";
 
 /// Length of an `AuthorizationExternalForm` (`kAuthorizationExternalFormLength`).
 pub const EXTERNAL_FORM_LEN: usize = 32;

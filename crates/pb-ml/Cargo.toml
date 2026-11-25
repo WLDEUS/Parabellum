@@ -28,3 +28,6 @@ tempfile = { workspace = true }
 [[bin]]
 name = "pb-features"
 path = "src/bin/pb-features.rs"
+
+[lints]
+workspace = true

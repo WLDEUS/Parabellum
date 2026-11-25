@@ -73,6 +73,8 @@ class Settings:
     min_yara_rules: int = 0
     #: FP gate: share of declared clean-corpus entries (and of last run's scanned files) required.
     corpus_min_available: float = 0.9
+    #: ML FP gate (audit SC-7): largest share of clean-corpus Mach-O the shipped model may flag.
+    ml_max_fp_rate: float = 0.005
     hash_window_days: int = 365
     max_malware_hashes: int = 2_000_000
     max_macos_named: int = 200_000
@@ -96,6 +98,7 @@ def load_settings(path: Path) -> Settings:
         min_blocked_domains=int(b.get("min_blocked_domains", 0)),
         min_yara_rules=int(b.get("min_yara_rules", 0)),
         corpus_min_available=float(b.get("corpus_min_available", 0.9)),
+        ml_max_fp_rate=float(b.get("ml_max_fp_rate", 0.005)),
         hash_window_days=int(h.get("window_days", 365)),
         max_malware_hashes=int(h.get("max_hashes", 2_000_000)),
         max_macos_named=int(h.get("max_macos_named", 200_000)),

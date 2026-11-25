@@ -35,11 +35,10 @@ struct EncryptFolderView: View {
     @State private var working = false
     @State private var error: String?
 
-    private static let minLength = 12
     private var name: String { source.lastPathComponent }
     private var problem: String? {
-        if password.count < Self.minLength {
-            return String(localized: "Au moins \(Self.minLength) caractères.")
+        if let issue = PasswordPolicy.problem(password) {
+            return issue.message
         }
         if password != confirmation {
             return String(localized: "Les deux mots de passe diffèrent.")
@@ -109,6 +108,10 @@ struct EncryptFolderView: View {
             panel.nameFieldStringValue = "\(name).\(CoffreKeys.keyFileExtension)"
             panel.message = String(localized: "Rangez-le ailleurs que le dossier chiffré : qui a ce fichier peut l'ouvrir.")
             guard panel.runModal() == .OK, let url = panel.url else { return }
+            if FinderActions.keyFileBesidePackage(url, source: source) {
+                error = String(localized: "Choisissez un autre dossier pour le fichier clé (une clé USB par exemple) : rangé à côté du dossier chiffré, il l'ouvre pour n'importe qui.")
+                return
+            }
             destination = url
         }
         working = true

@@ -9,8 +9,19 @@ use std::time::Duration;
 pub const QTYPE_A: u16 = 1;
 /// Class `IN`.
 pub const QCLASS_IN: u16 = 1;
-/// Name used by the health check.
-pub const PROBE_NAME: &str = "example.com";
+/// Zone of the health-check names.
+pub const PROBE_ZONE: &str = "example.com";
+
+/// A fresh `pb-<random>.example.com` per probe (answered NXDOMAIN by the upstream). A fixed name would
+/// be served from dnscrypt-proxy's cache and report a proxy whose upstream is gone as healthy
+/// (audit NET-8).
+pub fn probe_name() -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("pb-{:04x}{:08x}.{PROBE_ZONE}", next_id(), nanos as u32)
+}
 
 /// Packet errors.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -145,7 +156,7 @@ fn next_id() -> u16 {
         ^ (std::process::id() as u16)
 }
 
-/// Send one `A` query for [`PROBE_NAME`] to `server` over UDP and wait up to `timeout`.
+/// Send one `A` query for a fresh [`probe_name`] to `server` over UDP and wait up to `timeout`.
 /// `Ok(info)` for any well-formed response (check [`ResponseInfo::is_healthy`]).
 pub async fn probe(server: SocketAddr, timeout: Duration) -> Result<ResponseInfo, String> {
     let bind: SocketAddr = if server.is_ipv6() {
@@ -160,7 +171,7 @@ pub async fn probe(server: SocketAddr, timeout: Duration) -> Result<ResponseInfo
         .map_err(|e| e.to_string())?;
     sock.connect(server).await.map_err(|e| e.to_string())?;
     let id = next_id();
-    let q = build_query(id, PROBE_NAME, QTYPE_A).map_err(|e| e.to_string())?;
+    let q = build_query(id, &probe_name(), QTYPE_A).map_err(|e| e.to_string())?;
     let fut = async {
         sock.send(&q).await.map_err(|e| e.to_string())?;
         let mut buf = [0u8; 1500];

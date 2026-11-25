@@ -311,7 +311,9 @@ pub async fn build(ctx: &Arc<Ctx>) -> Result<DailyReport, IpcError> {
             .db
             .version
             .as_ref()
-            .and(status.db.last_success.or(status.db.built_at))
+            // Age of the content (signed `built_at`), not of the last download: a replayed or frozen
+            // feed keeps "succeeding" with an old bundle (audit SC-9).
+            .and(status.db.built_at.or(status.db.last_success))
             .map(|t| ((now_ts - t).max(0) / 3600) as u64),
         last_full_scan: status.last_full_scan,
         posture_failing: posture

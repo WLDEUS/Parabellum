@@ -653,6 +653,10 @@ pub struct DnsStatus {
     pub managed_services: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+    /// The proxy stopped answering and the original DNS servers were restored (fail-open): filtering is
+    /// off until it recovers.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub failed_open: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
@@ -799,6 +803,10 @@ pub struct VpnProfileInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transport: Option<String>,
     pub imported_at: i64,
+    /// Weak settings the server imposes (no TLS, certificate not checked, broken cipher): shown at
+    /// import and next to the profile.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
 }
 
 /// A network the Mac joined, identified by its router.

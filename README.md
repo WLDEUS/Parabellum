@@ -51,7 +51,7 @@ Détails, choix et contrats : [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Buil
 ## Démarrage rapide
 
 1. Vérifier le Mac de dev : `make dev-check` (macOS 14+, arm64, outils Xcode, Rust, Swift).
-2. Créer les clés de signature de la base : `make keys` (clé publique dans `keys/`, clé secrète à mettre dans le secret GitHub `MINISIGN_SECRET_KEY`).
+2. `make protect-repo`, puis créer les clés de signature : `make keys` (base) et `scripts/setup-release-key.sh` (paquets). Clés publiques dans `keys/` ; les clés secrètes, protégées par mot de passe, vont dans les environnements GitHub `db-signing` et `release` ([SECURITY-SUPPLY-CHAIN.md](docs/SECURITY-SUPPLY-CHAIN.md)).
 3. Créer le certificat de signature stable : `make codesign-cert` (sans lui, l'accès complet au disque est perdu à chaque mise à jour ; crée aussi les secrets CI `MACOS_SIGN_P12*`).
 4. Ajouter le secret `ABUSECH_AUTH_KEY` (gratuit, voir [INSTALL.md § 8](docs/INSTALL.md#8-secrets-github)), puis `git push` : la CI publie la base chaque nuit.
 5. Construire le paquet : `make pkg` en local, ou télécharger le `.pkg` produit par la CI.

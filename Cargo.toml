@@ -94,3 +94,7 @@ debug = "line-tables-only"
 [profile.dev.package."*"]
 opt-level = 1
 debug = false
+
+# Every unsafe block states why it is sound; crates without FFI forbid unsafe outright (lib.rs).
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "warn"

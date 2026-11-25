@@ -41,7 +41,7 @@ from .bundle import (
 from .corpus import CorpusItem, ensure_corpus, expected_entries, iter_files, load_spec, spec_fingerprint
 from .detection import measure
 from .domains import Exclusions, prune_subdomains, render, render_domain_set
-from .fpgate import corpus_problems, fp_rate, run_fp_gate
+from .fpgate import corpus_problems, fp_rate, ml_fp_problems, run_fp_gate
 from .hashes import (
     HashIndex,
     is_sha256,
@@ -295,6 +295,7 @@ def build(args: argparse.Namespace, http: Fetcher | None = None) -> int:
             _read_json(state_dir / "fp_gate.json") if state_dir else None,
             settings.corpus_min_available,
         )
+        gate_problems += ml_fp_problems(ml_flagged, len(gate.macho_files), settings.ml_max_fp_rate)
         report["fp_gate"] = {
             "corpus_entries": len(corpus_items),
             "files_scanned": gate.files_scanned,

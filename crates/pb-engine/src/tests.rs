@@ -1217,3 +1217,37 @@ fn engine_survives_mutated_containers_and_binaries() {
         );
     }
 }
+
+/// Audit FILE-1: an 8 EiB sparse file (`truncate -s 8E`) must not be read in full (it kept both
+/// real-time slots busy for years). Partial fingerprint, never cached, done in well under a second.
+#[test]
+fn huge_sparse_file_gets_a_partial_fingerprint_fast() {
+    let f = fixture();
+    let e = Engine::load(&f.paths, &Config::default()).unwrap();
+    let p = f.data.join("sparse.bin");
+    let file = std::fs::File::create(&p).unwrap();
+    // Largest size the test filesystem accepts, at least 64 GiB.
+    let mut size = 1u64 << 62;
+    while file.set_len(size).is_err() {
+        size >>= 1;
+        assert!(size >= 1 << 36, "filesystem refuses sparse files");
+    }
+    drop(file);
+    let start = std::time::Instant::now();
+    let r = e.scan_file(&p, &opts());
+    assert!(
+        start.elapsed() < std::time::Duration::from_secs(5),
+        "{:?}",
+        start.elapsed()
+    );
+    assert_eq!(r.size, size);
+    assert!(
+        r.error
+            .as_deref()
+            .unwrap_or("")
+            .contains("partial fingerprint"),
+        "{:?}",
+        r.error
+    );
+    assert!(!r.cached);
+}

@@ -12,7 +12,13 @@
 #     signed release workflow);
 #   * Actions: default GITHUB_TOKEN read-only, workflows cannot approve pull requests, every
 #     workflow run from a fork needs approval;
-#   * security: Dependabot alerts + security updates, secret scanning + push protection.
+#   * security: Dependabot alerts + security updates, secret scanning + push protection;
+#   * deployment environments holding the signing secrets (audit SC-1), so that a workflow on another
+#     branch, a pull request or a job without `environment:` never receives them:
+#       db-signing  branch main only                         (nightly-db, ml-train, ml-domains: signing jobs)
+#       release     tags v* only + required reviewer (you)   (release.yml: sign-publish)
+#       codesign    tags v* only                             (release.yml: package)
+#     Then move the secrets there: scripts/secure-local-keys.sh migrate (deletes the repo-level copies).
 set -euo pipefail
 
 repo="WLDEUS/Parabellum"
@@ -25,7 +31,7 @@ while (($# > 0)); do
             ;;
         --dry-run) dry=1 ;;
         -h | --help)
-            sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+            sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *)
@@ -114,4 +120,49 @@ api PATCH "repos/$repo" \
     '{"security_and_analysis":{"secret_scanning":{"status":"enabled"},"secret_scanning_push_protection":{"status":"enabled"}}}' ||
     echo "attention : secret scanning non activé (dépôt privé sans GitHub Advanced Security ?)" >&2
 echo "==> secret scanning + protection au push"
-echo "Terminé. Vérifie : https://github.com/$repo/settings/rules"
+# --- environments (audit SC-1) ---
+# upsert_env <name> <reviewer id or ""> <policy type branch|tag> <pattern>
+upsert_env() {
+    local name="$1" reviewer="$2" type="$3" pattern="$4" body ids
+    if [[ -n "$reviewer" ]]; then
+        body="{\"wait_timer\":0,\"prevent_self_review\":false,\"reviewers\":[{\"type\":\"User\",\"id\":$reviewer}],"
+    else
+        body="{\"wait_timer\":0,\"reviewers\":[],"
+    fi
+    body+="\"deployment_branch_policy\":{\"protected_branches\":false,\"custom_branch_policies\":true}}"
+    if ! api PUT "repos/$repo/environments/$name" "$body"; then
+        if [[ -n "$reviewer" ]]; then
+            # Required reviewers need a public repository or a paid plan for a private one.
+            echo "attention : relecteur obligatoire refusé pour $name (dépôt privé sans offre payante ?) : environnement sans relecteur" >&2
+            api PUT "repos/$repo/environments/$name" \
+                '{"wait_timer":0,"reviewers":[],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}'
+        else
+            return 1
+        fi
+    fi
+    if ((dry)); then
+        ids=""
+    else
+        ids="$(gh api "repos/$repo/environments/$name/deployment-branch-policies" \
+            --jq ".branch_policies[] | select(.name != \"$pattern\" or .type != \"$type\") | .id")"
+    fi
+    local id
+    for id in $ids; do
+        api DELETE "repos/$repo/environments/$name/deployment-branch-policies/$id"
+    done
+    if ((dry)) || ! gh api "repos/$repo/environments/$name/deployment-branch-policies" \
+        --jq ".branch_policies[] | select(.name == \"$pattern\" and .type == \"$type\") | .id" | grep -q .; then
+        api POST "repos/$repo/environments/$name/deployment-branch-policies" "{\"name\":\"$pattern\",\"type\":\"$type\"}"
+    fi
+    echo "==> environnement « $name » : $type $pattern${reviewer:+, relecteur obligatoire}"
+}
+me="$(gh api user --jq .id)"
+upsert_env db-signing "" branch main
+upsert_env release "$me" tag "v*"
+upsert_env codesign "" tag "v*"
+
+cat <<EOF
+Terminé. Vérifie : https://github.com/$repo/settings/rules et https://github.com/$repo/settings/environments
+Ensuite, déplace les secrets de signature dans ces environnements (les copies au niveau du dépôt sont
+supprimées par le script) : scripts/secure-local-keys.sh migrate --repo $repo
+EOF

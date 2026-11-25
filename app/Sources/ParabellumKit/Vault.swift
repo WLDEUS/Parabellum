@@ -259,6 +259,20 @@ public enum RecoveryKey {
         return format(chars)
     }
 
+    /// The password to give the vault for a password the user *chose*: the same rule as `normalize`, so
+    /// a chosen password that happens to have a recovery key's shape is stored in the form every later
+    /// unlock will produce (otherwise typing it back would be rewritten and refused: lockout).
+    public static func storedForm(ofChosen chosen: String) -> String {
+        normalize(chosen)
+    }
+
+    /// What to try, in order, for a typed password: the normalized form, then the text as typed when it
+    /// differs (vaults created before `storedForm` existed keep opening with the exact text).
+    public static func unlockCandidates(_ typed: String) -> [String] {
+        let normalized = normalize(typed)
+        return normalized == typed ? [typed] : [normalized, typed]
+    }
+
     /// `input` has the shape of a recovery key (after normalization).
     public static func looksLikeKey(_ input: String) -> Bool {
         let key = normalize(input)
@@ -488,5 +502,63 @@ private final class VaultDataBox: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return data
+    }
+}
+
+/// Minimum quality of a password the user chooses for a vault or an encrypted folder. A stolen image is
+/// attacked offline (hdiutil derives the key with PBKDF2, not a memory-hard function), so length alone
+/// is not enough: `aaaaaaaaaaaa` or `123456789012` used to pass (audit APP-7). Deterministic, no network.
+public enum PasswordPolicy {
+    public static let minLength = 12
+    public static let minDistinct = 6
+
+    public enum Problem: Equatable, Sendable {
+        case tooShort
+        case tooFewDistinct
+        case sequence
+        case common
+    }
+
+    /// Words that, repeated or with a few digits around them, make most weak passwords people pick.
+    private static let commonWords: [String] = [
+        "password", "motdepasse", "azerty", "qwerty", "parabellum", "coffre", "secret", "admin",
+        "bonjour", "soleil", "welcome", "letmein", "iloveyou", "monkey", "dragon", "football",
+    ]
+
+    public static func problem(_ password: String) -> Problem? {
+        let chars = Array(password)
+        if chars.count < minLength { return .tooShort }
+        if Set(chars.map { $0.lowercased() }).count < minDistinct { return .tooFewDistinct }
+        if isSequence(chars) { return .sequence }
+        // Mostly a common word: what is left once letters of the word and digits/punctuation are
+        // removed is too short to carry entropy.
+        let lower = password.lowercased()
+        for word in commonWords where lower.contains(word) {
+            let rest = lower.replacingOccurrences(of: word, with: "")
+                .filter { $0.isLetter }
+            if rest.count < 4 { return .common }
+        }
+        return nil
+    }
+
+    /// Long runs of consecutive keys or codes (`abcdefghijkl`, `123456789012`, `azertyuiop`).
+    static func isSequence(_ chars: [Character]) -> Bool {
+        let lower = String(chars).lowercased()
+        for row in ["azertyuiopqsdfghjklmwxcvbn", "qwertyuiopasdfghjklzxcvbnm", "abcdefghijklmnopqrstuvwxyz", "01234567890"] {
+            // A run of at least 8 characters of a keyboard row / the alphabet, forwards or backwards.
+            for source in [row, String(row.reversed())] {
+                let s = Array(source)
+                var i = 0
+                while i + 8 <= s.count {
+                    if lower.contains(String(s[i..<(i + 8)])) { return true }
+                    i += 1
+                }
+            }
+        }
+        // Constant step over the whole password (`acegikmoqsuw`, `135791357913`).
+        let scalars = chars.compactMap { $0.unicodeScalars.first?.value }.map(Int.init)
+        guard scalars.count == chars.count, scalars.count > 1 else { return false }
+        let steps = Set(zip(scalars.dropFirst(), scalars).map { $0 - $1 })
+        return steps.count == 1 && abs(steps.first ?? 0) <= 2
     }
 }

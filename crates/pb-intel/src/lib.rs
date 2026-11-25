@@ -6,6 +6,7 @@
 //! * [`behavior`]: the on-device behavioural baseline (per-executable profiles, count-min sketch,
 //!   Bayesian novelty scoring), persisted compactly in the daemon's state directory and never sent
 //!   anywhere.
+#![forbid(unsafe_code)]
 
 pub mod behavior;
 pub mod domain;

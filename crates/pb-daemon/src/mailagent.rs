@@ -390,6 +390,22 @@ impl LazyOllama {
         };
         let ready = async {
             server.client.wait_ready(Duration::from_secs(60)).await?;
+            // The port was free a moment ago, not reserved: a local process that bound it first
+            // would receive the mails and answer the labels (audit NET-3). The answering listener
+            // must be our child.
+            let pid = server
+                .child
+                .id()
+                .ok_or("Ollama s'est arrêté au démarrage")?;
+            if server
+                .child
+                .try_wait()
+                .map_err(|e| e.to_string())?
+                .is_some()
+            {
+                return Err("Ollama s'est arrêté au démarrage (port déjà pris ?)".into());
+            }
+            verify_listener(port, pid).await?;
             if !server.client.has_model().await? {
                 tracing::info!(model = %self.model, "pulling the mail agent model");
                 // Interrupted (and resumed next time: Ollama keeps the downloaded layers) if you come back.
@@ -476,6 +492,43 @@ async fn until_cancelled(c: &AtomicBool) {
     }
 }
 
+/// `lsof -Fp` output: the listening pids.
+fn lsof_pids(out: &str) -> Vec<u32> {
+    out.lines()
+        .filter_map(|l| l.strip_prefix('p')?.trim().parse().ok())
+        .collect()
+}
+
+/// The only process listening on 127.0.0.1:`port` is `pid`. Without lsof (development off macOS),
+/// the child-still-running check above is all there is.
+async fn verify_listener(port: u16, pid: u32) -> Result<(), String> {
+    const LSOF: &str = "/usr/sbin/lsof";
+    if !std::path::Path::new(LSOF).is_file() {
+        return Ok(());
+    }
+    let addr = format!("-iTCP@127.0.0.1:{port}");
+    let out = crate::system::run_command(
+        LSOF,
+        &["-nP", "-a", &addr, "-sTCP:LISTEN", "-Fp"],
+        Duration::from_secs(10),
+    )
+    .await?;
+    let pids = lsof_pids(&out.stdout);
+    if !pids.is_empty() && pids.iter().all(|p| *p == pid) {
+        Ok(())
+    } else {
+        tracing::warn!(
+            port,
+            ?pids,
+            child = pid,
+            "ollama port held by another process"
+        );
+        Err(format!(
+            "le port {port} d'Ollama est tenu par un autre processus : agent mail arrêté"
+        ))
+    }
+}
+
 fn free_port() -> Result<u16, String> {
     let l = std::net::TcpListener::bind(("127.0.0.1", 0)).map_err(|e| e.to_string())?;
     l.local_addr().map(|a| a.port()).map_err(|e| e.to_string())
@@ -521,6 +574,12 @@ async fn write_notes() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lsof_listener_pids() {
+        assert_eq!(lsof_pids("p812\nf3\np90\n"), vec![812, 90]);
+        assert!(lsof_pids("").is_empty());
+    }
 
     #[test]
     fn idle_and_power_parsing() {

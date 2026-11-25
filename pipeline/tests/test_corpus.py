@@ -66,3 +66,29 @@ def test_corpus_problems():
     # Another corpus spec: scanned-file counts are not comparable.
     assert corpus_problems(10, {**cur, "files_scanned": 500}, [], {"spec": "x", "files_scanned": 1000}, 0.9) == []
     assert "could not scan" in corpus_problems(10, cur, ["tool:bin/x"], None, 0.9)[0]
+
+
+def test_cached_tree_is_never_trusted(tmp_path):
+    """Audit SC-5: a binary planted in a cached extracted tree must not reach the clean corpus."""
+    spec = CorpusSpec(version=1, homebrew_formulae=["jq"], bottle_tags=["all"])
+    cache = tmp_path / "cache"
+    http = FakeHttp(_routes("jq", MACHO + b"jq"))
+    (item,) = ensure_corpus(spec, cache, http)
+    planted = item.root / "jq" / "bin" / "planted-malware"
+    planted.write_bytes(MACHO + b"evil")
+    (cache / "x" / f"{item.sha256}.complete").write_text("forged marker\n")
+    (item,) = ensure_corpus(spec, cache, http)
+    assert not planted.exists()
+    assert sorted(p.name for p in item.root.rglob("*") if p.is_file()) == ["jq"]
+
+
+def test_cached_bottle_index_only_accepts_homebrew_blobs(tmp_path):
+    """Audit SC-5: the cached index is reused when formulae.brew.sh fails; a foreign URL is dropped."""
+    spec = CorpusSpec(version=1, homebrew_formulae=["jq"], bottle_tags=["all"])
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    evil = hashlib.sha256(b"x").hexdigest()
+    (cache / BOTTLE_INDEX).write_text(
+        json.dumps({"jq": {"name": "brew:jq-1.0-all", "url": f"https://evil.example/{evil}", "sha256": evil}})
+    )
+    assert ensure_corpus(spec, cache, FakeHttp()) == []

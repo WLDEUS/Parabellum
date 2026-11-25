@@ -1,6 +1,8 @@
 name: CI
 
-# Linux and macOS arm64 jobs on every push to main, tag and PR (public repository: hosted runners are free).
+# Linux and macOS arm64 jobs on every push to main and PR (public repository: hosted runners are free).
+# Not on tags: a tag points at a commit already tested on main, and its caches would otherwise be
+# reachable from a ref the release builds on (zizmor cache-poisoning). release.yml builds without cache.
 # Every build/test step tees its output to ci-logs/*.log. On failure, compiler/test errors are turned
 # into check-run annotations (readable through the API without access to the logs) and, for the macOS
 # job, the log tails are pushed to the orphan branch `ci-logs` under runs/<run_id>/.
@@ -8,7 +10,6 @@ name: CI
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
@@ -183,15 +184,12 @@ jobs:
         run: |
           set -o pipefail
           scripts/build-finder-extension.sh --check 2>&1 | tee ci-logs/finder-extension.log
-      # Stable code-signing identity (keeps Full Disk Access across updates). Not on PRs: PR builds
-      # never see the signing key and are signed ad hoc.
-      - name: Code-signing identity (certificate from secrets, else ad hoc)
-        if: github.event_name != 'pull_request'
-        env:
-          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
-          MACOS_SIGN_P12_PASSWORD: ${{ secrets.MACOS_SIGN_P12_PASSWORD }}
-        run: scripts/ci-codesign.sh import
+      # Ad-hoc signature only (audit SC-8): this job compiles third-party crates with a restored build
+      # cache, so it never sees the code-signing certificate. Only release.yml signs with it, in a job
+      # (environment codesign, tags v*) that compiles no third-party code.
       - name: Build .pkg
+        env:
+          PARABELLUM_SIGN_IDENTITY: "-"
         run: |
           if [[ ! -s keys/parabellum-db.pub ]]; then
             echo "::warning::keys/parabellum-db.pub missing: CI package built without the DB public key"
@@ -215,10 +213,6 @@ jobs:
           path: ci-logs/*.log
           retention-days: 3
           if-no-files-found: ignore
-      - name: Delete the temporary signing keychain
-        if: always()
-        run: scripts/ci-codesign.sh cleanup
-
   l10n:
     name: App languages (FR/EN)
     # The Swift compiler lists every localizable text of the app (French source); each one needs its English

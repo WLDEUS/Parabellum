@@ -22,9 +22,12 @@ développeur payant) : les binaires sont signés **ad hoc** avec le hardened run
 La base de menaces est signée par la CI (minisign) et vérifiée par le client avec une clé publique **compilée dans
 `parabellumd`**. À faire une fois :
 
-1. `make keys` (lance `scripts/setup-signing-keys.sh`).
-2. Committer la clé publique `keys/parabellum-db.pub`. La clé secrète ne doit jamais être commitée (`*.key` est ignoré).
-3. Mettre la clé secrète dans le secret GitHub `MINISIGN_SECRET_KEY` (§ 8).
+1. `make protect-repo` : crée les environnements GitHub `db-signing`, `release` et `codesign` (§ 8).
+2. `make keys` (lance `scripts/setup-signing-keys.sh`) puis `scripts/setup-release-key.sh` : deux clés protégées
+   par un mot de passe tapé, envoyées directement dans leur environnement.
+3. Committer les clés publiques `keys/parabellum-db.pub` et `keys/parabellum-release.pub`. Les clés secrètes ne
+   doivent jamais être commitées (`*.key` est ignoré) ni rester sur le Mac : sauvegarde dans le gestionnaire de
+   mots de passe, puis `scripts/secure-local-keys.sh purge`.
 
 Base de menaces : clés minisign ci-dessus. Binaires : certificat de signature de code ci-dessous.
 
@@ -42,11 +45,13 @@ Un certificat auto-signé suffit (gratuit, aucun compte Apple).
 1. Sur le Mac, sans sudo : `make codesign-cert` (lance `scripts/setup-codesign-cert.sh`).
 2. Le script crée « Parabellum Local Signing » (usage limité à la signature de code, 10 ans), l'importe dans le
    trousseau de session et l'approuve pour la signature de code : **macOS demande votre mot de passe** (fenêtre
-   « réglages de confiance »). À la signature de test, si macOS demande si `codesign` peut utiliser la clé :
-   **Toujours autoriser**.
-3. Il exporte `~/.parabellum/parabellum-codesign.p12` et son mot de passe (droits 0600), puis, si `gh` est connecté,
-   crée les secrets `MACOS_SIGN_P12` et `MACOS_SIGN_P12_PASSWORD` (§ 8) : la CI signe alors avec le même certificat.
-4. Sauvegardez `~/.parabellum/` hors du dépôt. Relancer le script ne recrée rien ; `--force` crée un nouveau
+   « réglages de confiance »). La clé est **non exportable** et aucune application n'est pré-autorisée : quand
+   macOS demande si `codesign` peut l'utiliser, répondre **Autoriser** (pas « Toujours autoriser »), pour
+   qu'aucun autre processus ne signe en silence un binaire qui hériterait de l'accès complet au disque.
+3. Si `gh` est connecté, il envoie le `.p12` et son mot de passe dans l'environnement `codesign` (§ 8) : la CI
+   de release signe alors avec le même certificat.
+4. Sauvegardez le `.p12` et son mot de passe dans le gestionnaire de mots de passe, puis
+   `scripts/secure-local-keys.sh purge`. Relancer le script ne recrée rien ; `--force` crée un nouveau
    certificat (accès complet au disque à redonner une fois).
 
 `make app` / `make pkg` utilisent ce certificat s'il est dans le trousseau (ou `PARABELLUM_SIGN_IDENTITY`), sinon
@@ -148,18 +153,21 @@ L'app vérifie l'état de chaque élément (menu **Composants** et **Pubs et tra
 
 ## 8. Secrets GitHub
 
-À créer dans **Settings > Secrets and variables > Actions > New repository secret**, ou avec `gh secret set` :
+Les secrets de signature ne sont **jamais** au niveau du dépôt : ils vivent dans des environnements GitHub
+(créés par `make protect-repo`) que seuls les jobs de signature déclarent, sur les seules références autorisées.
+Les scripts de création les y envoient ; `scripts/secure-local-keys.sh migrate` y déplace d'anciens secrets.
 
-| Secret | Contenu | Obtention |
+| Environnement | Secrets | Obtention |
 |---|---|---|
-| `MINISIGN_SECRET_KEY` | Clé secrète minisign de la base | Produite par `make keys` (§ 2) : suivez les instructions affichées, ou `gh secret set MINISIGN_SECRET_KEY < <fichier de clé secrète>` |
-| `ABUSECH_AUTH_KEY` | Clé d'API abuse.ch (MalwareBazaar, URLhaus, ThreatFox) | Voir ci-dessous |
-| `MACOS_SIGN_P12` | `.p12` du certificat de signature, en base64 | `make codesign-cert` (§ 2) le crée avec `gh` ; à la main : `base64 -i ~/.parabellum/parabellum-codesign.p12 \| gh secret set MACOS_SIGN_P12` |
-| `MACOS_SIGN_P12_PASSWORD` | Mot de passe du `.p12` | `gh secret set MACOS_SIGN_P12_PASSWORD < ~/.parabellum/parabellum-codesign.p12.password` |
+| `db-signing` (branche `main`) | `MINISIGN_SECRET_KEY`, `MINISIGN_KEY_PASSWORD` | `make keys` (§ 2) |
+| `release` (tags `v*`, relecteur) | `MINISIGN_RELEASE_SECRET_KEY`, `MINISIGN_RELEASE_KEY_PASSWORD` | `scripts/setup-release-key.sh` (§ 2) |
+| `codesign` (tags `v*`) | `MACOS_SIGN_P12`, `MACOS_SIGN_P12_PASSWORD` | `make codesign-cert` (§ 2) |
 
-Sans les deux secrets de signature, la CI signe ad hoc (avertissement dans le job). Les builds de pull request
-signent toujours ad hoc : ils ne voient jamais la clé. En CI, `scripts/ci-codesign.sh` importe le certificat dans un
-trousseau temporaire, supprimé en fin de job.
+Seule `ABUSECH_AUTH_KEY` (clé d'API abuse.ch en lecture : MalwareBazaar, URLhaus, ThreatFox) reste un secret de
+dépôt (**Settings > Secrets and variables > Actions**), voir ci-dessous.
+
+La CI ordinaire (push, pull request) signe toujours ad hoc : elle ne voit jamais le certificat. En release,
+`scripts/ci-codesign.sh` l'importe dans un trousseau temporaire, supprimé en fin de job.
 
 Clé abuse.ch (gratuite, usage non commercial) :
 

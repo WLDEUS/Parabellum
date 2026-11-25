@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import LocalAuthentication
 import Security
@@ -13,6 +14,10 @@ import Security
 ///    app's code signature (other apps trigger a keychain password prompt), and the app asks for Touch
 ///    ID / the password with LocalAuthentication before reading it. With the stable "Parabellum Local
 ///    Signing" certificate the ACL survives updates; ad-hoc builds re-prompt after each update.
+///    The login keychain is opened by its path (from the user database, not `$HOME`) and every add /
+///    read / delete names it: `security default-keychain` / `list-keychains` are user settings any
+///    process can change without a prompt, so relying on the default keychain would let malware hide the
+///    real item and receive the password re-typed by the user in a keychain it controls (audit APP-2).
 enum VaultKeychain {
     static let service = "com.wldeus.parabellum.vault"
     static let account = "Coffre"
@@ -37,6 +42,15 @@ enum VaultKeychain {
         case notFound
         case status(OSStatus)
         case authentication(String)
+        /// The login keychain could not be opened at its expected place.
+        case loginKeychainUnavailable(String)
+        /// The stored password belongs to another vault image than the one configured now.
+        case otherVault(String)
+
+        var isOtherVault: Bool {
+            if case .otherVault = self { return true }
+            return false
+        }
 
         var errorDescription: String? {
             switch self {
@@ -49,17 +63,26 @@ enum VaultKeychain {
                 return String(localized: "Trousseau : \(message)")
             case .authentication(let message):
                 return message
+            case .otherVault(let path):
+                return String(localized: "Le mot de passe enregistré appartient à un autre coffre que « \(path) ». Vérifiez l'emplacement du coffre, puis saisissez le mot de passe de ce coffre.")
+            case .loginKeychainUnavailable(let detail):
+                return String(localized: "Trousseau de session introuvable ou modifié (\(detail)) : le mot de passe n'est pas enregistré.")
             }
         }
     }
 
     // MARK: - Write
 
-    /// Stores (replaces) the passphrase; returns where it went.
+
+    /// Stores (replaces) the passphrase, bound to the vault image it opens (`binding`: the configured
+    /// bundle path, "" for the default one); returns where it went. `vault.bundlePath` lives in
+    /// UserDefaults, which any process of the user can rewrite: the binding keeps Touch ID from silently
+    /// opening (and the app from writing into) an image someone else put there (audit APP-5).
     @discardableResult
-    static func save(_ password: String) throws -> Backend {
+    static func save(_ password: String, binding: String) throws -> Backend {
         delete()
         let data = Data(password.utf8)
+        let bound = Data((bindingPrefix + binding).utf8)
         var error: Unmanaged<CFError>?
         if let access = SecAccessControlCreateWithFlags(
             nil,
@@ -70,6 +93,7 @@ enum VaultKeychain {
             var query = baseQuery(dataProtection: true)
             query[kSecAttrAccessControl as String] = access
             query[kSecAttrLabel as String] = label
+            query[kSecAttrGeneric as String] = bound
             query[kSecValueData as String] = data
             if SecItemAdd(query as CFDictionary, nil) == errSecSuccess {
                 return .dataProtection
@@ -79,8 +103,10 @@ enum VaultKeychain {
             error?.release()
         }
         var query = baseQuery(dataProtection: false)
+        query[kSecUseKeychain as String] = try loginKeychain()
         query[kSecAttrLabel as String] = label
         query[kSecAttrDescription as String] = String(localized: "mot de passe du coffre")
+        query[kSecAttrGeneric as String] = bound
         query[kSecValueData as String] = data
         let status = SecItemAdd(query as CFDictionary, nil)
         guard status == errSecSuccess else {
@@ -91,15 +117,18 @@ enum VaultKeychain {
 
     /// Deletes the passphrase from both keychains (crypto-shred of the vault key copy).
     static func delete() {
-        for dataProtection in [true, false] {
-            SecItemDelete(baseQuery(dataProtection: dataProtection) as CFDictionary)
+        SecItemDelete(baseQuery(dataProtection: true) as CFDictionary)
+        if let query = try? loginQuery() {
+            SecItemDelete(query as CFDictionary)
         }
     }
 
     // MARK: - Read
 
-    /// Asks for Touch ID / the session password, then reads the passphrase.
-    static func read(reason: String) async throws -> String {
+    /// Asks for Touch ID / the session password, then reads the passphrase. `binding`: the vault image
+    /// configured now; a password saved for another one throws `.otherVault` (items saved before the
+    /// binding existed are accepted once and re-bound by the caller's next save).
+    static func read(reason: String, binding: String) async throws -> Stored {
         let context = LAContext()
         context.localizedCancelTitle = "Annuler"
         do {
@@ -113,19 +142,43 @@ enum VaultKeychain {
             }
         }
         // Data protection item: the evaluated context satisfies its access control (no second prompt).
-        if let password = try copy(dataProtection: true, context: context) {
-            return password
+        let found = try copy(dataProtection: true, context: context) ?? copy(dataProtection: false, context: nil)
+        guard let found else {
+            throw Failure.notFound
         }
-        if let password = try copy(dataProtection: false, context: nil) {
-            return password
+        if let bound = found.1, bound != binding {
+            throw Failure.otherVault(binding.isEmpty ? String(localized: "emplacement par défaut") : binding)
         }
-        throw Failure.notFound
+        return Stored(password: found.0, unbound: found.1 == nil)
+    }
+
+    struct Stored {
+        let password: String
+        /// Saved before bindings existed: the caller re-saves it bound to the current vault.
+        let unbound: Bool
+    }
+
+    private static let bindingPrefix = "bundle:"
+
+    /// The binding stored with an item, nil for items saved before bindings existed.
+    static func decodeBinding(_ data: Data?) -> String? {
+        guard let data, let text = String(data: data, encoding: .utf8), text.hasPrefix(bindingPrefix) else {
+            return nil
+        }
+        return String(text.dropFirst(bindingPrefix.count))
     }
 
     /// Where the passphrase is stored, without reading it (no prompt).
     static func backend() -> Backend? {
         for dataProtection in [true, false] {
-            var query = baseQuery(dataProtection: dataProtection)
+            var query: [String: Any]
+            if dataProtection {
+                query = baseQuery(dataProtection: true)
+            } else if let login = try? loginQuery() {
+                query = login
+            } else {
+                continue
+            }
             query[kSecReturnAttributes as String] = true
             query[kSecMatchLimit as String] = kSecMatchLimitOne
             let context = LAContext()
@@ -141,9 +194,15 @@ enum VaultKeychain {
         return nil
     }
 
-    private static func copy(dataProtection: Bool, context: LAContext?) throws -> String? {
-        var query = baseQuery(dataProtection: dataProtection)
+    private static func copy(dataProtection: Bool, context: LAContext?) throws -> (String, String?)? {
+        var query: [String: Any]
+        if dataProtection {
+            query = baseQuery(dataProtection: true)
+        } else {
+            query = try loginQuery()
+        }
         query[kSecReturnData as String] = true
+        query[kSecReturnAttributes as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         if let context {
             query[kSecUseAuthenticationContext as String] = context
@@ -152,10 +211,12 @@ enum VaultKeychain {
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         switch status {
         case errSecSuccess:
-            guard let data = result as? Data, let password = String(data: data, encoding: .utf8) else {
+            guard let item = result as? [String: Any],
+                  let data = item[kSecValueData as String] as? Data,
+                  let password = String(data: data, encoding: .utf8) else {
                 throw Failure.status(errSecDecode)
             }
-            return password
+            return (password, decodeBinding(item[kSecAttrGeneric as String] as? Data))
         case errSecItemNotFound, errSecMissingEntitlement:
             return nil
         case errSecUserCanceled:
@@ -163,6 +224,39 @@ enum VaultKeychain {
         default:
             throw Failure.status(status)
         }
+    }
+
+    /// Login-keychain query restricted to the real login keychain (never the default / search list).
+    private static func loginQuery() throws -> [String: Any] {
+        var query = baseQuery(dataProtection: false)
+        query[kSecMatchSearchList as String] = [try loginKeychain()] as CFArray
+        return query
+    }
+
+    /// `~/Library/Keychains/login.keychain-db` of the current user, home taken from the user database
+    /// (an environment variable can be changed by any process that relaunches the app). Refused when it
+    /// is missing or a symbolic link.
+    static func loginKeychain() throws -> SecKeychain {
+        guard let path = loginKeychainPath() else {
+            throw Failure.loginKeychainUnavailable(String(localized: "dossier personnel inconnu"))
+        }
+        var st = stat()
+        guard lstat(path, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG, st.st_uid == getuid() else {
+            throw Failure.loginKeychainUnavailable(path)
+        }
+        var keychain: SecKeychain?
+        let status = SecKeychainOpen(path, &keychain)
+        guard status == errSecSuccess, let keychain else {
+            throw Failure.status(status)
+        }
+        return keychain
+    }
+
+    static func loginKeychainPath() -> String? {
+        guard let pw = getpwuid(getuid()), let dir = pw.pointee.pw_dir else { return nil }
+        let home = String(cString: dir)
+        guard home.hasPrefix("/") else { return nil }
+        return (home as NSString).appendingPathComponent("Library/Keychains/login.keychain-db")
     }
 
     private static func baseQuery(dataProtection: Bool) -> [String: Any] {

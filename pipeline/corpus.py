@@ -6,6 +6,11 @@ API and pulled anonymously from ghcr.io (``Authorization: Bearer QQ==``, exactly
 — see ``Library/Homebrew/brew.sh``). Everything is cached under ``--corpus-cache`` (restored by
 ``actions/cache``) as ``dl/<sha256>`` + ``x/<sha256>/`` (extracted tree).
 
+The cache is untrusted (audit SC-5): every clean-corpus file hash ends up in the signed allowlist, and
+any job that can write a cache entry could plant a binary in an extracted tree. So only the downloads
+are reused, after their pinned SHA-256 is checked again; the trees are re-extracted from them on every
+run, and the cached bottle index only accepts Homebrew blob URLs of the same formula and hash.
+
 Extraction is pure Python for tar/zip/xar(pkg)/gzip/pbzx/cpio; DMGs need ``7zz``/``7z`` and are
 skipped without it. Every extractor refuses absolute paths, ``..``, links and special files and is
 bounded in entries and bytes. Corpus archives are pinned by hash, but the same code also opens
@@ -533,6 +538,13 @@ def spec_fingerprint(spec: CorpusSpec) -> str:
     return hashlib.sha256("\n".join(names).encode()).hexdigest()[:16]
 
 
+def _bottle_url_ok(formula: str, url: str, sha: str) -> bool:
+    """A cached bottle entry must point at Homebrew's own blob store, for that formula and that hash."""
+    if not formula or "/" in formula or ".." in formula:
+        return False
+    return url == f"https://ghcr.io/v2/homebrew/core/{formula.replace('@', '/')}/blobs/sha256:{sha}"
+
+
 def _load_bottle_index(cache: Path) -> dict[str, dict[str, str]]:
     try:
         doc = json.loads((cache / BOTTLE_INDEX).read_text(encoding="utf-8"))
@@ -546,6 +558,7 @@ def _load_bottle_index(cache: Path) -> dict[str, dict[str, str]]:
         if isinstance(v, dict)
         and all(isinstance(v.get(f), str) for f in ("name", "url", "sha256"))
         and is_sha256(str(v["sha256"]).lower())
+        and _bottle_url_ok(str(k), str(v["url"]), str(v["sha256"]).lower())
     }
 
 
@@ -590,20 +603,19 @@ def ensure_corpus(
     for a in wanted:
         archive = dl_dir / a.sha256
         root = x_dir / a.sha256
-        marker = x_dir / f"{a.sha256}.complete"
         try:
             if not archive.is_file() or sha256_file(archive) != a.sha256:
                 headers = GHCR_ANON_AUTH if a.url.startswith("https://ghcr.io/") else None
                 http.download(a.url, archive, headers=headers, sha256=a.sha256)
-            if not marker.is_file():
-                shutil.rmtree(root, ignore_errors=True)
-                # The archive itself keeps its name (useful for hashing e.g. the .dmg users download).
-                fmt = a.format if a.format != "auto" else detect_format(archive)
-                if fmt == "dmg" and not seven_zip:
-                    log.warning("%s: DMG skipped (no 7zz/7z)", a.name)
-                    continue
-                extract_any(archive, root, fmt, limits, seven_zip)
-                marker.write_text(a.name + "\n")
+            # Never reuse a cached tree (see module doc): extracted again from the verified archive.
+            shutil.rmtree(root, ignore_errors=True)
+            (x_dir / f"{a.sha256}.complete").unlink(missing_ok=True)  # markers of older caches
+            # The archive itself keeps its name (useful for hashing e.g. the .dmg users download).
+            fmt = a.format if a.format != "auto" else detect_format(archive)
+            if fmt == "dmg" and not seven_zip:
+                log.warning("%s: DMG skipped (no 7zz/7z)", a.name)
+                continue
+            extract_any(archive, root, fmt, limits, seven_zip)
             items.append(CorpusItem(a.name, a.sha256, root, archive))
         except (
             FetchError,

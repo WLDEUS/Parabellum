@@ -2,6 +2,7 @@
 //! The server is started by the daemon on a random loopback port only for the duration of a run.
 
 use super::classify::{self, Classification, Classifier, ClassifyInput};
+use crate::http::CappedJson;
 use async_trait::async_trait;
 use std::time::Duration;
 
@@ -17,6 +18,7 @@ impl Ollama {
     pub fn new(port: u16, model: &str) -> Result<Self, String> {
         let http = reqwest::Client::builder()
             .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(Duration::from_secs(5))
             .build()
             .map_err(|e| e.to_string())?;
@@ -41,7 +43,7 @@ impl Ollama {
             .map_err(|e| e.to_string())?
             .error_for_status()
             .map_err(|e| e.to_string())?
-            .json()
+            .json_capped()
             .await
             .map_err(|e| e.to_string())?;
         Ok(v.get("version")
@@ -74,7 +76,7 @@ impl Ollama {
             .send()
             .await
             .map_err(|e| e.to_string())?
-            .json()
+            .json_capped()
             .await
             .map_err(|e| e.to_string())?;
         let want = if self.model.contains(':') {
@@ -100,7 +102,7 @@ impl Ollama {
             .await
             .map_err(|e| e.to_string())?;
         let status = r.status();
-        let v: serde_json::Value = r.json().await.unwrap_or_default();
+        let v: serde_json::Value = r.json_capped().await.unwrap_or_default();
         if !status.is_success() || v.get("status").and_then(|s| s.as_str()) != Some("success") {
             return Err(format!(
                 "téléchargement du modèle {} impossible : {}",
@@ -147,7 +149,7 @@ impl Ollama {
             .map_err(|e| format!("modèle injoignable : {e}"))?
             .error_for_status()
             .map_err(|e| format!("modèle : {e}"))?
-            .json()
+            .json_capped()
             .await
             .map_err(|e| format!("réponse du modèle illisible : {e}"))?;
         v.get("message")
@@ -192,7 +194,7 @@ impl Classifier for Ollama {
             .map_err(|e| format!("modèle injoignable : {e}"))?
             .error_for_status()
             .map_err(|e| format!("modèle : {e}"))?
-            .json()
+            .json_capped()
             .await
             .map_err(|e| format!("réponse du modèle illisible : {e}"))?;
         let content = v

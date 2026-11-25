@@ -96,11 +96,14 @@ pub(crate) mod test_keys {
             self.kp.pk.to_box().expect("pk box").to_string()
         }
         pub(crate) fn sign(&self, data: &[u8]) -> String {
+            self.sign_with_comment(data, "test")
+        }
+        pub(crate) fn sign_with_comment(&self, data: &[u8], trusted: &str) -> String {
             minisign::sign(
                 Some(&self.kp.pk),
                 &self.kp.sk,
                 Cursor::new(data),
-                Some("test"),
+                Some(trusted),
                 None,
             )
             .expect("sign")

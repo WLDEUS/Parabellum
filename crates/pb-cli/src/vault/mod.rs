@@ -679,7 +679,16 @@ fn cleanup_mountpoint(p: &VaultPaths) {
     }
 }
 
-/// Attach (unlock) the vault. Already attached: no-op.
+/// `hdiutil isencrypted -plist`: `<key>encrypted</key><true/>`.
+fn is_encrypted_plist(out: &[u8]) -> bool {
+    let s = String::from_utf8_lossy(out);
+    s.split_once("<key>encrypted</key>")
+        .is_some_and(|(_, rest)| rest.trim_start().starts_with("<true/>"))
+}
+
+/// Attach (unlock) the vault. Already attached: no-op. An image that is not encrypted is refused before
+/// anything is mounted: a bundle swapped for a plain image would mount with any password and the user
+/// would then save secrets in clear (audit APP-5).
 pub fn attach(
     r: &dyn Runner,
     p: &VaultPaths,
@@ -689,6 +698,22 @@ pub fn attach(
     check_bundle(&p.bundle)?;
     if find_attached(r, &p.bundle)?.is_some() {
         return status(r, p, home, 0);
+    }
+    let enc = r.run(
+        HDIUTIL,
+        &args(&["isencrypted", "-plist", &path_str(&p.bundle)]),
+        None,
+        T_ATTACH,
+    )?;
+    if !enc.ok() {
+        return Err(tool_error("hdiutil isencrypted", &enc));
+    }
+    if !is_encrypted_plist(&enc.stdout) {
+        return Err(VaultError::Unsafe(
+            "cette image n'est pas chiffrée : ce n'est pas un coffre Parabellum (fichier remplacé ?). \
+             Rien n'a été monté."
+                .into(),
+        ));
     }
     if let Some(mp) = &p.mountpoint {
         prepare_mountpoint(mp)?;
