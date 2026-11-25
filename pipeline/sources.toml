@@ -23,6 +23,11 @@ min_yara_rules = 50
 # data/clean_corpus.toml are available, or when far fewer files were scanned than last night (same
 # corpus spec): a rule matching a missing clean binary would otherwise ship.
 corpus_min_available = 0.9
+# ML FP gate: refuse to publish when the shipped Mach-O model flags more than this share of the clean
+# corpus Mach-O files (the training gate is 0.1 % on its own holdout; this re-checks the model actually
+# shipped, independently of the training job). Loose on purpose: it stops a broken or hostile model that
+# flags the corpus wholesale, not a targeted one (the client's quarantine stays reversible for that).
+ml_max_fp_rate = 0.005
 
 [hashes]
 # Rolling window for all-platform MalwareBazaar hashes, and a hard cap: 2 M x 32 bytes = 64 MB for

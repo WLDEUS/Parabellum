@@ -179,6 +179,20 @@ def corpus_problems(
     return problems
 
 
+def ml_fp_problems(flagged: int, macho_files: int, max_rate: float) -> list[str]:
+    """ML FP gate (audit SC-7): the model about to ship must not flag the clean corpus.
+
+    The model comes from another workflow (ml-train.yml) and is only signed there; this checks it again
+    here on the clean corpus, so a model that slipped through (or was replaced) cannot ship silently.
+    """
+    if macho_files <= 0 or flagged <= 0:
+        return []
+    rate = flagged / macho_files
+    if rate > max_rate:
+        return [f"ML model flags {flagged}/{macho_files} clean Mach-O files ({rate:.3%} > {max_rate:.3%})"]
+    return []
+
+
 def fp_rate(
     files_scanned: int,
     yara_flagged: int,

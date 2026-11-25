@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 # Supply chain: `train` runs pipeline code on the domains seen by the feeds with a READ-ONLY token;
-# `publish` only uploads the result.
+# `publish` (environment db-signing) only signs the promoted files with minisign and uploads them.
 permissions:
   contents: read
 
@@ -128,6 +128,9 @@ jobs:
     if: needs.train.outputs.ready == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    # Signs promoted models with the DB key (audit SC-7): runs no training code, only ml/domains/publish.sh
+    # and scripts/ci-minisign.sh on the training job's data files.
+    environment: db-signing # MINISIGN_SECRET_KEY (+ MINISIGN_KEY_PASSWORD): branch main only
     permissions:
       contents: write # gh release upload (ml-domain-dataset, ml-domain-latest)
     env:
@@ -137,13 +140,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          sparse-checkout: ml/domains/publish.sh
+          sparse-checkout: |
+            ml/domains/publish.sh
+            scripts/ci-minisign.sh
+            keys/parabellum-db.pub
           sparse-checkout-cone-mode: false
+      - run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends minisign
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: ml-domain-out
           path: out/ml-domain
       - name: Publish
+        env: # only this step sees the key
+          MINISIGN_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_KEY_PASSWORD: ${{ secrets.MINISIGN_KEY_PASSWORD }}
+          MINISIGN_PUB: keys/parabellum-db.pub
         run: |
           set -euo pipefail
           if find out -mindepth 1 ! -type f ! -type d | grep -q .; then

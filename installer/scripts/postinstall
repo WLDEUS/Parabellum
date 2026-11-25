@@ -118,11 +118,28 @@ done
 /usr/bin/xattr -dr com.apple.quarantine "$BIN" 2>/dev/null || true
 
 # 3. CLI on the PATH (/usr/local/bin may not exist on Apple Silicon Macs).
-if [[ ! -d /usr/local/bin ]]; then
+# Root only writes into /usr/local/bin when it and /usr/local are real directories owned by root and not
+# writable by group/others (audit IPC-6): a user-owned or symlinked /usr/local/bin (e.g. Intel Homebrew)
+# would let an unprivileged process redirect what root creates there. Then the link is skipped and logged;
+# the user can create it: ln -s "/Library/Application Support/Parabellum/bin/parabellum" ~/bin/parabellum
+root_owned_dir() {
+    [[ -d "$1" && ! -L "$1" ]] || return 1
+    local owner mode
+    owner="$(/usr/bin/stat -f '%u' "$1" 2>/dev/null)" || return 1
+    mode="$(/usr/bin/stat -f '%Lp' "$1" 2>/dev/null)" || return 1
+    [[ "$owner" == 0 ]] || return 1
+    # No write bit for group (x2x) or others (xx2).
+    (((8#$mode & 8#022) == 0))
+}
+if [[ ! -e /usr/local/bin && ! -L /usr/local/bin ]] && root_owned_dir /usr/local; then
     make_dir 0755 /usr/local/bin
 fi
-if [[ -d "$CLI_LINK" && ! -L "$CLI_LINK" ]]; then
+if ! root_owned_dir /usr/local || ! root_owned_dir /usr/local/bin; then
+    log "/usr/local/bin n'appartient pas à root (ou est un lien / modifiable par d'autres) : lien de la CLI non créé"
+elif [[ -d "$CLI_LINK" && ! -L "$CLI_LINK" ]]; then
     log "$CLI_LINK est un dossier, lien de la CLI non créé"
+elif [[ -e "$CLI_LINK" && ! -L "$CLI_LINK" ]]; then
+    log "$CLI_LINK existe et n'est pas un lien, lien de la CLI non créé"
 else
     run /bin/ln -sfn "$BIN/parabellum" "$CLI_LINK"
 fi

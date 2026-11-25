@@ -3,7 +3,8 @@ name: Nightly threat DB
 # Rebuilds the signed threat-DB bundle (see crates/pb-core/src/db.rs and pipeline/README.md) and
 # publishes it to the `db-latest` release + a dated `db-<version>` release. If any check fails (sanity
 # guard, signature mismatch…) nothing is uploaded: clients keep yesterday's bundle.
-# Secrets: ABUSECH_AUTH_KEY (abuse.ch), MINISIGN_SECRET_KEY (unencrypted minisign secret key).
+# Secrets: ABUSECH_AUTH_KEY (abuse.ch, repo secret); MINISIGN_SECRET_KEY + MINISIGN_KEY_PASSWORD (DB key,
+# password-protected, environment `db-signing`: branch main only, sign-publish job only — audit SC-1/SC-2).
 # Zero Breach Toolkit (pipeline/zbt.py): latest release via the GitHub API (GH_TOKEN), shipped only after
 # gpg verifies SHA256SUMS.txt.asc with the pinned publisher key; its `--update` (network) runs here, in CI.
 # sing-box pin (pipeline/pins.py): `gh attestation verify --repo SagerNet/sing-box` (gh + GH_TOKEN, job env).
@@ -22,6 +23,10 @@ on:
         description: Publish even if the sanity guard objects (drops > 50 %, minimums, incomplete clean corpus)
         type: boolean
         default: false
+      allow_allowlist_growth:
+        description: Sign even if verify-db finds an unusual allowlist growth (malware -> allow moves, > 10 %)
+        type: boolean
+        default: false
       malware_corpus:
         description: Measure the detection rate on today's macOS samples (see GitHub AUP caveat in pipeline/README.md)
         type: boolean
@@ -29,8 +34,10 @@ on:
 
 # Supply chain (docs/SECURITY-SUPPLY-CHAIN.md): `build-db` downloads untrusted feeds, unpacks malware
 # samples with 7-Zip and runs third-party code, so it gets a READ-ONLY token and never sees the signing
-# key. `sign-publish` runs no pipeline code: it checks the artifact's file list, signs it with minisign
-# and uploads it.
+# key; it must be assumed compromisable. `verify-db` (fresh runner, read-only token, no secret) re-checks
+# the bundle against sources build-db cannot touch (pipeline/verify_bundle.py, audit SC-4) and hands the
+# SHA-256 of the verified files to `sign-publish`, which runs no pipeline code: it checks the digests,
+# signs with minisign (environment db-signing) and uploads.
 permissions:
   contents: read
 
@@ -61,7 +68,7 @@ jobs:
           toolchain: stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          shared-key: pb-features
+          shared-key: pb-features-db # not shared with ml-train.yml (which featurizes malware)
       - name: Build pb-features
         run: cargo build --release -p pb-ml --bin pb-features
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -77,14 +84,15 @@ jobs:
       - name: Restore clean corpus cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: .cache/corpus
-          key: corpus-v1-${{ hashFiles('pipeline/data/clean_corpus.toml') }}-${{ github.run_id }}
+          path: |
+            .cache/corpus/dl
+            .cache/corpus/bottles.json
+          key: corpus-v2-${{ hashFiles('pipeline/data/clean_corpus.toml') }}-${{ github.run_id }}
           restore-keys: |
-            corpus-v1-${{ hashFiles('pipeline/data/clean_corpus.toml') }}-
-            corpus-v1-
-      - name: Download previous bundle, state and ML model
+            corpus-v2-${{ hashFiles('pipeline/data/clean_corpus.toml') }}-
+      - name: Download previous bundle and state
         run: |
-          mkdir -p prev ml-latest
+          mkdir -p prev
           # Only a 404 means "no release yet". Any other failure fails the job: a transient 502 must
           # not turn into a first run (no shrink baseline, empty state published, version restart).
           release_exists() {
@@ -112,32 +120,10 @@ jobs:
               fi
             done
           fi
-          if release_exists ml-latest; then
-            assets="$(gh api "repos/$GH_REPO/releases/tags/ml-latest" --jq '.assets[].name')"
-            if grep -qx macho_model.json <<<"$assets"; then
-              gh release download ml-latest -D ml-latest --clobber -p macho_model.json -p model_meta.json
-            fi
-            if grep -qx script_model.json <<<"$assets"; then
-              gh release download ml-latest -D ml-latest --clobber -p script_model.json -p script_model_meta.json
-            fi
-          else
-            echo "::notice::no ML model released yet"
-          fi
-      - name: Download domain model
-        # Intelligence: ml-domain-latest (ml-domains.yml) next to the Mach-O model in --ml-dir.
-        # A missing release means "none yet" (the previous bundle's model is carried over); any other
-        # gh error fails the job.
-        run: |
-          mkdir -p ml-latest
-          if err="$(gh release view ml-domain-latest --json tagName 2>&1 >/dev/null)"; then
-            gh release download ml-domain-latest -D ml-latest --clobber \
-              -p domain_model.json -p domain_model_meta.json -p domain_brands.txt -p domain_top.txt
-          elif grep -qi "release not found" <<<"$err"; then
-            echo "no domain model yet"
-          else
-            echo "::error::gh release view ml-domain-latest: $err"
-            exit 1
-          fi
+      # Signed models only (audit SC-7): unsigned or mixed files are dropped, the builder then carries
+      # the previous bundle's model over.
+      - name: Download signed ML models
+        run: bash scripts/fetch-ml-models.sh ml-latest keys/parabellum-db.pub
       - name: Build bundle (unsigned)
         env:
           ABUSECH_AUTH_KEY: ${{ secrets.ABUSECH_AUTH_KEY }}
@@ -171,30 +157,93 @@ jobs:
             python -c 'import json; r = json.load(open("dist/db/report.json")); print(json.dumps({k: r.get(k) for k in ("stats", "sanity_problems", "source_errors", "domains", "detection", "privacy_brokers", "component_pins")}, indent=2))'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+      # Only the downloads (re-checked against their pinned SHA-256 on every run) and the bottle index
+      # (validated on load) are cached: the extracted trees are rebuilt each run (pipeline/corpus.py,
+      # audit SC-5), so a poisoned cache entry cannot add a file to the clean corpus / allowlist.
       - name: Save clean corpus cache
         if: always()
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: .cache/corpus
-          key: corpus-v1-${{ hashFiles('pipeline/data/clean_corpus.toml') }}-${{ github.run_id }}
+          path: |
+            .cache/corpus/dl
+            .cache/corpus/bottles.json
+          key: corpus-v2-${{ hashFiles('pipeline/data/clean_corpus.toml') }}-${{ github.run_id }}
 
-  sign-publish:
+  verify-db:
     needs: build-db
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      attestations: read # gh attestation verify of a changed sing-box pin
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    outputs:
+      digests: ${{ steps.verify.outputs.digests }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends minisign gnupg dirmngr
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: threat-db
+          path: ${{ runner.temp }}/db
+      # Downloaded again here, independently of build-db: the previous bundle (signature checked) and the
+      # signed ML models are the references the new bundle is compared with.
+      - name: References (previous signed bundle, signed ML models)
+        run: |
+          set -euo pipefail
+          ref="$RUNNER_TEMP/ref"
+          mkdir -p "$ref/prev" "$ref/ml"
+          if err="$(gh api "repos/$GH_REPO/releases/tags/db-latest" --silent 2>&1)"; then
+            gh release download db-latest -D "$ref/prev" -p parabellum-db.tar.gz -p parabellum-db.tar.gz.minisig
+            if ! minisign -Vq -p keys/parabellum-db.pub -m "$ref/prev/parabellum-db.tar.gz"; then
+              echo "::error::db-latest has an invalid signature: no trusted reference to compare with"
+              exit 1
+            fi
+          elif [[ "$err" != *"HTTP 404"* ]]; then
+            echo "::error::cannot query db-latest: $err"
+            exit 1
+          fi
+          bash scripts/fetch-ml-models.sh "$ref/ml" keys/parabellum-db.pub
+      - name: Verify the bundle
+        id: verify
+        env:
+          ALLOW_SHRINK: ${{ inputs.allow_shrink && '--allow-shrink' || '' }}
+          ALLOW_GROWTH: ${{ inputs.allow_allowlist_growth && '--allow-allowlist-growth' || '' }}
+        run: |
+          set -euo pipefail
+          db="$RUNNER_TEMP/db" ref="$RUNNER_TEMP/ref"
+          prev=()
+          [[ -f "$ref/prev/parabellum-db.tar.gz" ]] && prev=(--previous "$ref/prev/parabellum-db.tar.gz")
+          # shellcheck disable=SC2086 # each flag is empty or one word
+          python3 -m pipeline.verify_bundle --bundle "$db/parabellum-db.tar.gz" --manifest "$db/manifest.json" \
+            "${prev[@]}" --ml-dir "$ref/ml" $ALLOW_SHRINK $ALLOW_GROWTH
+          # What sign-publish may sign: these exact bytes.
+          digests="$(cd "$db" && find . -mindepth 1 -printf '%y %P\n' | sort | tr '\n' ';')|$(cd "$db" && sha256sum -- * | sort -k2 | tr '\n' ';')"
+          echo "digests=$digests" >> "$GITHUB_OUTPUT"
+
+  sign-publish:
+    needs: [build-db, verify-db]
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
+    environment: db-signing # MINISIGN_SECRET_KEY + MINISIGN_KEY_PASSWORD: branch main only
     permissions:
       contents: write # gh release create/upload
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
-      # Only the public key and the publish script are read from the checkout.
+      # Only the public key, the signing helper and the publish script are read from the checkout.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           sparse-checkout: |
             keys
             pipeline/publish.sh
+            scripts/ci-minisign.sh
           sparse-checkout-cone-mode: false
       - run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends minisign
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
@@ -203,24 +252,24 @@ jobs:
           path: dist/db
       - name: Check, sign and verify
         env:
-          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          VERIFIED: ${{ needs.verify-db.outputs.digests }}
+          MINISIGN_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_KEY_PASSWORD: ${{ secrets.MINISIGN_KEY_PASSWORD }}
+          MINISIGN_PUB: keys/parabellum-db.pub
         run: |
           set -euo pipefail
-          [[ -n "$MINISIGN_SECRET_KEY" ]] || { echo "::error::secret MINISIGN_SECRET_KEY is not set (scripts/setup-signing-keys.sh)"; exit 1; }
           [[ -s keys/parabellum-db.pub ]] || { echo "::error::keys/parabellum-db.pub is not committed"; exit 1; }
           # Exactly the expected regular files, nothing else (no links, no extra payload).
           expected="manifest.json parabellum-db.tar.gz pipeline-state.tar.gz report.json shadowrocket-reject.list"
           got="$(cd dist/db && find . -mindepth 1 -printf '%y %P\n' | sort | tr '\n' ' ')"
           want="$(for f in $expected; do echo "f $f"; done | sort | tr '\n' ' ')"
           [[ "$got" == "$want" ]] || { echo "::error::unexpected artifact content: $got"; exit 1; }
+          # The very bytes verify-db checked (audit SC-4).
+          digests="$(cd dist/db && find . -mindepth 1 -printf '%y %P\n' | sort | tr '\n' ';')|$(cd dist/db && sha256sum -- * | sort -k2 | tr '\n' ';')"
+          [[ -n "$VERIFIED" && "$digests" == "$VERIFIED" ]] || { echo "::error::artifact differs from what verify-db checked"; exit 1; }
           version="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["version"])' dist/db/manifest.json)"
           [[ "$version" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]+$ ]] || { echo "::error::bad version '$version'"; exit 1; }
-          key="$RUNNER_TEMP/minisign.key"
-          (umask 077 && printf '%s\n' "$MINISIGN_SECRET_KEY" > "$key")
-          minisign -S -s "$key" -m dist/db/parabellum-db.tar.gz -t "parabellum-db $version" </dev/null
-          minisign -S -s "$key" -m dist/db/pipeline-state.tar.gz -t "parabellum-state $version" </dev/null
-          rm -f "$key"
-          minisign -V -p keys/parabellum-db.pub -m dist/db/parabellum-db.tar.gz
-          minisign -V -p keys/parabellum-db.pub -m dist/db/pipeline-state.tar.gz
+          bash scripts/ci-minisign.sh sign dist/db/parabellum-db.tar.gz "parabellum-db $version"
+          bash scripts/ci-minisign.sh sign dist/db/pipeline-state.tar.gz "parabellum-state $version"
       - name: Publish
         run: bash pipeline/publish.sh dist/db

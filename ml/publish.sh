@@ -8,8 +8,13 @@
 #   ml-latest  : macho_model.json, model_meta.json, macho_model.txt — only when decision.json says
 #                "promoted": true (meta uploaded last so a reader never pairs a new meta with an old model
 #                for long; the nightly DB build and this job share a concurrency group anyway).
-# Env: GH_TOKEN (or GITHUB_TOKEN), GH_REPO (default WLDEUS/Parabellum).
+#   Every promoted file is signed first (audit SC-7): scripts/ci-minisign.sh with the DB key, trusted
+#   comment `parabellum-ml <run id> <file name>`, and uploaded with its .minisig. The nightly DB build
+#   (scripts/fetch-ml-models.sh) drops any model whose files are unsigned or from different runs.
+# Env: GH_TOKEN (or GITHUB_TOKEN), GH_REPO (default WLDEUS/Parabellum); for a promotion also
+#      MINISIGN_KEY, MINISIGN_KEY_PASSWORD, MINISIGN_PUB (environment db-signing) and GITHUB_RUN_ID.
 set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 out="${1:?usage: ml/publish.sh <out-dir> [macho|script]}"
 kind="${2:-macho}"
@@ -39,9 +44,15 @@ if [[ "$promoted" == "1" ]]; then
     for f in "${model_files[@]}" "$meta_file"; do
         [[ -s "$out/model/$f" ]] || { echo "error: promoted but $out/model/$f is missing" >&2; exit 1; }
     done
-    ensure_release ml-latest "ML model (latest)" "Promoted LightGBM models (Mach-O, scripts), picked up by the nightly threat DB build."
-    gh release upload ml-latest --repo "$repo" --clobber "${model_files[@]/#/$out/model/}"
-    gh release upload ml-latest --repo "$repo" --clobber "$out/model/$meta_file"
+    set_id="${GITHUB_RUN_ID:?GITHUB_RUN_ID is needed to sign a promoted model}"
+    for f in "${model_files[@]}" "$meta_file"; do
+        bash "$here/../scripts/ci-minisign.sh" sign "$out/model/$f" "parabellum-ml $set_id $f"
+    done
+    ensure_release ml-latest "ML model (latest)" "Promoted LightGBM models (Mach-O, scripts), signed (minisign, DB key), picked up by the nightly threat DB build."
+    uploads=()
+    for f in "${model_files[@]}"; do uploads+=("$out/model/$f" "$out/model/$f.minisig"); done
+    gh release upload ml-latest --repo "$repo" --clobber "${uploads[@]}"
+    gh release upload ml-latest --repo "$repo" --clobber "$out/model/$meta_file" "$out/model/$meta_file.minisig"
     echo "new $kind model promoted to ml-latest"
 else
     echo "$kind model not promoted: $(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("reason", ""))' "$out/${pre}decision.json")"

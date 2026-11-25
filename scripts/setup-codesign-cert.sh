@@ -3,7 +3,7 @@
 #
 # Usage: scripts/setup-codesign-cert.sh [--force] [--no-secrets] [--repo <owner/repo>]
 #   --force        replace an existing certificate (new identity: Full Disk Access must be granted again once)
-#   --no-secrets   do not push the GitHub secrets MACOS_SIGN_P12 / MACOS_SIGN_P12_PASSWORD
+#   --no-secrets   do not push the secrets MACOS_SIGN_P12 / MACOS_SIGN_P12_PASSWORD (environment codesign)
 #   --repo R       repository for the secrets (default: the one gh infers from this clone)
 #
 # Why: macOS (TCC) stores the Full Disk Access grant of parabellumd with its *designated requirement*.
@@ -12,12 +12,19 @@
 # stays identical across rebuilds and updates, and the grant survives. Free: no Apple account needed.
 #
 # Steps: openssl key + certificate (EKU codeSigning, CA:false, digitalSignature, 10 years) ->
-# password-protected .p12 in ~/.parabellum/ -> import into the login keychain (codesign allowed) ->
-# trust for code signing only (macOS asks for your password) -> test signature -> GitHub secrets via gh.
-# The private key never leaves ~/.parabellum/, the login keychain and (if pushed) the GitHub secrets.
+# .p12 in ~/.parabellum/ protected by a password YOU type (kept in your password manager, never written to
+# disk — audit APP-1) -> import into the login keychain as NON-extractable, with no application pre-allowed
+# (macOS asks before codesign uses the key: answer « Autoriser », not « Toujours autoriser », so no other
+# process can silently sign a binary that would inherit parabellumd's Full Disk Access) -> trust for code
+# signing only (macOS asks for your password) -> test signature -> secrets of the GitHub environment
+# `codesign` (tags v* only) via gh, values on stdin.
+# Afterwards keep the .p12 + its password in your password manager and run scripts/secure-local-keys.sh
+# purge: the private key then only lives in the login keychain and in the GitHub environment.
 set -euo pipefail
 # shellcheck source-path=SCRIPTDIR source=lib/common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+# shellcheck source-path=SCRIPTDIR source=lib/keys.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/keys.sh"
 
 usage() { pb_usage "${BASH_SOURCE[0]}"; }
 
@@ -49,7 +56,9 @@ pb_require_cmds /usr/bin/security /usr/bin/openssl /usr/bin/base64 /usr/bin/code
 readonly OPENSSL=/usr/bin/openssl # LibreSSL on macOS
 readonly OUT_DIR="$HOME/.parabellum"
 readonly P12="$OUT_DIR/parabellum-codesign.p12"
-readonly P12_PASS_FILE="$OUT_DIR/parabellum-codesign.p12.password"
+# Left by older versions of this script (plaintext password): removed here, see secure-local-keys.sh.
+readonly LEGACY_PASS_FILE="$OUT_DIR/parabellum-codesign.p12.password"
+p12_pass=""
 readonly CERT_PEM="$OUT_DIR/parabellum-codesign.cer.pem"
 readonly VALID_DAYS=3650
 
@@ -67,25 +76,28 @@ existing_hashes() {
 
 do_push_secrets() {
     ((push_secrets == 1)) || return 0
-    if [[ ! -s "$P12" || ! -s "$P12_PASS_FILE" ]]; then
-        pb_warn "$P12 ou son mot de passe absent : secrets GitHub non mis à jour (recréez avec --force)"
+    if [[ ! -s "$P12" ]]; then
+        pb_warn "$P12 absent : secrets GitHub non mis à jour (restaurez-le depuis votre gestionnaire, ou --force)"
         return 0
     fi
     if ! command -v gh >/dev/null 2>&1; then
-        pb_warn "gh absent : créez à la main les secrets MACOS_SIGN_P12 (= base64 -i \"$P12\") et MACOS_SIGN_P12_PASSWORD (= contenu de $P12_PASS_FILE)"
+        pb_warn "gh absent : secrets MACOS_SIGN_P12 / MACOS_SIGN_P12_PASSWORD (environnement $PB_ENV_CODESIGN) non mis à jour"
         return 0
     fi
     if ! gh auth status >/dev/null 2>&1; then
         pb_warn "gh n'est pas connecté (gh auth login) : secrets GitHub non mis à jour"
         return 0
     fi
-    local args=()
+    local args=(--env "$PB_ENV_CODESIGN")
     [[ -z "$repo" ]] || args+=(--repo "$repo")
-    pb_info "Secrets GitHub MACOS_SIGN_P12 et MACOS_SIGN_P12_PASSWORD${repo:+ ($repo)}"
+    [[ -n "$p12_pass" ]] || pb_read_password p12_pass "Mot de passe du .p12 (pour les secrets GitHub) : "
+    printf '%s\n' "$p12_pass" | "$OPENSSL" pkcs12 -in "$P12" -noout -passin stdin 2>/dev/null ||
+        pb_die "mot de passe du .p12 incorrect"
+    pb_info "Secrets MACOS_SIGN_P12 et MACOS_SIGN_P12_PASSWORD de l'environnement $PB_ENV_CODESIGN${repo:+ ($repo)}"
     # Values go through stdin, never through the command line.
-    (cd "$PB_REPO_ROOT" && /usr/bin/base64 -i "$P12" | tr -d '\n' | gh secret set MACOS_SIGN_P12 ${args[@]+"${args[@]}"})
-    (cd "$PB_REPO_ROOT" && gh secret set MACOS_SIGN_P12_PASSWORD ${args[@]+"${args[@]}"} <"$P12_PASS_FILE")
-    pb_ok "secrets GitHub à jour : la CI signera avec ce certificat"
+    (cd "$PB_REPO_ROOT" && /usr/bin/base64 -i "$P12" | tr -d '\n' | gh secret set MACOS_SIGN_P12 "${args[@]}")
+    (cd "$PB_REPO_ROOT" && printf '%s' "$p12_pass" | gh secret set MACOS_SIGN_P12_PASSWORD "${args[@]}")
+    pb_ok "secrets GitHub à jour : les releases (release.yml, job package) signeront avec ce certificat"
 }
 
 show_status() {
@@ -147,23 +159,25 @@ pb_info "Création de la clé et du certificat (RSA 2048, $VALID_DAYS jours)"
 "$OPENSSL" x509 -in "$work/cert.pem" -noout -text | grep -q 'Code Signing' ||
     pb_die "le certificat généré n'a pas l'usage « Code Signing »"
 
-# 2. Password-protected .p12 in ~/.parabellum/ (0700 / 0600).
+# 2. .p12 in ~/.parabellum/ (0700 / 0600), protected by a password typed here (never written to disk).
 mkdir -p "$OUT_DIR"
 chmod 0700 "$OUT_DIR"
-(umask 077 && "$OPENSSL" rand -base64 48 | tr -d '\n/+=' | cut -c1-40 >"$work/pass")
-[[ "$(wc -c <"$work/pass" | tr -d ' ')" -ge 32 ]] || pb_die "génération du mot de passe impossible"
+pb_info "Choisissez le mot de passe du .p12 et gardez-le dans votre gestionnaire de mots de passe."
+pb_read_new_password p12_pass
 # SHA1/3DES + SHA1 MAC: the PKCS#12 flavour every `security import` reads (OpenSSL 3 defaults do not).
-(umask 077 && "$OPENSSL" pkcs12 -export -name "$PB_SIGN_CERT_NAME" -inkey "$work/key.pem" -in "$work/cert.pem" \
-    -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1 -passout "file:$work/pass" -out "$P12")
-(umask 077 && tr -d '\n' <"$work/pass" >"$P12_PASS_FILE")
+(umask 077 && printf '%s\n' "$p12_pass" | "$OPENSSL" pkcs12 -export -name "$PB_SIGN_CERT_NAME" \
+    -inkey "$work/key.pem" -in "$work/cert.pem" -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1 \
+    -passout stdin -out "$P12")
+rm -f "$work/key.pem" "$LEGACY_PASS_FILE"
 cp "$work/cert.pem" "$CERT_PEM"
-chmod 0600 "$P12" "$P12_PASS_FILE"
+chmod 0600 "$P12"
 chmod 0644 "$CERT_PEM"
-pb_ok "$P12 (mot de passe : $P12_PASS_FILE)"
+pb_ok "$P12 (mot de passe : celui que vous venez de choisir, nulle part sur le disque)"
 
-# 3. Import into the login keychain; codesign may use the key.
+# 3. Import into the login keychain: non-extractable (-x), no application pre-authorised (no -T): macOS
+#    asks before codesign uses the key (audit APP-1).
 pb_info "Import dans le trousseau de session"
-/usr/bin/security import "$P12" -k "$login_kc" -f pkcs12 -P "$(cat "$P12_PASS_FILE")" -T /usr/bin/codesign >/dev/null
+/usr/bin/security import "$P12" -k "$login_kc" -f pkcs12 -x -P "$p12_pass" >/dev/null
 
 # 4. Trust for code signing only (user trust settings).
 pb_info "Approbation du certificat pour la signature de code."
@@ -174,11 +188,12 @@ if ! /usr/bin/security add-trusted-cert -r trustRoot -p codeSign -k "$login_kc" 
         "Se fier > Signature de code : Toujours approuver"
 fi
 
-# 5. Test signature (macOS may ask once whether codesign can use the key: answer « Toujours autoriser »).
+# 5. Test signature (macOS asks whether codesign can use the key: answer « Autoriser » with your session
+#    password; « Toujours autoriser » would let any process run codesign with it silently).
 hash="$(pb_find_sign_identity any "$login_kc")"
 [[ -n "$hash" ]] || pb_die "identité introuvable après import (security find-identity -p codesigning)"
 cp /usr/bin/true "$work/signtest"
-pb_info "Signature de test (si macOS demande l'accès à la clé : « Toujours autoriser »)"
+pb_info "Signature de test (macOS demande l'accès à la clé : « Autoriser », pas « Toujours autoriser »)"
 if /usr/bin/codesign --force --sign "$hash" --timestamp=none "$work/signtest" 2>"$work/sign.err"; then
     req="$(/usr/bin/codesign --display --requirements - "$work/signtest" 2>&1 | sed -n 's/^designated => //p')"
     pb_ok "signature de test OK, exigence désignée : $req"
@@ -188,12 +203,15 @@ fi
 show_status
 
 do_push_secrets
+p12_pass=""
 
 cat <<EOF
 
 Certificat prêt. À partir de maintenant, make app / make pkg signent avec « $PB_SIGN_CERT_NAME ».
   - Installez un .pkg signé avec ce certificat, puis donnez UNE fois l'accès complet au disque à parabellumd :
     il sera conservé lors des mises à jour suivantes (même certificat = même exigence désignée).
-  - Sauvegardez $OUT_DIR (hors du dépôt) : sans ce .p12, un nouveau certificat = accès à redonner une fois.
+  - Sauvegardez $P12 et son mot de passe dans votre gestionnaire (sans ce .p12, un nouveau certificat
+    = accès à redonner une fois), puis : scripts/secure-local-keys.sh purge
+  - make pkg demandera l'accès à la clé à chaque signature : répondez « Autoriser ».
   - Validité : $VALID_DAYS jours ; pour le renouveler : scripts/setup-codesign-cert.sh --force
 EOF
