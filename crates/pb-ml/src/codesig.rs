@@ -184,7 +184,8 @@ fn verify_code_directory(slice: &[u8], cd: &[u8]) -> Option<String> {
         return None;
     }
     let slots = cd.get(hash_offset..hash_offset.checked_add(n_code_slots.checked_mul(32)?)?)?;
-    for (i, expected) in slots.chunks_exact(32).enumerate() {
+    let (slots, _) = slots.as_chunks::<32>();
+    for (i, expected) in slots.iter().enumerate() {
         let start = i * page;
         let end = (start + page).min(code_limit);
         if Sha256::digest(&slice[start..end]).as_slice() != expected {

@@ -80,7 +80,7 @@ public enum DaemonClientError: Error, Equatable, LocalizedError {
         switch self {
         case .notRunning, .permissionDenied, .connectionLost, .timeout:
             return true
-        case .protocolError, .daemon:
+        case .protocolError, .daemon, .untrustedServer:
             return false
         }
     }
