@@ -579,6 +579,7 @@ impl DnsManager {
             queries_blocked_24h: self.blocked_queries_24h().await,
             managed_services: self.managed_services(),
             message: if cfg.enabled { rt.message } else { None },
+            failed_open: cfg.enabled && rt.failed_open,
         }
     }
 

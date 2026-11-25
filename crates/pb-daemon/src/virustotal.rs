@@ -90,6 +90,8 @@ impl VirusTotal {
         let c = reqwest::Client::builder()
             .timeout(Duration::from_secs(20))
             .user_agent(format!("parabellum/{}", pb_core::VERSION))
+            // `x-apikey` is a custom header: reqwest would carry it across a redirect (NET-7).
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|e| BackendError::Failed(format!("client HTTP : {e}")))?;
         *g = Some(c.clone());

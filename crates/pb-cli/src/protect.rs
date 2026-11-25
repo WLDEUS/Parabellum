@@ -176,6 +176,9 @@ pub fn vpn_status(s: &VpnStatus) -> String {
                     .unwrap_or_default()
             ),
         );
+        for w in &p.warnings {
+            line(&mut o, "Attention", w.clone());
+        }
     }
     if let Some(t) = s.connected_since {
         line(

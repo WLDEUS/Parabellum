@@ -138,6 +138,9 @@ pub async fn list(ctx: &Arc<Ctx>) -> Result<Vec<SnapshotInfo>, IpcError> {
         .await
 }
 
+/// 2017-01-01: no APFS snapshot (nor a file a user just deleted) is older.
+const PURGE_MIN_SINCE: i64 = 1_483_228_800;
+
 /// Snapshots that may hold a file that existed from `since` on: those taken at or after it (an older one
 /// predates the file). A snapshot whose date cannot be read is purged too: it might hold the file.
 pub fn select_for_purge(list: &[SnapshotInfo], since: i64) -> (Vec<&SnapshotInfo>, u32) {
@@ -149,6 +152,15 @@ pub fn select_for_purge(list: &[SnapshotInfo], since: i64) -> (Vec<&SnapshotInfo
 
 /// Delete the local snapshots that may still hold files deleted for good (see [`select_for_purge`]).
 pub async fn purge_since(ctx: &Arc<Ctx>, since: i64) -> Result<SnapshotPurge, IpcError> {
+    // `since` is the birth of the deleted item: a value before the first APFS Mac or in the future is
+    // a client bug, and would wipe every restore point (ours included) for nothing (audit APP-3).
+    let now = pb_core::now_ts();
+    if !(PURGE_MIN_SINCE..=now + 300).contains(&since) {
+        return Err(IpcError::new(
+            ErrorCode::BadRequest,
+            format!("date de création invalide pour la purge des instantanés : {since}"),
+        ));
+    }
     LIST_CACHE.invalidate();
     let all = list(ctx).await?;
     let (purge, kept) = select_for_purge(&all, since);
@@ -328,6 +340,28 @@ async fn detach_stale_mounts(tmp: &Path) {
 /// Copy `rel` (relative to the home folder inside the mounted snapshot) as root into a private staging
 /// folder, give it to the user, then let `ditto` running **as the user** copy it to
 /// `~/Parabellum-Restauration/<date>/<rel>` (no root write inside the home folder).
+/// First entry under `root` (itself included, links not followed) not owned by `uid`. An unreadable
+/// directory counts as foreign (its content cannot be checked).
+fn foreign_entry(root: &Path, uid: u32) -> Option<PathBuf> {
+    use std::os::unix::fs::MetadataExt;
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(p) = stack.pop() {
+        let Ok(md) = std::fs::symlink_metadata(&p) else {
+            return Some(p);
+        };
+        if md.uid() != uid {
+            return Some(p);
+        }
+        if md.is_dir() {
+            let Ok(rd) = std::fs::read_dir(&p) else {
+                return Some(p);
+            };
+            stack.extend(rd.flatten().map(|e| e.path()));
+        }
+    }
+    None
+}
+
 async fn stage_and_hand_over(
     home_in_snap: &Path,
     rel: &Path,
@@ -360,6 +394,25 @@ async fn stage_and_hand_over(
         }
     }
     let src = cur;
+    // Root copies, then hands the copy to the user: everything copied must already have been the user's.
+    // A hard link in the home to a root-only file (`ln /var/db/x ~/x`, allowed on macOS), snapshotted
+    // then restored, would otherwise give the user a readable copy of it (audit IPC-7).
+    let (check_src, uid) = (src.clone(), user.uid);
+    let foreign = tokio::task::spawn_blocking(move || foreign_entry(&check_src, uid))
+        .await
+        .map_err(|e| internal(e.to_string()))?;
+    if let Some(p) = foreign {
+        let shown = p
+            .strip_prefix(home_in_snap)
+            .map(|r| r.display().to_string())
+            .unwrap_or_default();
+        return Err(IpcError::new(
+            ErrorCode::PermissionDenied,
+            format!(
+                "{path} contient un élément qui n'appartenait pas à l'utilisateur ({shown}) : restauration refusée"
+            ),
+        ));
+    }
     std::fs::create_dir(staging).map_err(|e| internal(format!("dossier de transit : {e}")))?;
     std::fs::set_permissions(staging, std::fs::Permissions::from_mode(0o700))
         .map_err(|e| internal(format!("dossier de transit : {e}")))?;
@@ -433,6 +486,22 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn restore_refuses_what_the_user_did_not_own() {
+        use std::os::unix::fs::MetadataExt;
+        let d = tempfile::tempdir().unwrap();
+        let me = std::fs::metadata(d.path()).unwrap().uid();
+        std::fs::create_dir_all(d.path().join("a/b")).unwrap();
+        std::fs::write(d.path().join("a/b/f"), b"x").unwrap();
+        assert_eq!(foreign_entry(&d.path().join("a"), me), None);
+        // Seen as another user's tree: the first entry is reported.
+        assert_eq!(
+            foreign_entry(&d.path().join("a"), me.wrapping_add(1)),
+            Some(d.path().join("a"))
+        );
+        assert!(foreign_entry(&d.path().join("missing"), me).is_some());
+    }
 
     #[test]
     fn names_and_dates() {

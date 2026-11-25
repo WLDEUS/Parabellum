@@ -573,7 +573,9 @@ async fn mail_agent_reads_answers_and_never_acts_for_you() {
             raw(
                 "support@tickets.example",
                 "Re: votre demande",
-                &format!("In-Reply-To: {msgid}\r\n"),
+                &format!(
+                    "In-Reply-To: {msgid}\r\nAuthentication-Results: mx.example.fr; dmarc=pass header.from=tickets.example\r\n"
+                ),
                 "Vos données ont été supprimées.",
             ),
         ),
@@ -583,7 +585,7 @@ async fn mail_agent_reads_answers_and_never_acts_for_you() {
             raw(
                 "privacy@criteo.com",
                 "Your request",
-                "",
+                "Authentication-Results: mx.example.fr; dkim=pass header.d=criteo.com\r\n",
                 "Please send a copy of your identity document.",
             ),
         ),
@@ -665,7 +667,15 @@ async fn mail_agent_reads_answers_and_never_acts_for_you() {
         (15, agent::parse::parse(15, &items[0].1)),
         (
             16,
-            agent::parse::parse(16, &raw("privacy@criteo.com", "Re", "", "x")),
+            agent::parse::parse(
+                16,
+                &raw(
+                    "privacy@criteo.com",
+                    "Re",
+                    "Authentication-Results: mx.example.fr; dkim=pass header.d=criteo.com\r\n",
+                    "x",
+                ),
+            ),
         ),
     ];
     let rep = e

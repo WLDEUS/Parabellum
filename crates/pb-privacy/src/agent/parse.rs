@@ -24,7 +24,9 @@ pub struct ParsedMail {
     pub auto_reply: bool,
     /// Delivery status notification (`multipart/report; report-type=delivery-status`, mailer-daemon).
     pub bounce: bool,
-    /// The receiving server reported a failed DKIM / DMARC check and no passing DKIM signature.
+    /// The sender is not authenticated: the topmost Authentication-Results (added by the receiving
+    /// server) shows neither `dmarc=pass` nor a passing DKIM signature of the From domain's site, or
+    /// there is no such header. A `dkim=pass` for some other domain proves nothing (audit NET-1).
     pub auth_failed: bool,
 }
 
@@ -129,10 +131,13 @@ pub fn parse(uid: u32, raw: &[u8]) -> Option<ParsedMail> {
             ]
             .iter()
             .any(|w| lower_subject.contains(w)));
-    // Topmost Authentication-Results is the receiving server's verdict.
-    let auth = header("Authentication-Results").unwrap_or_default();
-    let auth_failed =
-        (auth.contains("dmarc=fail") || auth.contains("dkim=fail")) && !auth.contains("dkim=pass");
+    // Topmost Authentication-Results is the receiving server's verdict; lower ones may be the sender's.
+    // (`header_raw` returns the last occurrence: walk the headers in order instead.)
+    let topmost_auth = m
+        .headers_raw()
+        .find(|(name, _)| name.eq_ignore_ascii_case("Authentication-Results"))
+        .map(|(_, v)| v.trim().to_ascii_lowercase());
+    let auth_failed = !authenticated(topmost_auth.as_deref().unwrap_or(""), &domain_of(&from));
     Some(ParsedMail {
         uid,
         message_id: m.message_id().map(|i| one_line(i, 300)),
@@ -145,6 +150,52 @@ pub fn parse(uid: u32, raw: &[u8]) -> Option<ParsedMail> {
         auto_reply,
         bounce,
         auth_failed,
+    })
+}
+
+/// `dmarc=pass`, or `dkim=pass` with `header.d` on the From domain's site, in one Authentication-Results
+/// value (RFC 8601: `authserv-id; method=result prop=value …; …`, comments in parentheses).
+fn authenticated(value: &str, from_domain: &str) -> bool {
+    if from_domain.is_empty() {
+        return false;
+    }
+    let mut depth = 0u32;
+    let uncommented: String = value
+        .chars()
+        .filter(|&c| match c {
+            '(' => {
+                depth += 1;
+                false
+            }
+            ')' => {
+                depth = depth.saturating_sub(1);
+                false
+            }
+            _ => depth == 0,
+        })
+        .collect();
+    uncommented.split(';').skip(1).any(|res| {
+        let mut words = res.split_whitespace();
+        let Some((method, result)) = words.next().and_then(|w| w.split_once('=')) else {
+            return false;
+        };
+        if result != "pass" {
+            return false;
+        }
+        let prop = |key: &str| {
+            res.split_whitespace()
+                .find_map(|w| w.strip_prefix(key))
+                .map(|v| v.trim_matches('"'))
+        };
+        match method {
+            "dmarc" => prop("header.from=")
+                .map(|d| super::classify::same_site(from_domain, d))
+                .unwrap_or(true),
+            "dkim" => prop("header.d=")
+                .or_else(|| prop("header.i=").map(|i| i.rsplit_once('@').map_or(i, |(_, d)| d)))
+                .is_some_and(|d| super::classify::same_site(from_domain, d)),
+            _ => false,
+        }
     })
 }
 
@@ -194,6 +245,33 @@ mod tests {
         assert!(parse(2, ooo).unwrap().auto_reply);
         let spoof = b"From: dpo@broker.example\r\nSubject: done\r\nAuthentication-Results: mx; dkim=fail; dmarc=fail\r\n\r\nerased\r\n";
         assert!(parse(3, spoof).unwrap().auth_failed);
+    }
+
+    #[test]
+    fn only_the_receiving_servers_verdict_for_the_from_domain_counts() {
+        let ok = |v: &str| authenticated(v, "broker.example");
+        assert!(ok(
+            "mx.me; dmarc=pass (p=reject) header.from=broker.example"
+        ));
+        assert!(ok(
+            "mx.me; spf=fail; dkim=pass header.d=mail.broker.example"
+        ));
+        assert!(ok("mx.me; dkim=pass header.i=@broker.example"));
+        // A valid signature from the attacker's own domain proves nothing about the From.
+        assert!(!ok("mx.me; dkim=pass header.d=evil.example; dmarc=fail"));
+        assert!(!ok("mx.me; dmarc=fail header.from=broker.example"));
+        assert!(!ok("mx.me; spf=pass smtp.mailfrom=broker.example"));
+        // Comments and the authserv-id are not results.
+        assert!(!ok(
+            "dmarc=pass; dkim=fail (dmarc=pass header.from=broker.example)"
+        ));
+        assert!(!ok(""));
+        assert!(!authenticated("mx; dmarc=pass", ""));
+        // No header at all: not authenticated. A forged header below the server's is ignored.
+        let none = b"From: dpo@broker.example\r\nSubject: done\r\n\r\nerased\r\n";
+        assert!(parse(4, none).unwrap().auth_failed);
+        let stacked = b"Authentication-Results: mx.me; dmarc=fail header.from=broker.example\r\nAuthentication-Results: mx.me; dmarc=pass header.from=broker.example\r\nFrom: dpo@broker.example\r\nSubject: done\r\n\r\nerased\r\n";
+        assert!(parse(5, stacked).unwrap().auth_failed);
     }
 
     #[test]

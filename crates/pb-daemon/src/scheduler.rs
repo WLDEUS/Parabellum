@@ -706,19 +706,41 @@ pub async fn bootstrap_components(ctx: Arc<Ctx>) {
     ctx.status_dirty.notify_one();
 }
 
-/// Hourly: record DNS blocked-query counters for the weekly report.
+/// Every minute: raise an alert when DNS filtering fails open (a proxy made to stop answering
+/// silently hands resolution back to the network's DNS, audit NET-8). Hourly: record DNS
+/// blocked-query counters for the weekly report.
 pub async fn dns_stats_loop(ctx: Arc<Ctx>) {
     let mut shutdown = ctx.shutdown_rx();
+    let mut was_open = false;
+    let mut last_stats = tokio::time::Instant::now();
     loop {
         tokio::select! {
-            _ = tokio::time::sleep(Duration::from_secs(3600)) => {}
+            _ = tokio::time::sleep(Duration::from_secs(60)) => {}
             _ = shutdown.changed() => if *shutdown.borrow() { break; },
         }
         let cfg = ctx.config();
         if !cfg.dns.enabled {
+            was_open = false;
             continue;
         }
-        if let Some(n) = ctx.backends.dns.status(&cfg).await.queries_blocked_24h {
+        let st = ctx.backends.dns.status(&cfg).await;
+        if st.failed_open && !was_open {
+            let a = crate::actions::alert(
+                AlertKind::Network,
+                Severity::Medium,
+                "Filtrage DNS suspendu",
+                "dnscrypt-proxy ne répond plus : les DNS d'origine ont été rétablis pour garder la \
+                 connexion, sans blocage des domaines malveillants ni des traqueurs. Parabellum \
+                 réessaie automatiquement ; si cela se répète, quelque chose bloque le proxy.",
+            );
+            crate::actions::raise_alert(&ctx, a, Some("dns-fail-open".into())).await;
+        }
+        was_open = st.failed_open;
+        if last_stats.elapsed() < Duration::from_secs(3600) {
+            continue;
+        }
+        last_stats = tokio::time::Instant::now();
+        if let Some(n) = st.queries_blocked_24h {
             let date = crate::system::local_date(pb_core::now_ts());
             let _ = ctx
                 .store

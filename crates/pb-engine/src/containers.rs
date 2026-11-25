@@ -630,6 +630,10 @@ impl Engine {
             "-noverify",
             // No fsck of an attacker-built filesystem by root (fsck_hfs / fsck_apfs parse it fully).
             "-noautofsck",
+            // Root mounts an attacker's filesystem: no setuid binaries, device nodes or execution
+            // from it, whatever it declares (audit FILE-2).
+            "-mountoptions",
+            "nosuid,nodev,noexec",
             "-mountrandom",
         ])
         .arg(&mount_root)

@@ -157,6 +157,8 @@ pub async fn create(cfg: &AliasConfig, label: &str, now: i64) -> Result<EmailAli
     let http = reqwest::Client::builder()
         .user_agent(crate::breach::USER_AGENT)
         .timeout(Duration::from_secs(30))
+        // The key travels in custom headers (`Authentication`): never to a redirect target (NET-7).
+        .redirect(crate::http::same_origin_redirects())
         .build()
         .map_err(|e| e.to_string())?;
     match cfg.provider {
@@ -181,7 +183,7 @@ pub async fn create(cfg: &AliasConfig, label: &str, now: i64) -> Result<EmailAli
                 .await
                 .map_err(|e| format!("addy.io injoignable : {e}"))?;
             let status = resp.status().as_u16();
-            let body = resp.bytes().await.map_err(|e| e.to_string())?;
+            let body = crate::http::read_capped(resp, crate::http::MAX_API_BODY).await?;
             if !(200..300).contains(&status) {
                 return Err(api_error(status, &body));
             }
@@ -202,7 +204,7 @@ pub async fn create(cfg: &AliasConfig, label: &str, now: i64) -> Result<EmailAli
                 .await
                 .map_err(|e| format!("SimpleLogin injoignable : {e}"))?;
             let status = resp.status().as_u16();
-            let body = resp.bytes().await.map_err(|e| e.to_string())?;
+            let body = crate::http::read_capped(resp, crate::http::MAX_API_BODY).await?;
             if !(200..300).contains(&status) {
                 return Err(api_error(status, &body));
             }

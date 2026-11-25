@@ -196,6 +196,7 @@ impl Runner for Fake {
                 ok("")
             }
             "fdesetup status" => ok("FileVault is On.\n"),
+            "hdiutil isencrypted" => ok(ENCRYPTED_PLIST),
             _ => fail(1, "unexpected call"),
         })
     }
@@ -323,6 +324,24 @@ fn create_validation() {
         other => panic!("{other:?}"),
     }
     assert_eq!(f.calls_to("create").len(), 1);
+}
+
+const ENCRYPTED_PLIST: &str = "<?xml version=\"1.0\"?><plist version=\"1.0\"><dict><key>blocksize</key><integer>4096</integer><key>encrypted</key>\n\t<true/><key>encryption-type</key><string>AES-256</string></dict></plist>";
+
+#[test]
+fn a_plain_image_is_never_mounted_as_a_vault() {
+    let e = env();
+    make_bundle(&e.paths.bundle);
+    let f = Fake::default();
+    f.queue(
+        "hdiutil isencrypted",
+        ok("<plist><dict><key>encrypted</key><false/></dict></plist>"),
+    );
+    assert!(matches!(
+        attach(&f, &e.paths, &e.home, &pw(GOOD)),
+        Err(VaultError::Unsafe(_))
+    ));
+    assert!(f.calls_to("attach").is_empty());
 }
 
 #[test]

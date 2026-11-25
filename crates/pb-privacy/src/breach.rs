@@ -179,6 +179,8 @@ fn client() -> Result<reqwest::Client, LookupError> {
     reqwest::Client::builder()
         .user_agent(USER_AGENT)
         .timeout(Duration::from_secs(30))
+        // `hibp-api-key` is a custom header: reqwest would carry it across a redirect (NET-7).
+        .redirect(crate::http::same_origin_redirects())
         .build()
         .map_err(|e| LookupError::Failed(e.to_string()))
 }
@@ -227,10 +229,9 @@ pub async fn lookup(
                 }
                 _ => {}
             }
-            let body = resp
-                .bytes()
+            let body = crate::http::read_capped(resp, crate::http::MAX_API_BODY)
                 .await
-                .map_err(|e| LookupError::Failed(e.to_string()))?;
+                .map_err(LookupError::Failed)?;
             match parse_xon_analytics(&body) {
                 Ok(h) => Ok(h),
                 Err(_) => {
@@ -246,10 +247,9 @@ pub async fn lookup(
                             Err(LookupError::Failed(format!("XposedOrNot : HTTP {s}")))
                         }
                         _ => {
-                            let body = resp
-                                .bytes()
+                            let body = crate::http::read_capped(resp, crate::http::MAX_API_BODY)
                                 .await
-                                .map_err(|e| LookupError::Failed(e.to_string()))?;
+                                .map_err(LookupError::Failed)?;
                             parse_xon_check(&body).map_err(LookupError::Failed)
                         }
                     }
@@ -283,10 +283,9 @@ pub async fn lookup(
                     Err(LookupError::Failed(format!("Have I Been Pwned : HTTP {s}")))
                 }
                 _ => {
-                    let body = resp
-                        .bytes()
+                    let body = crate::http::read_capped(resp, crate::http::MAX_API_BODY)
                         .await
-                        .map_err(|e| LookupError::Failed(e.to_string()))?;
+                        .map_err(LookupError::Failed)?;
                     parse_hibp(&body).map_err(LookupError::Failed)
                 }
             }

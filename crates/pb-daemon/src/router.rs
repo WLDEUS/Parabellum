@@ -73,6 +73,31 @@ fn secrets_mut(c: &mut Config) -> [&mut Option<String>; 6] {
     ]
 }
 
+/// Where each secret of [`secrets_mut`] is sent (same order): a redacted secret is only kept when this
+/// is unchanged, otherwise a client that cannot read it could redirect it to its own server (audit NET-6).
+fn secret_destinations(c: &Config) -> [String; 6] {
+    [
+        String::new(),
+        String::new(),
+        format!(
+            "{}:{}",
+            c.data_removal.smtp_host.trim().to_ascii_lowercase(),
+            c.data_removal.smtp_port
+        ),
+        String::new(),
+        format!(
+            "{:?} {}",
+            c.aliases.provider,
+            c.aliases.base_url.trim().to_ascii_lowercase()
+        ),
+        format!(
+            "{}:{}",
+            c.mail_agent.imap_host.trim().to_ascii_lowercase(),
+            c.mail_agent.imap_port
+        ),
+    ]
+}
+
 /// `q.m@example.com` -> `q***1a2b@example.com` (first character, `***`, 4 hex digits of the SHA-256 of the
 /// value so two masked values never collide, domain); without `@`: `q***1a2b`. Empty stays empty.
 pub fn mask_identifier(s: &str) -> String {
@@ -120,11 +145,21 @@ fn unmask(value: &str, originals: &[String]) -> Option<String> {
 }
 
 /// A client sending back a redacted config keeps the stored secrets and identifiers.
+/// A secret whose destination (server, alias service) changed is dropped instead: re-enter it.
 pub fn unredact(new: &mut Config, old: &Config) {
     let mut old_c = old.clone();
-    for (n, o) in secrets_mut(new).into_iter().zip(secrets_mut(&mut old_c)) {
+    let same = secret_destinations(new)
+        .into_iter()
+        .zip(secret_destinations(old))
+        .map(|(n, o)| n == o)
+        .collect::<Vec<_>>();
+    for ((n, o), same) in secrets_mut(new)
+        .into_iter()
+        .zip(secrets_mut(&mut old_c))
+        .zip(same)
+    {
         if n.as_deref() == Some(REDACTED) {
-            *n = o.clone();
+            *n = if same { o.clone() } else { None };
         }
     }
     for e in &mut new.breach.emails {
@@ -1045,6 +1080,30 @@ mod tests {
         changed.privacy.virustotal_api_key = Some("new".into());
         unredact(&mut changed, &cfg);
         assert_eq!(changed.privacy.virustotal_api_key.as_deref(), Some("new"));
+    }
+
+    #[test]
+    fn a_redacted_secret_does_not_follow_a_new_server() {
+        let mut cfg = Config::default();
+        cfg.mail_agent.imap_host = "imap.free.fr".into();
+        cfg.mail_agent.imap_password = Some("imap-pw".into());
+        cfg.data_removal.smtp_host = "smtp.free.fr".into();
+        cfg.data_removal.smtp_password = Some("smtp-pw".into());
+        cfg.aliases.api_key = Some("addy".into());
+        let r = redact(&cfg);
+        let mut moved = r.clone();
+        moved.mail_agent.imap_host = "imap.attacker.example".into();
+        moved.data_removal.smtp_port = 2525;
+        moved.aliases.base_url = "https://attacker.example".into();
+        unredact(&mut moved, &cfg);
+        assert_eq!(moved.mail_agent.imap_password, None);
+        assert_eq!(moved.data_removal.smtp_password, None);
+        assert_eq!(moved.aliases.api_key, None);
+        // Same servers (case and spaces aside): kept.
+        let mut same = r;
+        same.mail_agent.imap_host = " IMAP.free.fr ".into();
+        unredact(&mut same, &cfg);
+        assert_eq!(same.mail_agent.imap_password.as_deref(), Some("imap-pw"));
     }
 
     #[test]

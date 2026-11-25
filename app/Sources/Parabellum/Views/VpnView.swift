@@ -181,6 +181,16 @@ private struct VpnProfileCard: View {
                         InfoRow(label: String(localized: "Transport"), value: transport)
                     }
                     InfoRow(label: String(localized: "Importé"), value: PBFormat.dateTime(profile.importedDate))
+                    ForEach(profile.warnings ?? [], id: \.self) { warning in
+                        Label {
+                            Text(verbatim: warning)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                        }
+                        .font(.callout)
+                    }
                 } else {
                     Text("Aucun serveur importé. Colle le lien de partage de ton nœud (celui que tu utilises dans Shadowrocket fonctionne : ss://, vless://, vmess://, trojan://, hysteria2://, tuic://, wireguard://), un abonnement, ou importe un fichier WireGuard .conf.")
                         .foregroundStyle(.secondary)
