@@ -1,6 +1,8 @@
 name: CI
 
-# Linux and macOS arm64 jobs on every push to main, tag and PR (public repository: hosted runners are free).
+# Linux and macOS arm64 jobs on every push to main and PR (public repository: hosted runners are free).
+# Not on tags: a tag points at a commit already tested on main, and its caches would otherwise be
+# reachable from a ref the release builds on (zizmor cache-poisoning). release.yml builds without cache.
 # Every build/test step tees its output to ci-logs/*.log. On failure, compiler/test errors are turned
 # into check-run annotations (readable through the API without access to the logs) and, for the macOS
 # job, the log tails are pushed to the orphan branch `ci-logs` under runs/<run_id>/.
@@ -8,7 +10,6 @@ name: CI
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch:

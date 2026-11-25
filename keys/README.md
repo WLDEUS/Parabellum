@@ -1,34 +1,41 @@
 # Signing keys
 
-One minisign (Ed25519) key pair signs both the nightly threat-DB bundle and the app `.pkg` releases.
+Two minisign (Ed25519) key pairs, two levels of trust. Details: `docs/SECURITY-SUPPLY-CHAIN.md`.
 
-| File | Where | Role |
+| Public key (committed) | Signs | Secret key lives in |
 |---|---|---|
-| `keys/parabellum-db.pub` | committed here | embedded in `parabellumd` at build time (`crates/pb-updater/build.rs`, or env `PARABELLUM_DB_PUBKEY`); the client verifies `parabellum-db.tar.gz.minisig` **before** unpacking, then every digest of `manifest.json` |
-| `~/.parabellum/parabellum-db.key` | owner's Mac only, never in the repo | backup of the secret key |
-| `MINISIGN_SECRET_KEY` | GitHub Actions secret | used by `nightly-db.yml` and `release.yml` |
+| `keys/parabellum-db.pub` | nightly threat-DB bundle, pipeline state, promoted ML models | GitHub environment `db-signing` (branch `main` only): `MINISIGN_SECRET_KEY` + `MINISIGN_KEY_PASSWORD` |
+| `keys/parabellum-release.pub` | app `.pkg` releases only | GitHub environment `release` (tags `v*` only, required reviewer): `MINISIGN_RELEASE_SECRET_KEY` + `MINISIGN_RELEASE_KEY_PASSWORD` |
 
-Create them once with `scripts/setup-signing-keys.sh` (or `make keys`): it generates an
-**unencrypted** pair (CI must sign unattended — the GitHub secret store is the protection), refuses to
-overwrite an existing key without `--force`, and sets the secret with `gh` when available.
+Both public keys are embedded in `parabellumd` at build time (`crates/pb-updater/build.rs`). The client
+verifies the DB signature **before** unpacking, then every digest of `manifest.json`. A `.pkg` is only
+installed when its signature comes from the release key **and** its trusted comment names a version newer
+than the installed one (`Parabellum <version> (<sha>)`): no rollback to an older signed release.
+
+Both secret keys are **password-protected**; the key file and its password are two separate environment
+secrets, handed to minisign on stdin by `scripts/ci-minisign.sh` (temporary `0600` file, wiped even on
+failure, signature re-verified against the committed public key). No secret key stays on the Mac:
+`scripts/secure-local-keys.sh status | encrypt | migrate | purge`.
+
+Create them with `scripts/setup-signing-keys.sh` (DB) and `scripts/setup-release-key.sh` (release): a typed
+password (never written to disk), no `.bak`, secrets sent straight to their environment.
 
 ## Trust model
 
-* Whoever holds the secret key can push a bundle every client accepts (hashes, YARA rules, DNS lists,
-  allowlisted Team IDs) and a `.pkg` the auto-updater installs. Keep it only in the GitHub secret and
-  an offline backup. Repository write access is equivalent (workflows can use the secret): protect
-  `main` and require reviews for workflow changes.
+* Whoever holds the DB key can push a bundle every client accepts (hashes, YARA rules, DNS lists,
+  allowlisted Team IDs) but cannot make the daemon install a program as root: that takes the release key.
+* Only jobs that declare the environment receive its secrets, and only on the allowed refs. Repository
+  write access is still powerful (it can change workflows on `main`): protect `main` and require reviews
+  (`make protect-repo`).
 * The client never trusts the transport (GitHub releases): signature first, then manifest digests,
   then `DbManifest::validate`, atomic swap with rollback.
-* CI cross-checks every signature against this committed public key before publishing, so a secret
-  that does not match the key embedded in clients fails the job instead of breaking updates.
 
 ## Rotation (compromise or scheduled)
 
-1. `scripts/setup-signing-keys.sh --force` (backs up the old secret, writes a new pair, updates the
-   GitHub secret).
-2. Commit `keys/parabellum-db.pub`, tag a new release: the new daemon embeds the new key.
+1. `scripts/setup-signing-keys.sh --force` or `scripts/setup-release-key.sh --force` (new pair, secret
+   sent to its environment).
+2. Commit the new `.pub`, tag a new release: the new daemon embeds the new key.
 3. Installed clients only know the old key: install the new `.pkg` manually (or sign that one release
-   with the old key first, then rotate). Nightly bundles signed with the new key are rejected by old
-   clients until they are updated — the daemon keeps its current DB in the meantime (fail-safe).
+   with the old release key first, then rotate). Bundles signed with a new DB key are rejected by old
+   clients until they are updated: the daemon keeps its current DB in the meantime (fail-safe).
 4. After a compromise, also rotate `ABUSECH_AUTH_KEY` and review recent `db-*` releases.
