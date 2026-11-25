@@ -165,6 +165,7 @@ extension Request {
         case .vpnRemoveProfile: return String(localized: "supprimer le profil VPN")
         case .setNetworkTrust: return String(localized: "faire confiance à ce réseau (le VPN automatique ne s'y activera plus)")
         case .restoreFromSnapshot: return String(localized: "restaurer un fichier depuis un instantané")
+        case .purgeSnapshots: return String(localized: "supprimer des instantanés Time Machine locaux (points de restauration, protection anti-rançongiciel comprise)")
         case .privacyGetProfile: return String(localized: "afficher ton identité enregistrée")
         case .privacySetProfile: return String(localized: "modifier l'identité utilisée pour les demandes RGPD")
         case .privacyStartRemoval: return String(localized: "envoyer des demandes d'effacement en ton nom")

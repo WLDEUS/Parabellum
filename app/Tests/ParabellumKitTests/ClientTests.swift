@@ -193,3 +193,11 @@ final class ClientTests: XCTestCase {
         XCTAssertEqual(first, .disconnected(.notRunning))
     }
 }
+
+final class SocketTrustTests: XCTestCase {
+    /// Audit IPC-3: only root may hold the real socket; a test or dev daemon may run as this user.
+    func testTrustedServerUIDs() {
+        XCTAssertEqual(DaemonProtocol.trustedServerUIDs(forPath: DaemonProtocol.defaultSocketPath), [0])
+        XCTAssertEqual(DaemonProtocol.trustedServerUIDs(forPath: "/tmp/x.sock"), [0, getuid()])
+    }
+}

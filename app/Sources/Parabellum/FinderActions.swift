@@ -70,11 +70,16 @@ final class FinderActions: ObservableObject {
     func shred(_ urls: [URL]) async {
         guard !urls.isEmpty else { return }
         model.showMainWindow(section: .vault)
-        await model.vault.prepareShred(urls: urls)
+        // Only reached from a link, a Service or the Finder menu: another app asked.
+        await model.vault.prepareShred(urls: urls, requestedByOtherApp: true)
     }
 
     /// Touch ID first when this folder has it, else the password / key file window.
-    func openCoffre(_ url: URL) async {
+    /// `fromOutside`: asked by the Finder or another app (double-click, `open x.coffre`, a
+    /// `parabellum://coffre/open` link), not by a click in this app. Touch ID then waits for an in-app
+    /// confirmation naming the folder: any process can trigger the genuine prompt otherwise, and the
+    /// mounted folder is readable by every process of the user (audit APP-4).
+    func openCoffre(_ url: URL, fromOutside: Bool = false) async {
         guard CoffrePackage.isPackage(url) else { return }
         let location = CoffrePackage.location(url)
         if let status = try? await VaultCLI.status(location, recent: 0), status.mounted, let mount = status.mountPoint {
@@ -83,6 +88,9 @@ final class FinderActions: ObservableObject {
         }
         let keys = CoffreKeys.load(package: url)
         var message: String?
+        if keys.hasTouchID, fromOutside, !confirmOutsideOpen(url) {
+            return
+        }
         if keys.hasTouchID {
             do {
                 let password = try await CoffreKeys.passwordWithTouchID(
@@ -98,6 +106,17 @@ final class FinderActions: ObservableObject {
             }
         }
         present(.unlock(url, keys, message: message))
+    }
+
+    private func confirmOutsideOpen(_ url: URL) -> Bool {
+        NSApp.activate()
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = String(localized: "Ouvrir le dossier chiffré « \(url.deletingPathExtension().lastPathComponent) » ?")
+        alert.informativeText = String(localized: "L'ouverture vient du Finder ou d'une autre app. Une fois ouvert, son contenu est lisible par les apps de votre session. Si vous n'avez pas demandé à l'ouvrir, annulez.")
+        alert.addButton(withTitle: String(localized: "Ouvrir avec Touch ID"))
+        alert.addButton(withTitle: String(localized: "Annuler"))
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     func lockCoffre(_ url: URL) async {
@@ -125,6 +144,16 @@ final class FinderActions: ObservableObject {
             notify(error.localizedDescription, isError: true)
             return true
         }
+    }
+
+    /// A key file stored next to the encrypted package (same folder, or inside what is encrypted) opens
+    /// it for anyone who finds the folder: refused.
+    nonisolated static func keyFileBesidePackage(_ destination: URL, source: URL) -> Bool {
+        let dest = destination.standardizedFileURL.resolvingSymlinksInPath()
+        let src = source.standardizedFileURL.resolvingSymlinksInPath()
+        let packageFolder = src.deletingLastPathComponent()
+        return dest.deletingLastPathComponent().path == packageFolder.path
+            || dest.path.hasPrefix(src.path + "/")
     }
 
     struct EncryptOptions {
@@ -156,7 +185,9 @@ final class FinderActions: ObservableObject {
         if let destination = options.keyFileDestination {
             let keyFile = CoffreKeys.newKeyFile()
             do {
-                try keyFile.write(to: destination, options: [.atomic, .withoutOverwriting])
+                // `.atomic` and `.withoutOverwriting` cannot be combined (the write always failed):
+                // created exclusively, never replacing an existing file (audit APP-8).
+                try keyFile.write(to: destination, options: [.withoutOverwriting])
                 try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
                 keys.slots.append(try CoffreKeys.keyFileSlot(password: options.password, keyFile: keyFile))
             } catch {

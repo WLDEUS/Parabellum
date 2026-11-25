@@ -234,7 +234,7 @@ private struct CreateVaultCard: View {
 
     private var passwordProblem: String? {
         guard !generateKey else { return nil }
-        if password.count < 12 { return String(localized: "12 caractères au minimum (une phrase de plusieurs mots est idéale).") }
+        if let issue = PasswordPolicy.problem(password) { return issue.message }
         if password != confirmation { return String(localized: "Les deux mots de passe diffèrent.") }
         return nil
     }
@@ -520,7 +520,15 @@ private struct ShredConfirmSheet: View {
     @ObservedObject var store: VaultStore
     let plan: VaultStore.ShredPlan
     let filevault: FileVaultState
-    @State private var purgeSnapshots = true
+    @State private var purgeSnapshots: Bool
+
+    init(store: VaultStore, plan: VaultStore.ShredPlan, filevault: FileVaultState) {
+        _store = ObservedObject(wrappedValue: store)
+        self.plan = plan
+        self.filevault = filevault
+        // Another app's request never pre-checks the snapshot purge (audit APP-3).
+        _purgeSnapshots = State(initialValue: !plan.requestedByOtherApp && plan.snapshotsSince != nil)
+    }
 
     private var title: String {
         switch plan.source {
@@ -535,6 +543,11 @@ private struct ShredConfirmSheet: View {
             Label(title, systemImage: "flame.fill")
                 .font(.title2.weight(.semibold))
                 .foregroundStyle(.red)
+            if plan.requestedByOtherApp {
+                Label("Demandé par une autre app (lien, Services ou menu du Finder). Vérifiez la liste avant de confirmer.", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if plan.actionable.isEmpty {
                 Text("Aucun élément ne peut être supprimé ici.").foregroundStyle(.secondary)
             } else {
@@ -571,8 +584,16 @@ private struct ShredConfirmSheet: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+                        if let since = plan.snapshotsSince {
+                            Text("Instantanés pris depuis le \(since.formatted(date: .long, time: .shortened)).")
+                                .font(.caption.weight(.semibold))
+                        } else {
+                            Text("Date de création introuvable ou trop de fichiers : aucun instantané ne sera supprimé.")
+                                .font(.caption.weight(.semibold))
+                        }
                     }
                 }
+                .disabled(plan.snapshotsSince == nil)
             }
             HStack {
                 Spacer()
@@ -738,7 +759,7 @@ private struct RecoveryKeySheet: View {
                     store.copyRecoveryKey(key)
                     copied = true
                 } label: {
-                    Label(copied ? "Copiée (effacée du presse-papiers dans 60 s)" : "Copier", systemImage: "doc.on.doc")
+                    Label(copied ? "Copiée (effacée du presse-papiers dans 30 s)" : "Copier", systemImage: "doc.on.doc")
                 }
                 Button {
                     store.printRecoveryKey(key)
@@ -869,7 +890,7 @@ private struct ChangePasswordSheet: View {
     @State private var confirmation = ""
 
     private var valid: Bool {
-        generateKey || (password.count >= 12 && password == confirmation)
+        generateKey || (PasswordPolicy.problem(password) == nil && password == confirmation)
     }
 
     var body: some View {
@@ -996,5 +1017,20 @@ struct VaultDashboardTile: View {
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+extension PasswordPolicy.Problem {
+    var message: String {
+        switch self {
+        case .tooShort:
+            return String(localized: "12 caractères au minimum (une phrase de plusieurs mots est idéale).")
+        case .tooFewDistinct:
+            return String(localized: "Trop peu de caractères différents : une phrase de plusieurs mots est idéale.")
+        case .sequence:
+            return String(localized: "Suite de touches ou de chiffres trop facile à deviner.")
+        case .common:
+            return String(localized: "Mot de passe trop courant : ajoutez des mots à vous.")
+        }
     }
 }

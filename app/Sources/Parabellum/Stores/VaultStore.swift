@@ -98,6 +98,9 @@ final class VaultStore: ObservableObject {
         )
     }
 
+    /// What the keychain password is bound to (VaultKeychain.save): the configured image, "" = default.
+    var keychainBinding: String { bundlePath }
+
     var exists: Bool { status?.exists == true }
     var isOpen: Bool { status?.mounted == true }
     var needsLockOnQuit: Bool { lockOnQuit && isOpen }
@@ -122,8 +125,10 @@ final class VaultStore: ObservableObject {
                 if store.lockOnScreenLock { await store.lockForSystemEvent() }
             }
         }
+        // Any process can post this distributed notification: the session state is checked before the
+        // vault is forced shut (unsaved work in open files would be lost) (audit APP-8).
         observe(DistributedNotificationCenter.default(), Notification.Name("com.apple.screenIsLocked")) { store in
-            if store.lockOnScreenLock { await store.lockForSystemEvent() }
+            if store.lockOnScreenLock, Self.screenIsReallyLocked() { await store.lockForSystemEvent() }
         }
         observe(workspace, NSWorkspace.willSleepNotification) { store in
             if store.lockOnSleep { await store.lockForSystemEvent() }
@@ -179,10 +184,10 @@ final class VaultStore: ObservableObject {
     /// key (shown once as the recovery key).
     @discardableResult
     func create(sizeGB: Int, chosenPassword: String?) async -> Bool {
-        let password = chosenPassword ?? RecoveryKey.generate()
+        let password = chosenPassword.map(RecoveryKey.storedForm(ofChosen:)) ?? RecoveryKey.generate()
         let done: Bool? = await model.perform("vault-create") {
             // Keychain first: a vault whose key was never stored would be lost.
-            let backend = try VaultKeychain.save(password)
+            let backend = try VaultKeychain.save(password, binding: self.keychainBinding)
             do {
                 _ = try await VaultCLI.create(self.location, size: "\(sizeGB)g", name: "Coffre", password: password)
             } catch {
@@ -213,34 +218,41 @@ final class VaultStore: ObservableObject {
     func unlock() async {
         guard exists else { return }
         await model.perform("vault-unlock") {
-            let password: String
+            let stored: VaultKeychain.Stored
             do {
-                password = try await VaultKeychain.read(reason: String(localized: "ouvrir le coffre"))
+                stored = try await VaultKeychain.read(reason: String(localized: "ouvrir le coffre"), binding: self.keychainBinding)
             } catch VaultKeychain.Failure.cancelled {
                 return
-            } catch VaultKeychain.Failure.notFound {
-                self.passwordPrompt = PasswordPrompt(purpose: .unlock, message: VaultKeychain.Failure.notFound.errorDescription ?? "")
+            } catch let failure as VaultKeychain.Failure where failure == .notFound || failure.isOtherVault {
+                self.passwordPrompt = PasswordPrompt(purpose: .unlock, message: failure.errorDescription ?? "")
                 return
             }
-            try await self.attach(password: password, remember: false)
+            // Items saved before bindings existed: bound to this vault once it opened with them.
+            try await self.attach(password: stored.password, remember: stored.unbound)
         }
     }
 
-    private func attach(password: String, remember: Bool) async throws {
+    /// True when the vault opened. A bad password re-opens the prompt (unless `promptOnBadPassword` is
+    /// false: another candidate is tried next).
+    @discardableResult
+    private func attach(password: String, remember: Bool, promptOnBadPassword: Bool = true) async throws -> Bool {
         do {
             let s = try await VaultCLI.attach(location, password: password)
             apply(s)
             activity.touch()
             if remember {
-                keychainBackend = try VaultKeychain.save(password)
+                keychainBackend = try VaultKeychain.save(password, binding: keychainBinding)
             }
+            return true
         } catch let error as VaultCLIError where error.isBadPassword {
+            guard promptOnBadPassword else { return false }
             passwordPrompt = PasswordPrompt(
                 purpose: .unlock,
                 message: remember
                     ? String(localized: "Mot de passe refusé. Réessayez (la clé de récupération fonctionne aussi).")
                     : String(localized: "Le mot de passe du trousseau ne correspond plus au coffre : saisissez-le (ou la clé de récupération).")
             )
+            return false
         }
     }
 
@@ -331,11 +343,17 @@ final class VaultStore: ObservableObject {
     func submitPassword(_ typed: String, remember: Bool) async {
         guard let prompt = passwordPrompt else { return }
         passwordPrompt = nil
-        let password = RecoveryKey.normalize(typed)
+        let candidates = RecoveryKey.unlockCandidates(typed)
+        let password = candidates[0]
         switch prompt.purpose {
         case .unlock:
             await model.perform("vault-unlock") {
-                try await self.attach(password: password, remember: remember)
+                for (index, candidate) in candidates.enumerated() {
+                    let last = index == candidates.count - 1
+                    if try await self.attach(password: candidate, remember: remember, promptOnBadPassword: last) {
+                        return
+                    }
+                }
             }
         case .changePassword(let newPassword):
             await changePassword(newPassword: newPassword, oldPassword: password)
@@ -349,11 +367,11 @@ final class VaultStore: ObservableObject {
     /// Keychain password for a maintenance action; nil (and a prompt) when it must be typed.
     private func keychainPassword(reason: String, purpose: PasswordPrompt.Purpose) async throws -> String? {
         do {
-            return try await VaultKeychain.read(reason: reason)
+            return try await VaultKeychain.read(reason: reason, binding: keychainBinding).password
         } catch VaultKeychain.Failure.cancelled {
             return nil
-        } catch VaultKeychain.Failure.notFound {
-            passwordPrompt = PasswordPrompt(purpose: purpose, message: VaultKeychain.Failure.notFound.errorDescription ?? "")
+        } catch let failure as VaultKeychain.Failure where failure == .notFound || failure.isOtherVault {
+            passwordPrompt = PasswordPrompt(purpose: purpose, message: failure.errorDescription ?? "")
             return nil
         }
     }
@@ -370,7 +388,7 @@ final class VaultStore: ObservableObject {
 
     /// New passphrase (generated key when `newPassword` is nil). `oldPassword` nil = from the keychain.
     func changePassword(newPassword: String?, oldPassword: String? = nil) async {
-        let new = newPassword ?? RecoveryKey.generate()
+        let new = newPassword.map(RecoveryKey.storedForm(ofChosen:)) ?? RecoveryKey.generate()
         let purpose = PasswordPrompt.Purpose.changePassword(newPassword: newPassword)
         await model.perform("vault-chpass") {
             var current = oldPassword
@@ -389,7 +407,7 @@ final class VaultStore: ObservableObject {
             if newPassword == nil {
                 self.recoveryKeyToShow = new
             }
-            self.keychainBackend = try VaultKeychain.save(new)
+            self.keychainBackend = try VaultKeychain.save(new, binding: self.keychainBinding)
             if newPassword != nil {
                 self.model.banner = Banner(message: String(localized: "Mot de passe du coffre changé."), isError: false)
             }
@@ -521,6 +539,11 @@ final class VaultStore: ObservableObject {
         let id = UUID()
         let source: Source
         let reports: [ShredReport]
+        /// Asked by another app (link, Service, Finder menu): local snapshot purge starts unchecked.
+        var requestedByOtherApp = false
+        /// Oldest creation date of what will be deleted (local snapshots taken since then may keep a
+        /// copy). Nil when it could not be determined (too many files, no date): no purge offered.
+        var snapshotsSince: Date?
 
         var actionable: [ShredReport] { reports.filter(\.isActionable) }
         var refused: [ShredReport] { reports.filter { !$0.isActionable } }
@@ -530,14 +553,22 @@ final class VaultStore: ObservableObject {
     }
 
     /// Dry run (safety rules + sizes), then the confirmation sheet.
-    func prepareShred(urls: [URL], source: ShredPlan.Source = .files) async {
+    func prepareShred(urls: [URL], source: ShredPlan.Source = .files, requestedByOtherApp: Bool = false) async {
         let paths = urls.map(\.path)
         guard !paths.isEmpty else { return }
         let reports = await model.perform("vault-shred-plan") {
             try await VaultCLI.shred(self.location, paths: paths, dryRun: true)
         }
         if let reports {
-            shredPlan = ShredPlan(source: source, reports: reports)
+            var plan = ShredPlan(source: source, reports: reports)
+            plan.requestedByOtherApp = requestedByOtherApp
+            // Shown in the sheet before anything is decided: a creation date set far back (any file
+            // owner can do it) would otherwise widen the purge silently.
+            let outside = plan.actionable.filter { $0.zone != .vault }.map(\.path)
+            if !outside.isEmpty {
+                plan.snapshotsSince = await Task.detached(priority: .userInitiated) { Self.earliestCreation(outside) }.value
+            }
+            shredPlan = plan
         }
     }
 
@@ -560,10 +591,8 @@ final class VaultStore: ObservableObject {
         let paths = plan.actionable.filter { $0.zone != .vault }.map(\.path)
         let allPaths = plan.actionable.map(\.path)
         guard !allPaths.isEmpty else { return }
-        // Before deleting: afterwards, the creation dates are gone.
-        let since: Date? = purgeSnapshots && !paths.isEmpty
-            ? await Task.detached(priority: .userInitiated) { Self.earliestCreation(paths) }.value
-            : nil
+        // Computed (and shown) when the plan was prepared, before anything was deleted.
+        let since: Date? = purgeSnapshots && !paths.isEmpty ? plan.snapshotsSince : nil
         let result = await model.perform("vault-shred") {
             try await VaultCLI.shred(self.location, paths: allPaths, dryRun: false)
         }
@@ -604,8 +633,9 @@ final class VaultStore: ObservableObject {
                 consider(item)
                 seen += 1
                 if seen >= limit {
-                    // Too many to look at: purge every local snapshot.
-                    return .distantPast
+                    // Too many to look at: no purge (it used to fall back to every local snapshot,
+                    // anti-ransomware restore points included).
+                    return nil
                 }
             }
         }
@@ -615,7 +645,7 @@ final class VaultStore: ObservableObject {
     private func purgeLocalSnapshots(since: Date) async {
         let ts = Int64(max(0, since.timeIntervalSince1970))
         let result = await model.perform("snapshot-purge") {
-            try await self.model.call(.purgeSnapshots(since: ts), as: SnapshotPurge.self)
+            try await self.model.callWithFreshAuthorization(.purgeSnapshots(since: ts), as: SnapshotPurge.self)
         }
         guard let result else { return }
         let message: String
@@ -659,13 +689,25 @@ final class VaultStore: ObservableObject {
 
     // MARK: - Recovery key
 
-    /// Copies the key; the clipboard is cleared after 60 s unless something else was copied meanwhile.
+    /// Window-server session state, which other processes cannot fake.
+    nonisolated static func screenIsReallyLocked() -> Bool {
+        guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return false }
+        return (session["CGSSessionScreenIsLocked"] as? Bool) ?? ((session["CGSSessionScreenIsLocked"] as? Int) == 1)
+    }
+
+    /// Copies the key for this Mac only (no Universal Clipboard), marked concealed and transient so
+    /// clipboard managers skip it (nspasteboard.org); cleared after 30 s unless something else was
+    /// copied meanwhile (audit APP-6).
     func copyRecoveryKey(_ key: String) {
         let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(key, forType: .string)
+        pasteboard.prepareForNewContents(with: .currentHostOnly)
+        let item = NSPasteboardItem()
+        item.setString(key, forType: .string)
+        item.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
+        item.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
+        pasteboard.writeObjects([item])
         let change = pasteboard.changeCount
-        DispatchQueue.main.asyncAfter(deadline: .now() + 60) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
             if NSPasteboard.general.changeCount == change {
                 NSPasteboard.general.clearContents()
             }

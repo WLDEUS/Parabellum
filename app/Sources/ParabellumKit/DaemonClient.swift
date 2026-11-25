@@ -21,12 +21,23 @@ public enum DaemonProtocol {
     /// Sending it back in `set_config` keeps the stored secret.
     public static let redactedSecret = "********"
 
-    /// `$PARABELLUM_SOCKET` when set and non-empty, else `/var/run/parabellum.sock`.
+    /// Debug builds: `$PARABELLUM_SOCKET` when set and non-empty. Release builds always use
+    /// `/var/run/parabellum.sock`: any process can set the variable for the app (`launchctl setenv`, then
+    /// kill it so launchd relaunches it) and point it at a fake daemon that would hide alerts and collect
+    /// the administrator authorizations the app sends (audit IPC-3).
     public static var socketPath: String {
+        #if DEBUG
         if let value = ProcessInfo.processInfo.environment[socketEnvironmentKey], !value.isEmpty {
             return value
         }
+        #endif
         return defaultSocketPath
+    }
+
+    /// Who may be listening on `path`: root only on the real socket; root or this user on another path
+    /// (tests, a dev daemon run by hand).
+    public static func trustedServerUIDs(forPath path: String) -> Set<uid_t> {
+        path == defaultSocketPath ? [0] : [0, getuid()]
     }
 }
 
@@ -42,6 +53,8 @@ public enum DaemonClientError: Error, Equatable, LocalizedError {
     case protocolError(String)
     /// The daemon answered `ok: false`.
     case daemon(IpcError)
+    /// Something other than the root daemon is listening on the socket: nothing is sent to it.
+    case untrustedServer(uid: UInt32)
 
     public var errorDescription: String? {
         switch self {
@@ -57,6 +70,8 @@ public enum DaemonClientError: Error, Equatable, LocalizedError {
             return String(localized: "Réponse inattendue du service : \(detail)")
         case .daemon(let error):
             return error.message
+        case .untrustedServer(let uid):
+            return String(localized: "Le socket du service n'est pas tenu par root (uid \(Int(uid))) : connexion refusée. Réinstallez Parabellum.")
         }
     }
 
@@ -181,6 +196,19 @@ final class LineSocket: @unchecked Sendable {
                 throw DaemonClientError.permissionDenied
             }
             throw DaemonClientError.notRunning
+        }
+        // The listening end's credentials (taken by the kernel at listen time), before any byte is sent.
+        var cred = xucred()
+        var credLength = socklen_t(MemoryLayout<xucred>.size)
+        let solLocal: Int32 = 0 // SOL_LOCAL
+        let localPeerCred: Int32 = 0x001 // LOCAL_PEERCRED
+        let trusted = DaemonProtocol.trustedServerUIDs(forPath: path)
+        guard Darwin.getsockopt(fd, solLocal, localPeerCred, &cred, &credLength) == 0,
+              cred.cr_version == UInt32(XUCRED_VERSION),
+              trusted.contains(cred.cr_uid) else {
+            let uid = cred.cr_uid
+            _ = Darwin.close(fd)
+            throw DaemonClientError.untrustedServer(uid: uid)
         }
         return LineSocket(fd: fd)
     }

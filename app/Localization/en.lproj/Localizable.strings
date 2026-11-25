@@ -475,7 +475,7 @@
 "Copier le chemin" = "Copy the path";
 "Copier le chemin du service" = "Copy the service path";
 "Copier le texte" = "Copy the text";
-"Copiée (effacée du presse-papiers dans 60 s)" = "Copied (cleared from the clipboard in 60 s)";
+"Copiée (effacée du presse-papiers dans 30 s)" = "Copied (cleared from the clipboard in 30 s)";
 "coupe-feu activé et furtif" = "firewall on and stealth";
 "Couper AirDrop" = "Turn off AirDrop";
 "Couper le Bluetooth (déconnecte AirPods, claviers, souris)" = "Turn off Bluetooth (disconnects AirPods, keyboards, mice)";
@@ -1595,3 +1595,21 @@
 "%lld h" = "%lld:00";
 "Notification avec les points clés" = "Notification with the key points";
 "Le verdict et les points clés sont calculés par Parabellum. Le modèle local (le même que l'agent courrier, installé au premier usage) ne fait que les reformuler, quand le Mac est inactif sur secteur ; il ne reçoit que des compteurs, jamais de noms de fichiers. Rien ne quitte le Mac." = "The verdict and key points are computed by Parabellum. The local model (the mail agent's, installed on first use) only rewords them, while the Mac is idle on mains power; it receives counters only, never file names. Nothing leaves the Mac.";
+
+/* Audit 2026-11-24: app fixes */
+"Trousseau de session introuvable ou modifié (%@) : le mot de passe n'est pas enregistré." = "Login keychain missing or changed (%@): the password was not saved.";
+"dossier personnel inconnu" = "unknown home folder";
+"Le mot de passe enregistré appartient à un autre coffre que « %@ ». Vérifiez l'emplacement du coffre, puis saisissez le mot de passe de ce coffre." = "The saved password belongs to another vault than “%@”. Check the vault location, then type this vault's password.";
+"emplacement par défaut" = "default location";
+"Choisissez un autre dossier pour le fichier clé (une clé USB par exemple) : rangé à côté du dossier chiffré, il l'ouvre pour n'importe qui." = "Choose another folder for the key file (a USB drive for example): stored next to the encrypted folder, it opens it for anyone.";
+"Trop peu de caractères différents : une phrase de plusieurs mots est idéale." = "Too few different characters: a phrase of several words is ideal.";
+"Suite de touches ou de chiffres trop facile à deviner." = "A run of keys or digits that is too easy to guess.";
+"Mot de passe trop courant : ajoutez des mots à vous." = "Password too common: add words of your own.";
+"Le socket du service n'est pas tenu par root (uid %lld) : connexion refusée. Réinstallez Parabellum." = "The service socket is not held by root (uid %lld): connection refused. Reinstall Parabellum.";
+"supprimer des instantanés Time Machine locaux (points de restauration, protection anti-rançongiciel comprise)" = "delete local Time Machine snapshots (restore points, including the anti-ransomware ones)";
+"Demandé par une autre app (lien, Services ou menu du Finder). Vérifiez la liste avant de confirmer." = "Requested by another app (link, Services or Finder menu). Check the list before confirming.";
+"Instantanés pris depuis le %@." = "Snapshots taken since %@.";
+"Date de création introuvable ou trop de fichiers : aucun instantané ne sera supprimé." = "Creation date not found or too many files: no snapshot will be deleted.";
+"Ouvrir le dossier chiffré « %@ » ?" = "Open the encrypted folder “%@”?";
+"L'ouverture vient du Finder ou d'une autre app. Une fois ouvert, son contenu est lisible par les apps de votre session. Si vous n'avez pas demandé à l'ouvrir, annulez." = "The request comes from the Finder or another app. Once open, its content is readable by the apps of your session. If you did not ask to open it, cancel.";
+"Ouvrir avec Touch ID" = "Open with Touch ID";

@@ -634,6 +634,25 @@ final class AppModel {
         }
     }
 
+    /// Drops the cached administrator authorization, then sends `request` with a fresh one: for
+    /// irreversible actions (local snapshot purge) the ~5 min reuse is not acceptable (audit APP-3).
+    func callWithFreshAuthorization<T: Decodable>(_ request: Request, as type: T.Type) async throws -> T {
+        authorizer.invalidate()
+        return try await call(request, as: type, forceAuth: true)
+    }
+
+    /// Runs work requested by another app without a `parabellum://` link (Services, a file opened through
+    /// LaunchServices): same rule as links, no administrator prompt on an `auth_required` retry (audit
+    /// IPC-2). Nothing is confirmed on the requester's behalf.
+    func runExternalAction(_ body: () async -> Void) async {
+        urlActionDepth += 1
+        defer { urlActionDepth -= 1 }
+        await body()
+    }
+
+    /// True while a link or another app's request runs.
+    var handlingExternalRequest: Bool { urlActionDepth > 0 }
+
     // URL action security (v2-new review #1)
     /// > 0 while a `parabellum://` link runs (see `URLActionPolicy`). Not published: no view reads it.
     private var urlActionDepth = 0
